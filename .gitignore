@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.tif
+*.tiff
+ground_truth*.csv
+videos/
+.vscode/
