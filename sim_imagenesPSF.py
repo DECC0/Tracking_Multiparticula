@@ -64,7 +64,7 @@ class Config:
     read_noise: float = 2.0         # ADU rms
 
     # --- PSF (numerico) ---
-    mascara: str = "corkscrew"      # "corkscrew", "esferica" o "ninguna"
+    mascara: str = "esferica"       # "corkscrew", "esferica" o "ninguna"
     anillos_corkscrew: int = 3      # N en la Ec. 8.1
     amp_esferica: float = 1.5 * np.pi  # amplitud maxima de Z4^0 [rad] (tesis: 1.5 pi)
     M_pupila: int = 256             # rejilla FFT
@@ -322,7 +322,7 @@ def energia_encerrada(banco, z_nm, radio_px=2.0):
 
 
 if __name__ == "__main__":
-    cfg = Config(mascara="corkscrew")    # <- "corkscrew", "esferica" o "ninguna"
+    cfg = Config(mascara="esferica")    # <- "corkscrew", "esferica" o "ninguna"
     print(cfg.resumen())
 
     banco = BancoPSF(cfg)
