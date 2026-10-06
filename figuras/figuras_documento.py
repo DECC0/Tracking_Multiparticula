@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, TwoSlopeNorm
+from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from sim_imagenesPSF import (Config, BancoPSF, generar_video, energia_encerrada,
@@ -85,7 +86,10 @@ if "montaje" in FIGURAS:
 
     fig, axes = plt.subplots(2, len(zs), figsize=(7.2, 2.25),
                              gridspec_kw=dict(wspace=0.04, hspace=0.08))
-    for fila, (nombre, cfg, banco, _) in enumerate(bancos):
+    # solo en esta figura (la axial conserva las de bancos); la esferica va en
+    # dos lineas para que la etiqueta rotada no invada la fila de arriba
+    etiquetas = ["Sin aberración", "Esférica\n" + r"($Z_4^0$, $1.5\pi$)"]
+    for fila, ((_, cfg, banco, _), nombre) in enumerate(zip(bancos, etiquetas)):
         p0 = banco.psf_en_z(0).max()            # cada fila normalizada a su pico en foco
         for col, z in enumerate(zs):
             ax = axes[fila, col]
@@ -100,12 +104,13 @@ if "montaje" in FIGURAS:
             if fila == 0:
                 ax.set_title(f"{z}", fontsize=8)
             if col == 0:
-                ax.set_ylabel(nombre, fontsize=8)
+                # p_max en foco (fraccion de fotones en el pixel pico), del banco
+                ax.set_ylabel(f"{nombre}\n" + rf"$p_{{\max}}$ = {p0:.3f}", fontsize=8)
 
     # barra de escala de 1 um en el ultimo panel
     ax = axes[-1, -1]
-    x0 = ext[1] - 0.25 - 1.0
-    y0 = ext[2] - 0.3
+    x0 = ext[1] - 0.6 - 1.0                     # metida hacia dentro para que "1 um" no se corte
+    y0 = ext[2] - 0.35
     ax.plot([x0, x0 + 1.0], [y0, y0], color="white", lw=2, solid_capstyle="butt")
     ax.text(x0 + 0.5, y0 - 0.12, "1 µm", color="white", fontsize=7,
             ha="center", va="bottom")
@@ -190,29 +195,20 @@ def snr_emisores(g, fondo, cfg):
 
 
 if "cuadros" in FIGURAS:
-    # semillas fijas: se simulan candidatos y se eligen tres videos cuya
-    # mediana de N (emisores en el FOV) quede cerca del minimo, del centro
-    # geometrico (el muestreo es log-uniforme) y del maximo de fotones_rango
+    # videos fijos: semillas elegidas antes por tener la mediana de N (emisores
+    # en el FOV) cerca del minimo, del centro geometrico y del maximo de
+    # fotones_rango; n_frames y n_emisores_rango deben quedar igual para
+    # reproducir los mismos videos
     t_show = 10
-    semillas = range(200)
-    Nmin, Nmax = Config().fotones_rango
-    objetivos = np.log([Nmin, np.sqrt(Nmin * Nmax), Nmax])
+    semillas = [49, 89, 113]
 
-    candidatos = []
+    casos = []
     for s in semillas:
         cfg = Config(mascara="esferica", n_frames=t_show + 1,
                      n_emisores_rango=(4, 12), seed=s)
         rng = np.random.default_rng(cfg.seed)
         video, filas = generar_video(cfg, banco_esf, rng, video_id=s)
-        gt = pd.DataFrame(filas)
-        g = gt[(gt.frame == t_show) & gt.en_fov]
-        if len(g) >= 3:                                  # al menos 3 emisores visibles
-            candidatos.append((np.log(g.photons.median()), cfg, video, gt))
-
-    casos = []
-    for obj in objetivos:
-        _, cfg, video, gt = min(candidatos, key=lambda c: abs(c[0] - obj))
-        casos.append((cfg, video, gt))
+        casos.append((cfg, video, pd.DataFrame(filas)))
 
     W, H = casos[0][0].W, casos[0][0].H
     ext_img = [0, W * px_um, H * px_um, 0]
@@ -243,7 +239,7 @@ if "cuadros" in FIGURAS:
                 s.set_visible(False)
 
         axes[0, col].set_title(
-            f"({'abc'[col]}) " + rf"$\tilde{{N}}$ = {g.photons.median():.0f} fotones"
+            f"({'abc'[col]}) " + rf"$N_{{\mathrm{{med}}}}$ = {g.photons.median():.0f} fotones"
             f"\nSNR pico {np.median(snr):.1f} ({snr.min():.1f}–{snr.max():.1f})",
             fontsize=8)
         # (x_px, y_px) -> um, centro de pixel en (i + 0.5); anillo blanco + borde
@@ -253,13 +249,16 @@ if "cuadros" in FIGURAS:
         sc = axes[1, col].scatter(xs, ys, c=g.z_nm, cmap="RdBu_r", norm=norm_z,
                                   s=28, edgecolors="black", linewidths=0.8, zorder=4)
 
-        # barra de escala de 1 um
+        # barra de escala de 1 um en la esquina inferior izquierda, sobre un
+        # recuadro negro semitransparente para no confundirla con senal
         ax = axes[0, col]
-        x1 = W * px_um - 0.4
-        ax.plot([x1 - 1.0, x1], [H * px_um - 0.4] * 2, color="white", lw=2,
-                solid_capstyle="butt")
-        ax.text(x1 - 0.5, H * px_um - 0.55, "1 µm", color="white", fontsize=7,
-                ha="center", va="bottom")
+        yb = H * px_um - 0.35                           # eje y invertido: abajo = H
+        ax.add_patch(Rectangle((0.12, yb - 0.5), 1.36, 0.68, facecolor="black",
+                               alpha=0.7, edgecolor="none", zorder=5))
+        ax.plot([0.3, 1.3], [yb, yb], color="white", lw=2,
+                solid_capstyle="butt", zorder=6)
+        ax.text(0.8, yb - 0.12, "1 µm", color="white", fontsize=7,
+                ha="center", va="bottom", zorder=6)
 
         print(f"seed {cfg.seed}: {len(g)} emisores en FOV, N = "
               f"{g.photons.min():.0f}-{g.photons.max():.0f} (mediana {g.photons.median():.0f}), "
