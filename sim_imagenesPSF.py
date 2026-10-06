@@ -59,9 +59,10 @@ class Config:
     dt_s: float = 0.1               # 10 Hz, como en la tesis
 
     # --- camara ---
-    gain: float = 1.0               # e- por ADU
-    offset: float = 100.0           # ADU
-    read_noise: float = 2.0         # ADU rms
+    gain: float = 0.46              # e- por ADU; valor tipico de la Orca Flash 4.0 V3, consistente
+                                    # con el ruido medido en el fondo; pendiente de confirmar
+    offset: float = 99.0            # ADU, medido en la zona sin luz del sensor
+    read_noise: float = 3.26        # ADU rms (se suma despues de e/gain) = 1.5 e- rms / 0.46 e-/ADU
 
     # --- PSF (numerico) ---
     mascara: str = "esferica"       # "corkscrew", "esferica" o "ninguna"
