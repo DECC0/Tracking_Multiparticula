@@ -38,7 +38,7 @@ for g, c in zip(grupos, colors):
 
 ax1.set_xlabel("t [s]")
 ax1.set_ylabel("MSD_xy [nm^2]")
-ax1.set_title("MSD 2D empirico (solido) vs 4*D*t teorico (punteado)")
+ax1.set_title("Desplazamiento cuadratico medio: simulacion vs. modelo teorico")
 ax1.legend(fontsize=8)
 
 # ajuste lineal para estimar D efectivo de todo el ensemble
@@ -57,7 +57,7 @@ print(f"\nz fuera de [{zlo},{zhi}]: {np.mean((z_nm < zlo) | (z_nm > zhi))*100:.4
 ax2.hist(z_nm.ravel(), bins=80, color="tab:purple", alpha=0.8)
 ax2.axvline(zlo, color="red", ls="--"); ax2.axvline(zhi, color="red", ls="--")
 ax2.set_xlabel("z [nm]")
-ax2.set_title("Distribucion de z (reflejada en los bordes)")
+ax2.set_title("Distribucion de la posicion axial z")
 
 fig.tight_layout()
 fig.savefig(f"{OUT}/fig_difusion.png", dpi=130)

@@ -5,3 +5,4 @@ __pycache__/
 ground_truth*.csv
 videos/
 .vscode/
+CLAUDE.md

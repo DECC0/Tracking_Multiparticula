@@ -56,20 +56,20 @@ axes[0].axhline(1 - banco.energia_recortada.max(), color="red", ls="--", lw=1,
                 label="1 - energia_recortada(z=0)")
 axes[0].set_xlabel("offset subpixel (x=y=W/2+offset)")
 axes[0].set_ylabel("energia total / N")
-axes[0].set_title("Conservacion de energia vs shift subpixel")
+axes[0].set_title("Conservacion de energia segun el desplazamiento subpixel")
 axes[0].legend()
 
 axes[1].plot(offsets, centroides_err, "o-", color="tab:orange")
 axes[1].set_xlabel("offset subpixel")
 axes[1].set_ylabel("|centroide - (x,y) real| [px]")
-axes[1].set_title("Precision del centroide vs shift subpixel")
+axes[1].set_title("Precision del centroide segun el desplazamiento subpixel")
 
 half = 20
 c = Hs  # not used
 crop = img_borde
 axes[2].imshow(crop, cmap="inferno")
 axes[2].scatter([x_borde], [y_borde], marker="+", color="cyan", s=120)
-axes[2].set_title(f"Emisor cerca del borde\n(energia capturada={frac_borde:.2f})")
+axes[2].set_title(f"Emisor cerca del borde del campo de vision\n(energia capturada: {frac_borde:.2f})")
 fig.tight_layout()
 fig.savefig(f"{OUT}/fig_colocar_checks.png", dpi=130)
 plt.close(fig)

@@ -61,11 +61,11 @@ print(f"diferencia = {total_obs - total_esperado:.1f}  ({(total_obs-total_espera
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 axes[0].imshow(video[0], cmap="inferno")
 axes[0].scatter(frame0_gt.x_px, frame0_gt.y_px, facecolors="none", edgecolors="cyan", s=80, linewidths=1.2)
-axes[0].set_title("frame 0 real (con ruido) + posiciones GT")
+axes[0].set_title("Cuadro simulado (con ruido) y posiciones de referencia")
 
 axes[1].imshow(img_limpia_total, cmap="inferno")
 axes[1].scatter(frame0_gt.x_px, frame0_gt.y_px, facecolors="none", edgecolors="cyan", s=80, linewidths=1.2)
-axes[1].set_title("reconstruccion limpia (GT -> PSF + fondo, sin ruido)")
+axes[1].set_title("Reconstruccion sin ruido a partir de las posiciones de referencia")
 
 pid = 0
 sub = gt[gt.particle_id == pid].sort_values("frame")
@@ -73,7 +73,7 @@ axes[2].plot(sub.frame, sub.x_px, label="x_px")
 axes[2].plot(sub.frame, sub.y_px, label="y_px")
 ax2b = axes[2].twinx()
 ax2b.plot(sub.frame, sub.z_nm, "g--", alpha=0.6, label="z_nm")
-axes[2].set_title(f"trayectoria particle_id={pid} (D={sub.D_um2_s.iloc[0]:.3f} um2/s)")
+axes[2].set_title(f"Trayectoria de la particula {pid} (D = {sub.D_um2_s.iloc[0]:.3f} um2/s)")
 axes[2].set_xlabel("frame")
 axes[2].legend(loc="upper left", fontsize=8)
 ax2b.legend(loc="upper right", fontsize=8)

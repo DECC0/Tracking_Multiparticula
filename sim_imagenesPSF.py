@@ -33,7 +33,7 @@ Salidas:
                           photons, D_um2_s, en_fov
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -75,7 +75,10 @@ class Config:
     # --- muestra (rangos: se muestrean por video / por particula) ---
     n_emisores_rango: tuple = (1, 12)
     z_rango_nm: tuple = (-800.0, 800.0)
-    fotones_rango: tuple = (300.0, 2000.0)
+    fotones_rango: tuple = (1000.0, 30000.0)  # calibrado con muNS reales (microscopio de Alex): offset ~99 ADU,
+                                              # ganancia asumida ~0.46 e-/ADU, fondo ~15 fotones/px, particula
+                                              # tenue ~1000-2600 fotones, p_max experimental ~0.010-0.019
+    muestreo_fotones: str = "log"           # "log" (log-uniforme en fotones_rango) o "uniforme" (comportamiento anterior)
     fondo_rango: tuple = (5.0, 40.0)
     fondo_no_uniforme: bool = True
     D_rango_um2_s: tuple = (0.01, 0.3)  # coeficiente de difusion por particula
@@ -260,11 +263,23 @@ def aplicar_camara(fotones, cfg: Config, rng):
 # Generacion
 # ----------------------------------------------------------------------------
 
+def muestrear_fotones(cfg: Config, n, rng):
+    """Fotones por emisor. "log": N = exp(U(log Nmin, log Nmax)), cubre por
+    igual cada decada del rango; "uniforme": U(Nmin, Nmax). Ambos consumen
+    el mismo numero de llamadas al rng."""
+    Nmin, Nmax = cfg.fotones_rango
+    if cfg.muestreo_fotones == "log":
+        return np.exp(rng.uniform(np.log(Nmin), np.log(Nmax), n))
+    if cfg.muestreo_fotones == "uniforme":
+        return rng.uniform(Nmin, Nmax, n)
+    raise ValueError(f"muestreo_fotones desconocido: {cfg.muestreo_fotones}")
+
+
 def generar_video(cfg: Config, banco, rng, video_id):
     # randomizacion agresiva por video: numero de emisores, brillo, D y fondo
     n = rng.integers(cfg.n_emisores_rango[0], cfg.n_emisores_rango[1] + 1)
     tray, D = generar_trayectorias(cfg, n, rng)
-    Ns = rng.uniform(*cfg.fotones_rango, n)
+    Ns = muestrear_fotones(cfg, n, rng)                          # fijo por particula en todo el video
     fondo = generar_fondo(cfg, rng)                              # fijo en el video
 
     video = np.zeros((cfg.n_frames, cfg.H, cfg.W), dtype=np.uint16)
@@ -321,6 +336,43 @@ def energia_encerrada(banco, z_nm, radio_px=2.0):
     return p[(xx - ix)**2 + (yy - iy)**2 <= radio_px**2].sum()
 
 
+def snr_pico(banco, N, b):
+    """SNR del pixel pico por plano z del banco (sin shift subpixel: emisor
+    centrado en un pixel, que es el mejor caso).
+        p_max      = fraccion de fotones en el pixel pico
+        senal_pico = N * p_max
+        snr_pico   = senal_pico / sqrt(senal_pico + b + (sigma_r * g)^2)
+    N [fotones por emisor], b [fotones de fondo por pixel]."""
+    cfg = banco.cfg
+    p_max = banco.stack.max(axis=(1, 2))                         # (nz,), banco ya suavizado y normalizado
+    senal = N * p_max
+    ruido_lectura_e = cfg.read_noise * cfg.gain                  # ADU rms -> e- rms (gain en e- por ADU)
+    snr = senal / np.sqrt(senal + b + ruido_lectura_e**2)
+    return p_max, senal, snr
+
+
+def imprimir_snr_pico(banco, paso_nm=100.0):
+    """Tabla por z con p_max, senal pico y SNR pico en el peor caso (N min,
+    b max) y el mejor caso (N max, b min) de los rangos de Config. Ojo: con
+    fondo_no_uniforme el fondo puede llegar a ~2 * fondo_rango[1] en el
+    centro de la mancha, asi que el peor caso real es algo peor."""
+    cfg = banco.cfg
+    N_min, N_max = cfg.fotones_rango
+    b_min, b_max = cfg.fondo_rango
+    p_max, s_min, snr_min = snr_pico(banco, N_min, b_max)        # peor caso
+    _, s_max, snr_max = snr_pico(banco, N_max, b_min)            # mejor caso
+
+    print(f"\nSNR pico, mascara '{cfg.mascara}'  "
+          f"(N = {N_min:.0f}..{N_max:.0f} fotones, b = {b_min:.0f}..{b_max:.0f} "
+          f"fotones/px, sigma_r*g = {cfg.read_noise*cfg.gain:.1f} e-)")
+    print("   z [nm]    p_max    senal [N min]  senal [N max]   SNR peor   SNR mejor")
+    for i, z in enumerate(banco.z_grid):
+        if not np.isclose(np.mod(z - banco.z_grid[0], paso_nm), 0.0):
+            continue                                             # submuestrea la tabla
+        print(f"  {z:6.0f}   {p_max[i]:7.4f}   {s_min[i]:12.1f}   {s_max[i]:12.1f}   "
+              f"{snr_min[i]:8.2f}   {snr_max[i]:9.2f}")
+
+
 if __name__ == "__main__":
     cfg = Config(mascara="esferica")    # <- "corkscrew", "esferica" o "ninguna"
     print(cfg.resumen())
@@ -344,6 +396,11 @@ if __name__ == "__main__":
         for z in zs:
             print(f"  {z:6.0f}   {banco.psf_en_z(z).max()/p0:8.3f}   "
                   f"{energia_encerrada(banco, z):12.3f}")
+
+    # SNR pico por z, y el mismo calculo sin aberracion (Phi = 0) para comparar
+    imprimir_snr_pico(banco)
+    if cfg.mascara != "ninguna":
+        imprimir_snr_pico(BancoPSF(replace(cfg, mascara="ninguna")))
 
     gt = generar_dataset(cfg, banco)
     gt.to_csv("ground_truth.csv", index=False)

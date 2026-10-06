@@ -23,7 +23,7 @@ ax1.plot(zs, picos, "-", color="tab:red")
 ax1.axhline(1.0, color="gray", lw=0.7, ls=":")
 ax1.axvline(0, color="gray", lw=0.5)
 ax1.set_ylabel("pico relativo I_max(z)/I_max(0)")
-ax1.set_title("Barrido completo (paso 20 nm) -- esferica, amp=1.5*pi")
+ax1.set_title("Barrido axial completo de la PSF esferica (paso de 20 nm)")
 
 ax2.plot(zs, enc2, "-", color="tab:blue", label="E(r<=2px)")
 ax2.plot(zs, enc4, "-", color="tab:green", label="E(r<=4px)")
