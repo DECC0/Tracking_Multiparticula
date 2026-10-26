@@ -8,15 +8,17 @@ Todos los comandos se corren desde la raiz del repo en Hypatia, salvo el paso 6.
    cd Tracking_Multiparticula
    ```
 
-2. **Instalar el entorno** `tracking` (una vez, en el nodo de login):
+2. **Instalar el entorno** (una vez, en el nodo de login): crea el venv `~/envs/tracking` con el modulo `python/3.11` e instala los paquetes. Se corre con `source`; si un paso falla se detiene sin cerrar la shell:
    ```bash
    source hypatia/instalar_entorno.sh
    ```
+   No se usa el modulo `anaconda`: su conda 4.12 muere por memoria en el login al resolver conda-forge (y pip terminaba instalando en su Python 3.9).
+   El driver de las GPU de Hypatia es CUDA 11.8, por eso el cluster usa torch 2.7.1+cu118 mientras el entorno local usa 2.11.0+cu128. El script instala en `~/tmp` (`TMPDIR`) porque el `/tmp` del login es pequeno y torch quedaba incompleto.
 
 3. **Probar en un nodo GPU** antes de lanzar el job largo:
    ```bash
    salloc -p gpu --gres=gpu:1 --cpus-per-task=4 --mem=16G --time=1:00:00
-   module load anaconda && source activate tracking
+   module purge && module load python/3.11 && source ~/envs/tracking/bin/activate
    nvidia-smi
    python localizacion/train.py --config localizacion/configs/smoke.yaml --set entrenamiento.dispositivo=cuda
    python localizacion/tests/correr_tests.py

@@ -22,8 +22,8 @@
 
 # ################## Zona Carga de Modulos ############################################
 module purge
-module load anaconda
-source activate tracking
+module load python/3.11
+source ~/envs/tracking/bin/activate || exit 1      #venv creado con hypatia/instalar_entorno.sh
 
 ########################################################################################
 
