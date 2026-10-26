@@ -1,0 +1,31 @@
+# Prueba rapida de punta a punta (CPU, segundos): imagenes pequenas con
+# H != W a proposito, para que un intercambio de ejes x/y no pase desapercibido.
+
+datos:
+  simulador:
+    mascara: esferica
+    H: 32
+    W: 40
+    n_emisores_rango: [0, 5]
+  fotones_dispersion: 5.0
+  prob_fondo_uniforme: 0.2
+  n_train: 16
+  n_val: 8
+  seed_train: 1
+  seed_val: 2
+
+target:
+  upsampling: 4
+  dz_nm: 100.0
+  planos_margen: 1
+
+modelo:
+  canales_base: 16
+
+entrenamiento:
+  nombre: smoke
+  epocas: 2
+  batch: 4
+  workers: 0
+  dispositivo: cpu
+  log_cada: 2
