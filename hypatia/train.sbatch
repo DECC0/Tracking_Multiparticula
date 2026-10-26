@@ -1,4 +1,7 @@
 #!/bin/bash
+# Uso (desde la raiz del repo):
+#     sbatch hypatia/train.sbatch                                   # localizacion/configs/base.yaml
+#     sbatch hypatia/train.sbatch localizacion/configs/mezcla.yaml
 
 # ###### Zona de Parametros de solicitud de recursos a SLURM ############################
 #
@@ -33,15 +36,24 @@ if [ ! -f localizacion/train.py ]; then
     exit 1
 fi
 
+CONFIG=${1:-localizacion/configs/base.yaml}
+if [ ! -f "$CONFIG" ]; then
+    echo "No existe la config $CONFIG" >&2
+    exit 1
+fi
+# nombre de la corrida: el de la config, con prefijo hypatia_ para distinguirla de las locales
+NOMBRE=hypatia_$(python -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])) or {}; print((c.get('entrenamiento') or {}).get('nombre', 'corrida'))" "$CONFIG")
+
 host=`/bin/hostname`
 date=`/bin/date`
 echo "Corri en la maquina: "$host
 echo "Corri el: "$date
+echo "Config: $CONFIG  ->  corrida $NOMBRE"
 nvidia-smi
 
-# la corrida queda en localizacion/corridas/hypatia_base_<fecha-hora>/
-python -u localizacion/train.py --config localizacion/configs/base.yaml \
-    --set entrenamiento.workers=8 entrenamiento.epocas=30 entrenamiento.nombre=hypatia_base
+# la corrida queda en localizacion/corridas/<NOMBRE>_<fecha-hora>/; las epocas son las de la config
+python -u localizacion/train.py --config "$CONFIG" \
+    --set entrenamiento.workers=8 entrenamiento.nombre=$NOMBRE
 
 echo "Termino el: "`/bin/date`
 

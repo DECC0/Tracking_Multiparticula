@@ -28,6 +28,7 @@ class ConfigDatos:
 
     # randomizacion extra por muestra, encima de la del simulador (n emisores, fotones, fondo)
     fotones_dispersion: float = None    # razon max/min de fotones dentro de una imagen; None -> todo fotones_rango
+    prob_rango_completo: float = 0.0    # probabilidad de ignorar fotones_dispersion (tenues junto a brillantes)
     prob_fondo_uniforme: float = 0.0    # probabilidad de fondo uniforme en vez del gaussiano del simulador
     read_noise_rango: tuple = None      # ADU rms, uniforme por muestra; None -> el del simulador
 
@@ -52,6 +53,7 @@ class ConfigDatos:
         _exige(self.canales >= 1, "datos.canales debe ser >= 1")
         _exige(self.fotones_dispersion is None or self.fotones_dispersion >= 1,
                "datos.fotones_dispersion debe ser >= 1 (o null)")
+        _exige(0 <= self.prob_rango_completo <= 1, "datos.prob_rango_completo debe estar en [0, 1]")
         _exige(0 <= self.prob_fondo_uniforme <= 1, "datos.prob_fondo_uniforme debe estar en [0, 1]")
         if self.read_noise_rango is not None:
             lo, hi = self.read_noise_rango

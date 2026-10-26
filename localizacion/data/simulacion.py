@@ -8,7 +8,8 @@ Randomizacion por muestra (estilo Newby et al. 2018), encima de la del
 simulador (numero de emisores, fotones por emisor, fondo):
     - rango de fotones de la imagen: un subrango de fotones_rango de razon
       max/min = fotones_dispersion, con centro log-uniforme. Asi hay imagenes
-      enteras con emisores tenues, no solo tenues mezclados con brillantes
+      enteras con emisores tenues, no solo tenues mezclados con brillantes;
+      con probabilidad prob_rango_completo la imagen usa todo fotones_rango
     - fondo uniforme con probabilidad prob_fondo_uniforme
     - ruido de lectura uniforme en read_noise_rango
 Usa su propio flujo aleatorio, asi que no cambia las posiciones de los
@@ -50,14 +51,28 @@ def banco_compatible(banco, cfg_sim):
     return all(getattr(banco.cfg, c) == getattr(cfg_sim, c) for c in CAMPOS_PSF)
 
 
-def config_muestra(cfg_datos, cfg_sim, idx):
-    """simulador.Config de la muestra idx, con la randomizacion extra. Siempre
-    sortea los mismos 3 numeros, asi activar una opcion no cambia las demas."""
+def _sorteos(cfg_sim, idx):
+    """Los uniformes de la randomizacion extra de la muestra idx: fotones,
+    fondo, ruido de lectura y rango completo. Siempre son los mismos 4, asi
+    activar una opcion no cambia las demas; el de prob_rango_completo va al
+    final para que las muestras de antes de agregarlo no cambien."""
     rng = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG)))
     u_fot, u_fondo, u_ruido = rng.uniform(size=3)
+    return u_fot, u_fondo, u_ruido, rng.uniform()
+
+
+def usa_rango_completo(cfg_datos, cfg_sim, idx):
+    """True si la muestra idx usa todo fotones_rango: sin fotones_dispersion, o
+    por sorteo con prob_rango_completo."""
+    return cfg_datos.fotones_dispersion is None or _sorteos(cfg_sim, idx)[3] < cfg_datos.prob_rango_completo
+
+
+def config_muestra(cfg_datos, cfg_sim, idx):
+    """simulador.Config de la muestra idx, con la randomizacion extra."""
+    u_fot, u_fondo, u_ruido, _ = _sorteos(cfg_sim, idx)
     cambios = {}
     d = cfg_datos.fotones_dispersion
-    if d is not None:
+    if not usa_rango_completo(cfg_datos, cfg_sim, idx):
         Nmin, Nmax = cfg_sim.fotones_rango
         lo, hi = np.log(Nmin), np.log(Nmax)
         c, w = lo + u_fot * (hi - lo), np.log(d) / 2          # centro log-uniforme y semiancho
@@ -99,6 +114,7 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
     gt["snr"] = snr_emisores(cfg_m, banco, gt, extra["fondo"])
     meta = dict(video_id=idx, n_emisores=int(gt.en_fov.sum()),
                 fotones_min=cfg_m.fotones_rango[0], fotones_max=cfg_m.fotones_rango[1],
+                rango_completo=bool(usa_rango_completo(cfg_datos, cfg_sim, idx)),
                 fondo_medio=float(extra["fondo"].mean()), fondo_no_uniforme=cfg_m.fondo_no_uniforme,
                 read_noise=cfg_m.read_noise)
     return video, gt, meta                                       # video (T = 1, H, W) = (C = 1, H, W)

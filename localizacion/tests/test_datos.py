@@ -2,6 +2,7 @@
 (seed, idx), randomizacion extra por muestra, SNR por emisor, normalizacion,
 collate y pregeneracion a disco."""
 import tempfile
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,8 @@ import torch
 
 from comun import sim, cfg_datos, banco, espera_error, ConfigDatos
 from config import cargar_config, a_dict
-from data.simulacion import config_simulador, config_muestra, generar_muestra, snr_emisores, COLUMNAS_GT
+from data.simulacion import (config_simulador, config_muestra, generar_muestra, snr_emisores, usa_rango_completo,
+                             COLUMNAS_GT)
 from data.dataset import DatasetSimulado, DatasetDisco, collate, normalizar, pregenerar
 
 
@@ -55,6 +57,48 @@ def test_randomizacion_de_fotones():
     for idx in range(20):
         _, gt, meta = generar_muestra(cd, cs, banco(), idx)
         assert gt.photons.between(meta["fotones_min"], meta["fotones_max"]).all()
+
+
+def test_rango_completo_por_defecto_no_cambia_muestras():
+    # con prob_rango_completo = 0 (por defecto) las muestras son las de antes de
+    # agregarlo: la Config de cada muestra es la que daba el codigo anterior
+    # (valores guardados) y la imagen es la del simulador con esa Config
+    cd = cfg_datos(fotones_dispersion=4.0, prob_fondo_uniforme=0.5, read_noise_rango=(1.0, 5.0))
+    assert cd.prob_rango_completo == 0.0
+    cs = config_simulador(cd, 1)
+    antes = {0: ((1000.0, 2042.65407157942), True, 2.9753384053529723),
+             1: ((4012.3761523760936, 16049.504609504378), False, 3.338404861665415),
+             2: ((1000.0, 2929.9455133070155), True, 4.166749497969262),
+             3: ((3709.451166012505, 14837.804664050022), False, 3.8678522177236854)}
+    for idx, (fotones, no_uniforme, ruido) in antes.items():
+        cm = config_muestra(cd, cs, idx)
+        assert np.allclose(cm.fotones_rango, fotones, rtol=1e-12, atol=0)
+        assert cm.fondo_no_uniforme == no_uniforme and np.isclose(cm.read_noise, ruido, rtol=1e-12, atol=0)
+        img, _, meta = generar_muestra(cd, cs, banco(), idx)
+        video, _ = sim.generar_video(replace(cs, fotones_rango=fotones, fondo_no_uniforme=no_uniforme,
+                                             read_noise=ruido), banco(), idx)
+        assert np.array_equal(img, video) and meta["rango_completo"] is False
+
+
+def test_rango_completo():
+    cs = config_simulador(cfg_datos(), 3)
+    # con prob_rango_completo = 1 cada muestra usa todo fotones_rango, aunque haya fotones_dispersion
+    cd1 = cfg_datos(fotones_dispersion=4.0, prob_rango_completo=1.0)
+    for idx in range(50):
+        assert config_muestra(cd1, cs, idx).fotones_rango == cs.fotones_rango
+    for idx in range(5):
+        _, gt, meta = generar_muestra(cd1, cs, banco(), idx)
+        assert meta["rango_completo"] is True
+        assert (meta["fotones_min"], meta["fotones_max"]) == cs.fotones_rango
+    # con p intermedia, una fraccion p usa el rango completo y el resto es identico a p = 0
+    cd0 = cfg_datos(fotones_dispersion=4.0)
+    cdp = cfg_datos(fotones_dispersion=4.0, prob_rango_completo=0.4)
+    usa = np.array([usa_rango_completo(cdp, cs, idx) for idx in range(400)])
+    assert abs(usa.mean() - 0.4) < 0.08
+    for idx in np.flatnonzero(~usa)[:30]:
+        assert config_muestra(cdp, cs, idx) == config_muestra(cd0, cs, idx)
+    # sin fotones_dispersion todas usan el rango completo
+    assert all(usa_rango_completo(cfg_datos(), cs, idx) for idx in range(20))
 
 
 def test_randomizacion_de_fondo_y_ruido_de_lectura():
@@ -170,6 +214,7 @@ def test_errores_de_configuracion():
     espera_error(ValueError, config_simulador, cfg_datos(sim_kw=dict(n_frames=5)), 0)
     espera_error(TypeError, config_simulador, cfg_datos(sim_kw=dict(campo_que_no_existe=1)), 0)
     espera_error(ValueError, cfg_datos, fotones_dispersion=0.5)
+    espera_error(ValueError, cfg_datos, prob_rango_completo=1.5)
     espera_error(ValueError, cfg_datos, normalizacion="otra")
     # un banco de otra optica no se acepta
     espera_error(ValueError, DatasetSimulado, cfg_datos("esferica"), 2, 0, banco("ninguna"))

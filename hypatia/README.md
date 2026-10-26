@@ -30,16 +30,17 @@ Todos los comandos se corren desde la raiz del repo en Hypatia, salvo el paso 6.
    mkdir -p hypatia/logs
    ```
 
-5. **Lanzar el entrenamiento** (`configs/base.yaml`, 30 epocas, 8 workers; simula los datos on-the-fly, no hay que copiar datos):
+5. **Lanzar el entrenamiento** con una config (por defecto `configs/base.yaml`; 8 workers; simula los datos on-the-fly, no hay que copiar datos). La corrida se llama `hypatia_<entrenamiento.nombre de la config>`:
    ```bash
-   sbatch hypatia/train.sbatch
+   sbatch hypatia/train.sbatch                                   # base.yaml  -> hypatia_base
+   sbatch hypatia/train.sbatch localizacion/configs/mezcla.yaml  # mezcla.yaml -> hypatia_mezcla
    squeue -u $USER                    # estado del job
    tail -f hypatia/logs/train.o<JOBID>
    ```
    Si se acaba el tiempo, se continua desde `ultimo.pt` con
-   `python -u localizacion/train.py --reanudar localizacion/corridas/hypatia_base_<fecha-hora>` (cambiando la linea `python` del `.sbatch`).
+   `python -u localizacion/train.py --reanudar localizacion/corridas/hypatia_<nombre>_<fecha-hora>` (cambiando la linea `python` del `.sbatch`).
 
 6. **Bajar la corrida** al computador local (desde la raiz del repo local):
    ```bash
-   rsync -avz <usuario>@hypatia.uniandes.edu.co:<ruta>/Tracking_Multiparticula/localizacion/corridas/hypatia_base_<fecha-hora> localizacion/corridas/
+   rsync -avz <usuario>@hypatia.uniandes.edu.co:<ruta>/Tracking_Multiparticula/localizacion/corridas/hypatia_<nombre>_<fecha-hora> localizacion/corridas/
    ```

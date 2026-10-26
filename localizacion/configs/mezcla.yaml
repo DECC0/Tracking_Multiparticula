@@ -1,0 +1,79 @@
+# Igual a base.yaml, salvo prob_rango_completo: la mitad de las imagenes usa
+# todo fotones_rango, asi la red ve emisores tenues junto a brillantes (con
+# fotones_dispersion = 5 solo pasa con el 1.6% de los tenues).
+#
+# Configuracion base de la red de localizacion 3D (estilo DeepSTORM3D).
+# Lo que no aparece toma el valor por defecto de config.py (y, en
+# datos.simulador, el de simulador_nuevo/simulador.py). Cualquier campo se
+# cambia desde la linea de comandos: --set datos.n_train=5000
+
+datos:
+  simulador:                  # campos de simulador.Config (menos n_frames, n_videos y seed)
+    mascara: esferica
+    H: 64
+    W: 64
+    n_emisores_rango: [1, 12]
+    z_rango_nm: [-800.0, 800.0]
+    fotones_rango: [1000.0, 30000.0]
+    fondo_rango: [5.0, 40.0]
+  canales: 1
+  fotones_dispersion: 5.0     # cada imagen usa un subrango de fotones con razon max/min 5
+  prob_rango_completo: 0.5    # ... salvo la mitad, que usa todo fotones_rango
+  prob_fondo_uniforme: 0.2
+  read_noise_rango: null      # null -> 3.26 ADU (Orca Flash 4.0, el del simulador)
+  normalizacion: robusta
+  n_train: 20000
+  n_val: 1000
+  seed_train: 1
+  seed_val: 2
+  renovar_por_epoca: false
+
+target:
+  upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y
+  dz_nm: 50.0                 # 33 planos en [-800, 800] + 2 de margen a cada lado = 37
+  planos_margen: 2
+  sigma_xy_vox: 1.0
+  sigma_z_vox: 1.0
+  escala: 100.0
+
+modelo:
+  canales_base: 64
+  dilataciones: [1, 2, 4, 8, 16]   # campo receptivo 65 px
+  modo_upsampling: bilinear
+  capas_salida: 2
+  norm: batch
+  pendiente_leaky: 0.2
+  activacion_salida: hardtanh
+
+perdida:
+  terminos: {mse: 1.0, dice: 1.0}
+  suavizado_dice: 1.0
+
+entrenamiento:
+  nombre: mezcla
+  epocas: 30                  # ~4 min por epoca de 20000 muestras en la RTX 3060
+  batch: 8                    # 1.2 GB con AMP; batch 16 cabe (2.4 GB)
+  acumulacion: 1
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  amp: fp16
+  clip_grad: null
+  factor_lr: 0.5
+  paciencia_lr: 3
+  lr_min: 1.0e-5
+  parada_temprana: null
+  workers: 2                  # la GPU procesa ~85 muestras/s; un proceso simula ~250/s
+  dispositivo: auto
+  semilla: 0
+  log_cada: 50
+  datos_train: null           # carpetas de pregenerar.py; null -> on-the-fly
+  datos_val: null
+  carpeta_corridas: null      # null -> localizacion/corridas/
+
+postproc:                     # no afecta el entrenamiento; infer.py lo cambia con --set postproc.umbral=0.3
+  umbral: 0.4
+  radio_xy_vox: 3             # ventana del maximo local: 7 x 7 voxeles (172 nm) ...
+  radio_z_planos: 3           # ... por 7 planos (350 nm)
+  radio_cm_xy_vox: 2          # ventana del centro de masa: 5 x 5 x 5
+  radio_cm_z_planos: 2
+  confianza: masa
