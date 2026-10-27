@@ -32,10 +32,11 @@ Todos los comandos se corren desde la raiz del repo en Hypatia, salvo el paso 6.
    mkdir -p hypatia/logs
    ```
 
-5. **Lanzar el entrenamiento** con una config (por defecto `configs/base.yaml`; 8 workers; simula los datos on-the-fly, no hay que copiar datos). La corrida se llama `hypatia_<entrenamiento.nombre de la config>`:
+5. **Lanzar el entrenamiento** con una config (por defecto `configs/base.yaml`; 4 workers; simula los datos on-the-fly, no hay que copiar datos). La corrida se llama `hypatia_<entrenamiento.nombre de la config>`:
    ```bash
    sbatch hypatia/train.sbatch                                   # base.yaml  -> hypatia_base
    sbatch hypatia/train.sbatch localizacion/configs/mezcla.yaml  # mezcla.yaml -> hypatia_mezcla
+   sbatch hypatia/train.sbatch localizacion/configs/mezcla_renovar.yaml  # train nuevo en cada epoca, 50 epocas
    squeue -u $USER                    # estado del job
    tail -f hypatia/logs/train.o<JOBID>
    ```

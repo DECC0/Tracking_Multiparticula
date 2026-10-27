@@ -9,10 +9,10 @@
 #SBATCH -p gpu                             #Cola a usar (particion con GPU)
 #SBATCH -N 1                               #Nodos requeridos
 #SBATCH -n 1                               #Tasks paralelos (un solo proceso de entrenamiento)
-#SBATCH --cpus-per-task=8                  #Cores por task: 8 workers del DataLoader simulan on-the-fly
+#SBATCH --cpus-per-task=4                  #Cores por task: 4 workers del DataLoader simulan on-the-fly (con 8, seff: CPU al 28%)
 #SBATCH --gres=gpu:1                       #GPUs requeridas
-#SBATCH --mem=32G                          #Memoria RAM del job
-#SBATCH --time=0-12:00:00                  #Tiempo maximo de corrida (d-hh:mm:ss)
+#SBATCH --mem=24G                          #Memoria RAM del job (con 8 workers se usaban 25 GB)
+#SBATCH --time=0-03:00:00                  #Tiempo maximo de corrida (d-hh:mm:ss); 30 epocas tomaron ~1 h
 #SBATCH --mail-user=de.cardenasc@uniandes.edu.co
 #SBATCH --mail-type=ALL                    #Correo al iniciar, terminar o fallar
 #SBATCH -o hypatia/logs/train.o%j          #Salida estandar (relativa a la carpeta desde donde se hace sbatch)
@@ -53,7 +53,7 @@ nvidia-smi
 
 # la corrida queda en localizacion/corridas/<NOMBRE>_<fecha-hora>/; las epocas son las de la config
 python -u localizacion/train.py --config "$CONFIG" \
-    --set entrenamiento.workers=8 entrenamiento.nombre=$NOMBRE
+    --set entrenamiento.workers=4 entrenamiento.nombre=$NOMBRE
 
 echo "Termino el: "`/bin/date`
 
