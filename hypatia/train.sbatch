@@ -12,7 +12,7 @@
 #SBATCH --cpus-per-task=4                  #Cores por task: 4 workers del DataLoader simulan on-the-fly (con 8, seff: CPU al 28%)
 #SBATCH --gres=gpu:1                       #GPUs requeridas
 #SBATCH --mem=24G                          #Memoria RAM del job (con 8 workers se usaban 25 GB)
-#SBATCH --time=0-03:00:00                  #Tiempo maximo de corrida (d-hh:mm:ss); 30 epocas tomaron ~1 h
+#SBATCH --time=0-05:00:00                  #Tiempo maximo de corrida (d-hh:mm:ss); 30 epocas tomaron ~1 h (100 epocas ~3.3 h)
 #SBATCH --mail-user=de.cardenasc@uniandes.edu.co
 #SBATCH --mail-type=ALL                    #Correo al iniciar, terminar o fallar
 #SBATCH -o hypatia/logs/train.o%j          #Salida estandar (relativa a la carpeta desde donde se hace sbatch)

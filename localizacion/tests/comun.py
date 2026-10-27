@@ -30,12 +30,13 @@ def banco(mascara="ninguna"):
     return sim.BancoPSF(config_simulador(cfg_datos(mascara), 0))
 
 
-def checkpoint_smoke(carpeta):
-    """Checkpoint sin entrenar de configs/smoke.yaml en carpeta/modelo.pt; devuelve (ruta, cfg)."""
+def checkpoint_smoke(carpeta, overrides=()):
+    """Checkpoint sin entrenar de configs/smoke.yaml (con overrides "seccion.campo=valor")
+    en carpeta/modelo.pt; devuelve (ruta, cfg)."""
     import torch
     from models import crear_modelo
     from utils import guardar_checkpoint, rejilla_de
-    cfg = cargar_config(SMOKE)
+    cfg = cargar_config(SMOKE, overrides)
     torch.manual_seed(0)
     ruta = Path(carpeta) / "modelo.pt"
     guardar_checkpoint(ruta, cfg, crear_modelo(cfg, rejilla_de(cfg)))

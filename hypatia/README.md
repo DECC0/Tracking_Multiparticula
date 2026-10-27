@@ -37,6 +37,8 @@ Todos los comandos se corren desde la raiz del repo en Hypatia, salvo el paso 6.
    sbatch hypatia/train.sbatch                                   # base.yaml  -> hypatia_base
    sbatch hypatia/train.sbatch localizacion/configs/mezcla.yaml  # mezcla.yaml -> hypatia_mezcla
    sbatch hypatia/train.sbatch localizacion/configs/mezcla_renovar.yaml  # train nuevo en cada epoca, 50 epocas
+   sbatch hypatia/train.sbatch localizacion/configs/mezcla_renovar_largo.yaml  # igual, 100 epocas
+   sbatch hypatia/train.sbatch localizacion/configs/mezcla_renovar_fija.yaml   # igual a _largo con normalizacion fija
    squeue -u $USER                    # estado del job
    tail -f hypatia/logs/train.o<JOBID>
    ```

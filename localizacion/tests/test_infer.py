@@ -1,16 +1,21 @@
 """infer.py de punta a punta en CPU con un checkpoint sin entrenar
 (configs/smoke.yaml): lee carpetas de .tif del simulador (otro tamano de
 imagen que el de entrenamiento) y de pregenerar.py, escribe el CSV con las
-columnas pedidas, su yaml y las figuras, y solo acepta overrides de postproc."""
+columnas pedidas, su yaml y las figuras, y solo acepta overrides de postproc;
+la normalizacion de la entrada es la guardada en el checkpoint."""
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import torch
 
 from comun import banco, checkpoint_smoke, espera_error
 from data.dataset import pregenerar
 from data.simulacion import sim
 from postproc import COLUMNAS_PRED
+from utils import cargar_modelo
 import infer
 
 
@@ -39,3 +44,24 @@ def test_infer_tif_pregenerados_y_figuras():
         # el checkpoint fija la red: solo se puede cambiar el post-procesado
         espera_error(ValueError, infer.main, [str(ckpt), str(tmp / "videos"), "--salida", str(tmp / "x.csv"),
                                               "--dispositivo", "cpu", "--set", "target.dz_nm=10"])
+
+
+def test_normalizacion_del_checkpoint():
+    # infer.py y evaluate.py (via detecciones_de -> localizar -> predecir) normalizan
+    # con la config del checkpoint, no con la de configs/base.yaml (robusta)
+    with tempfile.TemporaryDirectory() as tmp:
+        ckpt, _ = checkpoint_smoke(tmp, ["datos.normalizacion=fija", "datos.escala_entrada=7.0"])
+        modelo, cfg, _ = cargar_modelo(ckpt)
+        assert cfg.datos.normalizacion == "fija" and cfg.datos.escala_entrada == 7.0
+        cs = infer.camara_de({"config_sim": None, "nombre": "x"}, cfg)
+        rng = np.random.default_rng(0)
+        imagenes = (cs.offset + rng.poisson(30.0, (2, 32, 40))).astype(np.uint16)
+        imagenes[:, 10:13, 20:23] += 400                                # algo de estructura: robusta != fija
+
+        obtenido = infer.predecir(modelo, imagenes, cfg, cs, torch.device("cpu"), amp="no")
+        with torch.no_grad():
+            fija = modelo(torch.from_numpy(((imagenes - cs.offset) * cs.gain / 7.0).astype(np.float32))[:, None])
+            robusta = modelo(torch.from_numpy(
+                infer.normalizar(imagenes, replace(cfg.datos, normalizacion="robusta"), cs))[:, None])
+        assert torch.allclose(obtenido, fija, atol=1e-5)
+        assert not torch.allclose(obtenido, robusta, atol=1e-3)
