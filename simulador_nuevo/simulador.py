@@ -576,21 +576,47 @@ def modelo_roi(banco, x, y, z_nm, N, b, tam):
     return img
 
 
+def _fisher_roi(banco, N, b, z_nm, tam_roi, dx, dy, var_lectura_e2, con_z):
+    """Matriz de Fisher de un emisor en el centro de una ROI tam_roi x tam_roi
+    para (x, y[, z], N, b), con ruido Poisson + lectura gaussiana (var = mu +
+    var_lectura). Derivadas por diferencias centradas: en x, y con paso 1e-3 px
+    (el shift de colocar es exacto); en z con medio paso de la rejilla del banco,
+    que interpola linealmente entre planos, y de un solo lado en los extremos."""
+    if var_lectura_e2 is None:
+        var_lectura_e2 = _var_lectura_e2(banco.cfg)
+    x0, y0, h = tam_roi // 2 + dx, tam_roi // 2 + dy, 1e-3
+    m = lambda x, y, z: modelo_roi(banco, x, y, z, N, b, tam_roi)
+    mu = m(x0, y0, z_nm)
+    J = [(m(x0 + h, y0, z_nm) - m(x0 - h, y0, z_nm)) / (2 * h),
+         (m(x0, y0 + h, z_nm) - m(x0, y0 - h, z_nm)) / (2 * h)]
+    if con_z:
+        zg = banco.z_grid
+        if len(zg) < 2:
+            raise ValueError("la CRLB en z necesita un banco con mas de un plano z")
+        hz = np.diff(zg).min() / 2
+        z1, z2 = max(z_nm - hz, zg[0]), min(z_nm + hz, zg[-1])
+        J.append((m(x0, y0, z2) - m(x0, y0, z1)) / (z2 - z1))
+    J += [(mu - b) / N, np.ones_like(mu)]
+    J = np.stack(J).reshape(len(J), -1)
+    return (J / (mu.ravel() + var_lectura_e2)) @ J.T
+
+
 def crlb(banco, N, b, z_nm=0.0, tam_roi=15, dx=0.0, dy=0.0, var_lectura_e2=None):
     """Cota de Cramer-Rao (desviacion estandar minima) para (x, y [px], N, b
     [fotones]) de un emisor en el centro de una ROI tam_roi x tam_roi, con z
     conocido. Ruido: Poisson + lectura gaussiana, var = mu + var_lectura."""
-    if var_lectura_e2 is None:
-        var_lectura_e2 = _var_lectura_e2(banco.cfg)
-    x0, y0, h = tam_roi // 2 + dx, tam_roi // 2 + dy, 1e-3
-    m = lambda x, y: modelo_roi(banco, x, y, z_nm, N, b, tam_roi)
-    mu = m(x0, y0)
-    J = np.stack([(m(x0 + h, y0) - m(x0 - h, y0)) / (2 * h),
-                  (m(x0, y0 + h) - m(x0, y0 - h)) / (2 * h),
-                  (mu - b) / N,
-                  np.ones_like(mu)]).reshape(4, -1)
-    fisher = (J / (mu.ravel() + var_lectura_e2)) @ J.T
+    fisher = _fisher_roi(banco, N, b, z_nm, tam_roi, dx, dy, var_lectura_e2, con_z=False)
     return dict(zip(("x", "y", "N", "b"), np.sqrt(np.diag(np.linalg.inv(fisher)))))
+
+
+def crlb_3d(banco, N, b, z_nm=0.0, tam_roi=15, dx=0.0, dy=0.0, var_lectura_e2=None):
+    """Como crlb, pero con z tambien desconocido: cota para (x, y [px], z [nm],
+    N, b [fotones]). Estimar z no puede mejorar la cota lateral (x, y >= las de
+    crlb); con una PSF simetrica y el emisor centrado en un pixel no la cambia.
+    Si la PSF casi no cambia con z (mascara "ninguna" cerca de z = 0) la cota en
+    z diverge."""
+    fisher = _fisher_roi(banco, N, b, z_nm, tam_roi, dx, dy, var_lectura_e2, con_z=True)
+    return dict(zip(("x", "y", "z", "N", "b"), np.sqrt(np.diag(np.linalg.inv(fisher)))))
 
 
 if __name__ == "__main__":

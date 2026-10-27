@@ -33,7 +33,7 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 | `test_fondo.py` | fondo uniforme / no uniforme acotado y suave |
 | `test_difusion.py` | paredes reflectantes, MSD = 2Dt por eje, incrementos gaussianos independientes, z uniforme, desenfoque de movimiento (MSD con correccion t_e(n^2-1)/(3n^2)) |
 | `test_video.py` | forma del video, columnas y filas del GT, en_fov, imagen limpia reconstruible desde el GT, residuo de ruido ~ N(0,1), semilla, componentes independientes, prefijo temporal, escritura a disco |
-| `test_diagnosticos.py` | SNR del pixel pico vs simulacion, escalamiento de la CRLB |
+| `test_diagnosticos.py` | SNR del pixel pico vs simulacion, escalamiento de la CRLB; CRLB 3D (`crlb_3d`, z desconocido) vs la PSF exacta de `psf_directa`, vs la 2D y escalamiento con N |
 
 ## Diferencias con sim_imagenesPSF.py
 
@@ -42,4 +42,4 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 - **Desenfoque de movimiento** opcional (`t_exp_s`, `n_subpasos`; por defecto apagado). El GT es la posicion media durante la exposicion.
 - **Convencion de pixel**: el centro del pixel (fila i, col j) es (x=j, y=i) y el FOV es [-0.5, W-0.5) x [-0.5, H-0.5). Antes `en_fov` usaba [0, W).
 - **Aleatoriedad por video y por componente**: cada video se regenera solo, y cambiar ruido, fondo o fotones no cambia las trayectorias. Por eso, con la misma semilla, los videos no son iguales a los de `sim_imagenesPSF.py`.
-- La salida incluye `config.json` (Config + K usado), y hay diagnosticos nuevos: `crlb`, `modelo_roi`, `en_fov`, `psf_directa`.
+- La salida incluye `config.json` (Config + K usado), y hay diagnosticos nuevos: `crlb` (z conocido), `crlb_3d` (z desconocido), `modelo_roi`, `en_fov`, `psf_directa`.

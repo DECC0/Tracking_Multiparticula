@@ -1,8 +1,8 @@
 """Tests de las funciones de diagnostico: SNR del pixel pico y cota de
-Cramer-Rao (CRLB) de localizacion."""
+Cramer-Rao (CRLB) de localizacion, con z conocido (crlb) o desconocido (crlb_3d)."""
 import numpy as np
 
-from comun import sim, banco
+from comun import sim, banco, espera_error
 
 
 def test_snr_pico_vs_simulacion():
@@ -43,3 +43,50 @@ def test_crlb_escala_con_fotones():
     # orden de magnitud: para una PSF ~gaussiana de ancho sigma, CRLB ~ sigma / sqrt(N)
     sigma = np.sqrt((b.cfg.sigma0_nm / b.cfg.pixel_nm)**2 + b.cfg.blur_extra_px**2 + 1.0 / 12.0)
     assert 0.7 < s1["x"] / (sigma / np.sqrt(1000.0)) < 2.0, s1["x"]
+
+
+def _crlb_3d_directa(cfg, N, fondo, z, L=15):
+    # referencia independiente del banco: CRLB de (x, y, z, N, b) con la PSF exacta de psf_directa
+    # (sin interpolar en z) recortada a una ROI L x L alrededor del emisor
+    c = cfg.M_pupila // 2
+    s = slice(c - L // 2, c - L // 2 + L)
+    p = lambda dx, dy, zz: N * sim.psf_directa(cfg, zz, dx, dy)[s, s] + fondo
+    mu, h, hz = p(0, 0, z), 1e-3, 0.5
+    J = np.stack([(p(h, 0, z) - p(-h, 0, z)) / (2 * h), (p(0, h, z) - p(0, -h, z)) / (2 * h),
+                  (p(0, 0, z + hz) - p(0, 0, z - hz)) / (2 * hz), (mu - fondo) / N,
+                  np.ones_like(mu)]).reshape(5, -1)
+    fisher = (J / (mu.ravel() + sim._var_lectura_e2(cfg))) @ J.T
+    return dict(zip(("x", "y", "z"), np.sqrt(np.diag(np.linalg.inv(fisher)))[:3]))
+
+
+def test_crlb_3d_vs_psf_directa():
+    # la derivada en z sale del banco (interpolacion lineal entre planos cada 20 nm); debe dar la
+    # misma cota que la PSF exacta, tambien en los extremos del rango (derivada de un solo lado)
+    b = banco("esferica")
+    for z in (-800.0, -410.0, -7.0, 0.0, 300.0, 610.0, 800.0):
+        s = sim.crlb_3d(b, 3000.0, 20.0, z_nm=z)
+        ref = _crlb_3d_directa(b.cfg, 3000.0, 20.0, z)
+        for k in ("x", "y", "z"):
+            assert np.isclose(s[k], ref[k], rtol=5e-3), (z, k, s[k], ref[k])
+
+
+def test_crlb_3d_vs_2d_y_escala_con_fotones():
+    # esferica (radial) con el emisor centrado en un pixel: dmu/dx es impar y dmu/dz par, asi que
+    # z no se correlaciona con x, y y la cota lateral es la misma que con z conocido
+    b = banco("esferica")
+    s3, s2 = sim.crlb_3d(b, 3000.0, 20.0, z_nm=250.0), sim.crlb(b, 3000.0, 20.0, z_nm=250.0)
+    assert np.isclose(s3["x"], s2["x"], rtol=1e-6) and np.isclose(s3["y"], s2["y"], rtol=1e-6)
+    # fuera del centro, o con una PSF que rota con z (corkscrew), estimar z solo puede empeorarla
+    s3, s2 = sim.crlb_3d(b, 3000.0, 20.0, z_nm=250.0, dx=0.3, dy=-0.2), sim.crlb(b, 3000.0, 20.0, z_nm=250.0, dx=0.3, dy=-0.2)
+    assert s3["x"] >= s2["x"] * (1 - 1e-9) and s3["y"] >= s2["y"] * (1 - 1e-9)
+    bc = banco("corkscrew")
+    assert sim.crlb_3d(bc, 3000.0, 20.0, z_nm=250.0)["x"] > 1.01 * sim.crlb(bc, 3000.0, 20.0, z_nm=250.0)["x"]
+    # solo Poisson y sin fondo, la informacion de Fisher es proporcional a N: x, y, z escalan como 1/sqrt(N)
+    for bb in (b, bc):
+        s1 = sim.crlb_3d(bb, 1000.0, 0.0, z_nm=250.0, var_lectura_e2=0.0)
+        s4 = sim.crlb_3d(bb, 4000.0, 0.0, z_nm=250.0, var_lectura_e2=0.0)
+        for k in ("x", "y", "z"):
+            assert np.isclose(s4[k] / s1[k], 0.5, rtol=1e-6), (bb.cfg.mascara, k)
+    # el fondo solo puede empeorar la cota en z
+    assert sim.crlb_3d(b, 1000.0, 20.0, z_nm=250.0)["z"] > sim.crlb_3d(b, 1000.0, 0.0, z_nm=250.0)["z"]
+    espera_error(ValueError, sim.crlb_3d, banco("esferica", z_rango_nm=(0.0, 0.0)), 1000.0, 20.0)
