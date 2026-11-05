@@ -37,7 +37,6 @@ from dataclasses import replace
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import tifffile
 
 from simulador_psf.config import Config
 from simulador_psf.posiciones import muestrear_n_emisores, posiciones_iniciales, muestrear_fotones
@@ -45,6 +44,7 @@ from simulador_psf.browniano import reflejar, generar_trayectorias
 from simulador_psf.optica import fase_esferica, BancoPSF
 from simulador_psf.fondo import generar_fondo
 from simulador_psf.ruido import aplicar_camara
+from simulador_psf.io_gt import nombre_video, guardar_video, guardar_gt
 
 
 # ----------------------------------------------------------------------------
@@ -81,9 +81,7 @@ def generar_dataset(cfg: Config, banco=None, carpeta="videos"):
     filas = []
     for v in range(cfg.n_videos):
         video, f = generar_video(cfg, banco, rng, v)
-        tifffile.imwrite(Path(carpeta) / f"video_{v:03d}.tif", video,
-                         imagej=True, metadata={"axes": "TYX",
-                                                "finterval": cfg.dt_s})
+        guardar_video(Path(carpeta) / nombre_video(v), video, cfg.dt_s)
         filas += f
     return pd.DataFrame(filas)
 
@@ -179,7 +177,7 @@ if __name__ == "__main__":
         imprimir_snr_pico(BancoPSF(replace(cfg, mascara="ninguna")))
 
     gt = generar_dataset(cfg, banco)
-    gt.to_csv("ground_truth.csv", index=False)
+    guardar_gt(gt, "ground_truth.csv")
     print(f"\nvideos/          : {cfg.n_videos} videos de "
           f"({cfg.n_frames}, {cfg.H}, {cfg.W}) uint16")
     print(f"ground_truth.csv : {gt.particle_id.groupby(gt.video_id).nunique().sum()} "
