@@ -7,3 +7,6 @@ videos/
 .vscode/
 CLAUDE.md
 hypatia/logs/
+
+# referencia de la regresion de simulador_psf (pequena, se versiona)
+!tests/referencia/**
