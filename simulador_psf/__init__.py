@@ -15,6 +15,7 @@ Modulos:
     io_gt         escritura de videos .tif y ground_truth.csv
     generacion    generar_video, generar_dataset
     diagnosticos  energia encerrada y SNR pico del banco
+    espejo        vista reflejada: plano del espejo, reflexion, pared para el browniano
 
 Todo lo publico se importa desde aqui: from simulador_psf import Config, BancoPSF, ...
 """
@@ -25,6 +26,7 @@ from .browniano import reflejar, generar_trayectorias
 from .optica import fase_esferica, Pupila, fase_de_mascara, construir_pupila, psf_completa, BancoPSF
 from .fondo import generar_fondo
 from .ruido import aplicar_camara
-from .io_gt import COLUMNAS_GT, nombre_video, guardar_video, guardar_gt
+from .io_gt import COLUMNAS_GT, COLUMNAS_REFLEJO, COLUMNAS_GT_ESPEJO, nombre_video, guardar_video, guardar_gt
+from .espejo import Espejo, matriz_R, rango_z_reflejo, rango_banco_nm
 from .diagnosticos import energia_encerrada, snr_pico, imprimir_snr_pico
 from .generacion import generar_video, generar_dataset

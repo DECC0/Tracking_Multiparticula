@@ -69,12 +69,31 @@ class Config:
     fondo_no_uniforme: bool = True
     D_rango_um2_s: tuple = (0.01, 0.3)  # coeficiente de difusion por particula
 
+    # --- espejo (vista reflejada; geometria y convencion de signos en espejo.py) ---
+    usar_espejo: bool = False           # False: salidas identicas a las de antes del espejo
+    angulo_espejo_deg: float = 53.0     # angulo espejo-cubreobjetos, dentro de la cuna de la muestra, en (0, 180)
+    orientacion_espejo_deg: float = 0.0  # azimut [grados] de la direccion de la linea del espejo hacia la
+                                         # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
+    espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el cubreobjetos
+    ratio_reflejo: float = 0.8          # fotones del reflejo / fotones del real, en (0, 1]
+    z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
+                                        # automaticamente con el espejo para cubrir las z de los reflejos
+
     seed: int = 0
 
     def __post_init__(self):
         # la esferica deja un halo ancho: con 48 px se pierde ~25% de la energia
         if self.K_psf is None:
             self.K_psf = K_PSF_ESFERICA if self.mascara == "esferica" else K_PSF_OTRAS
+        # validacion del espejo (solo lanza: no cambia ninguna salida)
+        if not 0.0 < self.angulo_espejo_deg < 180.0:
+            raise ValueError(f"angulo_espejo_deg debe estar en (0, 180): {self.angulo_espejo_deg}")
+        if not 0.0 < self.ratio_reflejo <= 1.0:
+            raise ValueError(f"ratio_reflejo debe estar en (0, 1]: {self.ratio_reflejo}")
+        if len(self.espejo_punto_px) != 2:
+            raise ValueError(f"espejo_punto_px debe ser (x, y) en px: {self.espejo_punto_px}")
+        if self.z_banco_nm is not None and not self.z_banco_nm[0] < self.z_banco_nm[1]:
+            raise ValueError(f"z_banco_nm debe ser (z_min, z_max) con z_min < z_max: {self.z_banco_nm}")
 
     @property
     def pixel_nm(self):
@@ -96,10 +115,15 @@ class Config:
         browniano maximo por frame."""
         px, nyq = self.pixel_nm, self.lambda_nm / (4 * self.NA)
         paso_max = np.sqrt(2 * self.D_rango_um2_s[1] * self.dt_s) * 1000.0
-        return (f"pixel en muestra : {px:.2f} nm\n"
+        texto = (f"pixel en muestra : {px:.2f} nm\n"
                 f"sigma0 en foco   : {self.sigma0_nm:.1f} nm = {self.sigma0_nm/px:.2f} px\n"
                 f"Nyquist (l/4NA)  : {nyq:.1f} nm -> {nyq/px:.2f}x "
                 f"({'OK' if px < nyq else 'SUBMUESTREADO'})\n"
                 f"DOF              : {self.dof_nm:.0f} nm\n"
                 f"FOV              : {self.W*px/1000:.2f} x {self.H*px/1000:.2f} um\n"
                 f"paso rms max/eje : {paso_max:.0f} nm = {paso_max/px:.2f} px por frame")
+        if self.usar_espejo:        # sin espejo el texto queda como antes (la regresion lo compara)
+            texto += (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
+                      f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
+                      f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}")
+        return texto

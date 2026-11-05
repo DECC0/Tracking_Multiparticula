@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .config import Config
+from .espejo import rango_banco_nm
 
 
 def fase_esferica(rho, amp):
@@ -95,7 +96,8 @@ class BancoPSF:
     """PSF precalculada en una rejilla de z; se coloca con shift subpixel exacto
     (fase lineal en Fourier), sin interpolacion espacial.
 
-    Atributos: z_grid [nm]; stack (nz, K, K), cada plano es la PSF normalizada
+    Atributos: z_grid [nm] (en espejo.rango_banco_nm(cfg): cfg.z_rango_nm,
+    salvo con espejo o z_banco_nm); stack (nz, K, K), cada plano es la PSF normalizada
     sobre la rejilla completa y luego recortada a K = cfg.K_psf px, asi que
     suma 1 - energia_recortada."""
 
@@ -104,7 +106,7 @@ class BancoPSF:
         M, K = cfg.M_pupila, cfg.K_psf
         pupila = construir_pupila(cfg)
 
-        zlo, zhi = cfg.z_rango_nm
+        zlo, zhi = rango_banco_nm(cfg)     # = cfg.z_rango_nm sin espejo; ampliado con espejo
         self.z_grid = np.arange(zlo, zhi + cfg.z_paso_nm, cfg.z_paso_nm)
 
         stack = np.empty((len(self.z_grid), K, K))

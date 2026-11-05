@@ -10,6 +10,7 @@ cambiarse, porque check_e2e.py y figuras/figuras_documento.py lo repiten.
 import numpy as np
 
 from .config import Config, MARGEN_PX
+from .espejo import Espejo
 
 
 def muestrear_n_emisores(cfg: Config, rng):
@@ -21,11 +22,19 @@ def muestrear_n_emisores(cfg: Config, rng):
 def posiciones_iniciales(cfg: Config, n, rng):
     """Posiciones iniciales (n, 3) de los emisores, TODAS en nm: x, y uniformes
     en el FOV ampliado MARGEN_PX px por lado, z uniforme en cfg.z_rango_nm.
-    x, y se pasan de px a nm porque los pasos brownianos se suman en nm."""
+    x, y se pasan de px a nm porque los pasos brownianos se suman en nm.
+
+    Con cfg.usar_espejo, los puntos que caen detras del espejo se llevan al
+    lado de la muestra con Espejo.plegar_nm (reflexion en el espejo y en las
+    paredes en z): mismas llamadas al rng, sin sorteos extra. La densidad
+    deja de ser exactamente uniforme cerca del espejo."""
     px = cfg.pixel_nm
-    return np.stack([rng.uniform(-MARGEN_PX, cfg.W + MARGEN_PX, n) * px,
-                     rng.uniform(-MARGEN_PX, cfg.H + MARGEN_PX, n) * px,
-                     rng.uniform(*cfg.z_rango_nm, n)], axis=1)   # (n, 3) en nm
+    pos = np.stack([rng.uniform(-MARGEN_PX, cfg.W + MARGEN_PX, n) * px,
+                    rng.uniform(-MARGEN_PX, cfg.H + MARGEN_PX, n) * px,
+                    rng.uniform(*cfg.z_rango_nm, n)], axis=1)    # (n, 3) en nm
+    if cfg.usar_espejo:
+        pos = Espejo(cfg).plegar_nm(pos)
+    return pos
 
 
 def muestrear_fotones(cfg: Config, n, rng):

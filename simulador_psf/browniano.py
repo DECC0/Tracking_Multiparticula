@@ -5,12 +5,19 @@ Cada eje da pasos independientes dx = sqrt(2 D dt) * N(0, 1) por frame, con D
 propio de cada particula. z tiene paredes reflectantes en cfg.z_rango_nm
 (el banco de PSF solo esta definido ahi); x, y son libres, asi que las
 particulas pueden salir y entrar del FOV.
+
+Con cfg.usar_espejo el espejo es una pared reflectante mas: ningun emisor
+real lo cruza (espejo.py). Ese caso se integra paso a paso (posicion
+anterior + paso, plegada al dominio), porque el plegado de la suma
+acumulada solo vale para paredes paralelas; usa los mismos pasos y no
+consume el rng.
 """
 
 import numpy as np
 
 from .config import Config
 from .posiciones import posiciones_iniciales
+from .espejo import Espejo
 
 
 def reflejar(z, lo, hi):
@@ -38,8 +45,14 @@ def generar_trayectorias(cfg: Config, n, rng):
 
     pasos = rng.normal(size=(n, T, 3)) * sigma_nm[:, None, None]
     pasos[:, 0] = 0.0                                            # frame 0 = pos0
-    tray = pos0[:, None, :] + np.cumsum(pasos, axis=1)
-
-    tray[..., 2] = reflejar(tray[..., 2], *cfg.z_rango_nm)
+    if cfg.usar_espejo:
+        espejo = Espejo(cfg)
+        tray = np.empty_like(pasos)
+        tray[:, 0] = pos0                                        # ya del lado de la muestra
+        for t in range(1, T):                                    # reflexion especular en espejo y paredes
+            tray[:, t] = espejo.plegar_nm(tray[:, t - 1] + pasos[:, t])
+    else:
+        tray = pos0[:, None, :] + np.cumsum(pasos, axis=1)
+        tray[..., 2] = reflejar(tray[..., 2], *cfg.z_rango_nm)
     tray[..., :2] /= px                                          # x, y de nm a px
     return tray, D

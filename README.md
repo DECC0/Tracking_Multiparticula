@@ -55,6 +55,43 @@ comportamiento: con la misma semilla las salidas son identicas bit a bit.
   `Config.anillos_corkscrew`): `BancoPSF` lanza `ValueError` con
   `mascara="corkscrew"`. Quedan `"esferica"` (por defecto) y `"ninguna"`.
 
+### Espejo (vista reflejada, `simulador_psf/espejo.py`)
+
+Con `Config(usar_espejo=True)` hay un espejo plano junto a la muestra y la
+camara ve cada emisor real y su imagen virtual. Solo se simulan las
+trayectorias reales; en cada frame el reflejo es
+`p' = p - 2 [(p - p0) . n] n` (en nm), asi que `dp' = R dp` con
+`R = I - 2 n n^T` y nunca tiene browniano propio. El espejo no consume el rng
+y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
+
+- Parametros: `angulo_espejo_deg` (angulo espejo-cubreobjetos dentro de la
+  cuna de la muestra, en (0, 180); 53 por defecto; si se mide desde el eje
+  optico, `alpha = 90 - beta`), `orientacion_espejo_deg` (azimut, de +x hacia
+  +y, de la direccion desde la linea del espejo hacia la muestra),
+  `espejo_punto_px` (un punto de esa linea sobre el cubreobjetos) y
+  `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8).
+- Convencion de signos: `SIGNO_Z` (+z lejos del objetivo, cubreobjetos en
+  `z_rango_nm[0]`) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
+  sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.
+- El espejo es una pared reflectante mas para el browniano: los emisores
+  reales nunca lo cruzan (posiciones iniciales plegadas al lado de la muestra,
+  pasos integrados uno a uno con reflexion especular).
+- El reflejo se renderiza con la misma optica en su (x', y', z') con
+  `ratio_reflejo * photons`; el ruido se aplica una vez sobre la suma. El banco
+  de PSF se amplia solo (`z_banco_nm=None`) para cubrir las z' de la caja de
+  posiciones iniciales (a 53 grados con el FOV de 64 px: [-800, 4100] nm, 247
+  planos); un reflejo que aun asi queda fuera no se renderiza.
+- Ground truth: con espejo se agregan `x_reflejo_px, y_reflejo_px,
+  z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la
+  misma fila (`particle_id` vincula real y reflejo).
+
+Supuestos (no modelados): espejo plano ideal sin aberraciones ni
+polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y
+coleccion); el reflejo es una fuente puntual vista por la misma optica, sin
+el truncamiento de la pupila (que podria hacer asimetrica su PSF; con
+alpha >= 90 el espejo no manda luz al objetivo por el eje); espejo infinito;
+iluminacion uniforme (no se modela la hoja de luz).
+
 ### Verificacion
 
 ```bash

@@ -18,6 +18,9 @@ fondo_rango, fotones_rango ni read_noise):
     5. fotones por particula          posiciones.muestrear_fotones
     6. fondo                          fondo.generar_fondo
     7. por frame: Poisson y lectura   ruido.aplicar_camara
+
+Con cfg.usar_espejo se agrega en cada frame el reflejo de cada emisor
+(espejo.py), sin consumir el rng: el orden de arriba no cambia.
 """
 
 from pathlib import Path
@@ -31,6 +34,7 @@ from .optica import BancoPSF
 from .fondo import generar_fondo
 from .ruido import aplicar_camara
 from .io_gt import nombre_video, guardar_video
+from .espejo import Espejo
 
 
 def generar_video(cfg: Config, banco, rng, video_id):
@@ -39,12 +43,23 @@ def generar_video(cfg: Config, banco, rng, video_id):
     banco: optica.BancoPSF (reutilizarlo entre videos, es caro de construir);
     rng: np.random.Generator, que se consume en el orden del docstring del modulo.
     Retorna (video, filas): video (T, H, W) uint16 en ADU; filas, lista de
-    dicts con las columnas io_gt.COLUMNAS_GT, una por (frame, particula)."""
+    dicts con las columnas io_gt.COLUMNAS_GT (io_gt.COLUMNAS_GT_ESPEJO con
+    espejo), una por (frame, particula).
+
+    Con cfg.usar_espejo, cada reflejo se coloca con la misma optica en su
+    (x', y', z') con ratio_reflejo * fotones del real en ese frame, en la
+    misma imagen de fotones esperados; el ruido se aplica una sola vez sobre
+    real + reflejo + fondo. Un reflejo con z' fuera de banco.z_grid no se
+    coloca (su PSF no esta en el banco) y queda con reflejo_en_banco=False."""
     # randomizacion agresiva por video: numero de emisores, brillo, D y fondo
     n = muestrear_n_emisores(cfg, rng)
     tray, D = generar_trayectorias(cfg, n, rng)
     Ns = muestrear_fotones(cfg, n, rng)                          # fijo por particula en todo el video
     fondo = generar_fondo(cfg, rng)                              # fijo en el video
+    if cfg.usar_espejo:
+        espejo = Espejo(cfg)
+        tray_r = espejo.reflejar(tray)                           # (n, T, 3) en [px, px, nm], sin rng
+        Ns_r = cfg.ratio_reflejo * Ns                            # mismos fotones del real x ratio
 
     video = np.zeros((cfg.n_frames, cfg.H, cfg.W), dtype=np.uint16)
     filas = []
@@ -53,10 +68,20 @@ def generar_video(cfg: Config, banco, rng, video_id):
         for p in range(n):
             x, y, z = tray[p, t]
             banco.colocar(img, x, y, z, Ns[p])
-            filas.append(dict(video_id=video_id, frame=t, particle_id=p,
-                              x_px=x, y_px=y, z_nm=z, photons=Ns[p],
-                              D_um2_s=D[p],
-                              en_fov=bool(0 <= x < cfg.W and 0 <= y < cfg.H)))
+            fila = dict(video_id=video_id, frame=t, particle_id=p,
+                        x_px=x, y_px=y, z_nm=z, photons=Ns[p],
+                        D_um2_s=D[p],
+                        en_fov=bool(0 <= x < cfg.W and 0 <= y < cfg.H))
+            if cfg.usar_espejo:
+                xr, yr, zr = tray_r[p, t]
+                en_banco = bool(banco.z_grid[0] <= zr <= banco.z_grid[-1])
+                if en_banco:                                     # fuera del banco psf_en_z recortaria z
+                    banco.colocar(img, xr, yr, zr, Ns_r[p])
+                fila.update(x_reflejo_px=xr, y_reflejo_px=yr, z_reflejo_nm=zr,
+                            photons_reflejo=Ns_r[p],
+                            reflejo_en_fov=bool(0 <= xr < cfg.W and 0 <= yr < cfg.H),
+                            reflejo_en_banco=en_banco)
+            filas.append(fila)
         video[t] = aplicar_camara(img + fondo, cfg, rng)          # ruido nuevo por frame
     return video, filas
 
