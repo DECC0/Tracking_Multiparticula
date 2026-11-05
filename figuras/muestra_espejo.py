@@ -7,7 +7,7 @@ Escribe en --salida (por defecto muestra_espejo/ en el directorio actual):
     frame_000_camara.png        frame 0 tal como lo ve la camara (con ruido), sin marcas
     frame_000_marcadores.png    el mismo frame con reales (circulos cian) y reflejos
                                 (cuadrados naranja) unidos por una linea fina, la
-                                base del espejo (contacto con el cubreobjetos) en linea
+                                interseccion del espejo con el plano focal en linea
                                 discontinua, y una leyenda en una franja debajo de la imagen
     video.gif / video_marcadores.gif   toda la secuencia, sin y con marcas
     video.tif                   el video en ADU (uint16, ImageJ TYX)
@@ -21,8 +21,8 @@ camara queda como un bloque).
 
 Uso:
     ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py [--seed 0] [--salida muestra_espejo]
-    # celula de levadura pegada al espejo (foco 2.5 um sobre el cubreobjetos, reales hasta 3 um de la base):
-    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 3 --z-cubreobjetos-nm -2500 --z-rango-nm -2500 1500
+    # celula de levadura pegada al espejo:
+    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 4 [--z-ref-espejo-nm 0] [--z-rango-nm MIN MAX]
 """
 import sys
 import os
@@ -45,7 +45,7 @@ ap.add_argument("--zoom", type=int, default=8)
 ap.add_argument("--percentiles", type=float, nargs=2, default=(1.0, 99.9), metavar=("NEGRO", "BLANCO"))
 ap.add_argument("--ms", type=int, default=100, help="duracion de cada cuadro del GIF [ms]")
 ap.add_argument("--dist-max-um", type=float, default=None, help="Config.dist_max_espejo_um [um]")
-ap.add_argument("--z-cubreobjetos-nm", type=float, default=None, help="Config.z_cubreobjetos_nm [nm]")
+ap.add_argument("--z-ref-espejo-nm", type=float, default=None, help="Config.z_ref_espejo_nm [nm]")
 ap.add_argument("--z-rango-nm", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
                 help="Config.z_rango_nm [nm]")
 args = ap.parse_args()
@@ -53,8 +53,8 @@ args = ap.parse_args()
 extra = {}                                                      # solo lo que se pide; el resto, por defecto
 if args.dist_max_um is not None:
     extra["dist_max_espejo_um"] = args.dist_max_um
-if args.z_cubreobjetos_nm is not None:
-    extra["z_cubreobjetos_nm"] = args.z_cubreobjetos_nm
+if args.z_ref_espejo_nm is not None:
+    extra["z_ref_espejo_nm"] = args.z_ref_espejo_nm
 if args.z_rango_nm is not None:
     extra["z_rango_nm"] = tuple(args.z_rango_nm)
 cfg = Config(usar_espejo=True, seed=args.seed, **extra)
@@ -84,9 +84,9 @@ def img_px(x, y):
     return ((x + 0.5) * Z, (y + 0.5) * Z)
 
 
-# linea del espejo en el cubreobjetos, recortada a la imagen
+# interseccion del espejo con el plano focal (z = 0), recortada a la imagen
 L = 4 * max(cfg.H, cfg.W) * cfg.pixel_nm
-seg = espejo.p0 + np.outer([-L, L], espejo.t)
+seg = espejo.punto_en_z_nm(0.0) + np.outer([-L, L], espejo.t)
 linea = [img_px(*(seg[k, :2] / cfg.pixel_nm)) for k in range(2)]
 
 
@@ -120,7 +120,7 @@ def leyenda(im):
     dr.line([(4, y2 + 7), (24, y2 + 7)], fill=GRIS, width=1)
     dr.text((30, y2), "vinculo", fill=(255, 255, 255), font=FUENTE)
     discontinua(dr, (98, y2 + 7), (128, y2 + 7), AMARILLO, largo=6, hueco=4)
-    dr.text((134, y2), "base del espejo (contacto con el cubreobjetos)", fill=(255, 255, 255), font=FUENTE)
+    dr.text((134, y2), "interseccion del espejo con el plano focal", fill=(255, 255, 255), font=FUENTE)
     return out
 
 
@@ -155,13 +155,13 @@ lineas = [
     + f"), BancoPSF(cfg), np.random.default_rng({cfg.seed}), 0)",
     "",
     "espejo:",
-    f"  angulo_espejo_deg      {cfg.angulo_espejo_deg} (espejo-cubreobjetos, dentro de la cuna de la muestra)",
+    f"  angulo_espejo_deg      {cfg.angulo_espejo_deg} (espejo-plano focal, dentro de la cuna de la muestra)",
     f"  orientacion_espejo_deg {cfg.orientacion_espejo_deg} (azimut de la direccion linea -> muestra, de +x hacia +y)",
-    f"  espejo_punto_px        {cfg.espejo_punto_px} (punto de la linea del espejo en el cubreobjetos)",
+    f"  espejo_punto_px        {cfg.espejo_punto_px} (punto de la linea del espejo en el plano de referencia)",
     f"  p0 [nm]                {np.round(espejo.p0, 2).tolist()}",
     f"  normal n               {np.round(espejo.n, 6).tolist()}",
     f"  ratio_reflejo          {cfg.ratio_reflejo}",
-    f"  z_cubreobjetos_nm      {espejo.z_cubre} (foco a {SIGNO_Z * (0 - espejo.z_cubre) / 1000:.2f} um sobre el cubreobjetos)",
+    f"  z_ref_espejo_nm        {espejo.z_ref} (z del plano de referencia respecto del foco)",
     f"  dist_max_espejo_um     {cfg.dist_max_espejo_um}",
     f"  z_rango_nm (reales)    {cfg.z_rango_nm}",
     f"  SIGNO_Z {SIGNO_Z}, SIGNO_INCLINACION {SIGNO_INCLINACION}",
@@ -177,8 +177,8 @@ lineas = [
     f"contraste fijo (todos los PNG y GIF): negro = {lo:.0f} ADU, blanco = {hi:.0f} ADU "
     f"(percentiles {args.percentiles[0]}, {args.percentiles[1]} del video); zoom x{Z}",
     "marcas: circulo cian = real, cuadrado naranja = reflejo (rojo si no se renderizo: fuera del banco),",
-    "        linea gris = vinculo real-reflejo, linea amarilla discontinua = base del espejo",
-    "        (contacto con el cubreobjetos); leyenda en una franja bajo la imagen",
+    "        linea gris = vinculo real-reflejo, linea amarilla discontinua = interseccion del",
+    "        espejo con el plano focal; leyenda en una franja bajo la imagen",
     "",
     "Config completa:",
     *[f"  {k} = {v}" for k, v in asdict(cfg).items()],

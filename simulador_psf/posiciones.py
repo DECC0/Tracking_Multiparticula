@@ -48,7 +48,7 @@ def _cerca_del_espejo(cfg: Config, n, rng):
     """Posiciones iniciales (n, 3) [nm] sin plegar, con la posicion lateral
     escrita como p0 + s_m m + s_t t (base del espejo, espejo.py):
         s_m uniforme en [0, dist_max_espejo_um]: distancia a la base del espejo,
-            medida en el cubreobjetos hacia la muestra (el sorteo de x de siempre,
+            medida en el plano de referencia hacia la muestra (el sorteo de x de siempre,
             reescalado);
         s_t uniforme en la proyeccion sobre la linea del espejo del FOV ampliado
             MARGEN_PX px por lado (el sorteo de y, reescalado; con

@@ -6,8 +6,8 @@
                               (desde la camara, vista lateral y z vs frame).
   fig_espejo_comparacion.png  para comparar con datos reales (particulas puntuales):
                               - un emisor y su reflejo con alpha = 53 grados a
-                                d = 0.5, 1, 2 y 3 um del espejo y a dos alturas sobre
-                                el cubreobjetos, SNR alta (20000 fotones, fondo
+                                d = 0.5, 1, 2 y 3 um del espejo y a dos z respecto
+                                del plano focal, SNR alta (20000 fotones, fondo
                                 5 fot/px) y contraste fijo, con la separacion lateral
                                 2 d sin(alpha) y la diferencia de z 2 d cos(alpha);
                               - una galeria de la PSF esferica sola en z = -2.0 ...
@@ -48,13 +48,10 @@ if args.real and not args.pixel_nm:
     ap.error("--real necesita --pixel-nm")
 
 
-def linea_espejo(ax, e, cfg, h_nm=0.0, **kw):
-    """Dibuja en coordenadas de imagen [px] la recta donde el espejo esta a altura
-    h_nm sobre el cubreobjetos (h = 0: la linea en el cubreobjetos)."""
-    a = np.radians(cfg.angulo_espejo_deg)
-    # punto del plano a altura h: p0 + s m + h arriba con d = 0 -> s = SIGNO_INCLINACION h cos/sin
-    s = SIGNO_INCLINACION * h_nm * np.cos(a) / np.sin(a)
-    q = e.p0 + s * e.m + h_nm * e.arriba
+def linea_espejo(ax, e, cfg, z_nm=0.0, **kw):
+    """Dibuja en coordenadas de imagen [px] la recta donde el espejo corta el
+    plano z = z_nm (z = 0: la interseccion con el plano focal)."""
+    q = e.punto_en_z_nm(z_nm)
     L = 10 * max(cfg.H, cfg.W) * cfg.pixel_nm
     seg = q + np.outer([-L, L], e.t)
     ax.plot(seg[:, 0] / cfg.pixel_nm, seg[:, 1] / cfg.pixel_nm, **kw)
@@ -84,10 +81,11 @@ for r in g0.itertuples():
 A.scatter(g0.x_px, g0.y_px, s=60, facecolors="none", edgecolors="cyan", lw=1.2, label="real")
 A.scatter(g0.x_reflejo_px, g0.y_reflejo_px, s=60, marker="s", facecolors="none", edgecolors="orange",
           lw=1.2, label="reflejo")
-BASE_ESPEJO = "base del espejo (contacto con el cubreobjetos)"
+BASE_ESPEJO = "interseccion del espejo con el plano focal"
 linea_espejo(A, e, cfg, 0.0, color="yellow", lw=1.0, ls="--", label=BASE_ESPEJO)
-linea_espejo(A, e, cfg, SIGNO_Z * (cfg.z_rango_nm[1] - e.z_cubre), color="yellow", lw=0.8, ls=":",
-             label="espejo a la altura de la pared superior de los reales")
+for k, zp in enumerate(cfg.z_rango_nm):
+    linea_espejo(A, e, cfg, zp, color="yellow", lw=0.8, ls=":",
+                 label="espejo en z = z_rango_nm (paredes de los reales)" if k == 0 else None)
 A.set_xlim(-0.5, cfg.W - 0.5); A.set_ylim(cfg.H - 0.5, -0.5)
 A.set_title(f"frame 0 (alpha {cfg.angulo_espejo_deg:.0f} deg, ratio {cfg.ratio_reflejo}), contraste fijo", fontsize=10)
 A.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.07), ncol=2)   # fuera de la imagen
@@ -111,18 +109,18 @@ B.set_title(f"particula {pid}: desde la camara (o = frame 0, gris cada 5 frames)
 B.legend(fontsize=8)
 
 C = ax[2]
-lat = lambda q: ((q - e.p0) @ e.m / 1000, (q - e.p0) @ e.arriba / 1000)
+q_foco = e.punto_en_z_nm(0.0)                                   # origen: espejo en el plano focal
+lat = lambda q: ((q - q_foco) @ e.m / 1000, q @ e.arriba / 1000)
 pr = e.a_nm(g[["x_px", "y_px", "z_nm"]].to_numpy()); prr = e.a_nm(g[["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]].to_numpy())
 C.plot(*lat(pr), "-", color="tab:blue", lw=1, label="real")
 C.plot(*lat(prr), "-", color="tab:orange", lw=1, label="reflejo")
-a = np.radians(cfg.angulo_espejo_deg)
-hs = np.array([0.0, 6.0])
-C.plot(SIGNO_INCLINACION * hs * np.cos(a) / np.sin(a), hs, "k-", lw=2, label="espejo")
-C.axhspan((cfg.z_rango_nm[0] - e.p0[2]) * SIGNO_Z / 1000, (cfg.z_rango_nm[1] - e.p0[2]) * SIGNO_Z / 1000,
-          color="tab:green", alpha=0.08, label="paredes en z de los reales")
-C.axhline((0 - e.p0[2]) * SIGNO_Z / 1000, color="tab:green", ls="-.", lw=0.8, label="plano focal")
-C.set_aspect("equal"); C.set_xlabel("distancia a la linea del espejo, hacia la muestra [um]")
-C.set_ylabel("altura sobre el cubreobjetos [um]")
+zs = np.array([min(cfg.z_rango_nm[0], g.z_reflejo_nm.min()) - 500, max(cfg.z_rango_nm[1], g.z_reflejo_nm.max()) + 500])
+C.plot(*lat(np.array([e.punto_en_z_nm(z) for z in zs])), "k-", lw=2, label="espejo")
+C.axhspan(*sorted(SIGNO_Z * np.array(cfg.z_rango_nm) / 1000), color="tab:green", alpha=0.08,
+          label="paredes en z de los reales")
+C.axhline(0.0, color="tab:green", ls="-.", lw=0.8, label="plano focal")
+C.set_aspect("equal"); C.set_xlabel("distancia lateral a la linea del espejo en el plano focal, hacia la muestra [um]")
+C.set_ylabel("altura respecto del plano focal [um] (+: lejos del objetivo)")
 C.set_title("vista lateral (proyeccion sobre el plano m-z)", fontsize=10); C.legend(fontsize=7)
 
 D_ = ax[3]
@@ -139,7 +137,7 @@ print("guardada fig_espejo_frame.png")
 # =============================== figura 2: comparacion con datos reales ===============================
 ALPHA = 53.0
 DS_UM = (0.5, 1.0, 2.0, 3.0)                 # distancia del emisor al plano del espejo
-HS_UM = (0.4, 1.2)                           # altura del emisor sobre el cubreobjetos
+ZS_UM = (-0.4, 0.4)                          # z del emisor respecto del plano focal
 N_FOT, FONDO, RATIO = 20000.0, 5.0, 0.8
 GALERIA_UM = (-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 S = 112                                      # lado de cada panel del par [px]
@@ -148,12 +146,12 @@ SG = 64                                      # lado de cada panel de la galeria 
 base = Config(z_banco_nm=(-2100.0, 4200.0))
 bc = BancoPSF(base)
 px = base.pixel_nm
-z_cubre = Espejo(Config(usar_espejo=True, z_banco_nm=base.z_banco_nm)).z_cubre
 rng = np.random.default_rng(0)
 al = np.radians(ALPHA)
 
 paneles = []                                 # (imagen, textos, x real, x reflejo) por (altura, d)
-for h in HS_UM:
+for zu in ZS_UM:
+    h = SIGNO_Z * zu                         # altura sobre el plano focal (= el de referencia del espejo)
     fila = []
     for dd in DS_UM:
         # emisor a altura h y distancia dd del plano: p = p0 + L m + h arriba con L sin a - h cos a = dd
@@ -174,7 +172,7 @@ for h in HS_UM:
         bc.colocar(img, p[0] / px, p[1] / px, p[2], N_FOT)
         bc.colocar(img, q[0] / px, q[1] / px, q[2], RATIO * N_FOT)
         adu = aplicar_camara(img + FONDO, base, rng)
-        txt = (f"h = {h:.1f} um, d = {dd:.1f} um\n"
+        txt = (f"z = {zu:+.1f} um, d = {dd:.1f} um\n"
                f"dlat = 2d sin a = {dlat/1000:.2f} um\n"
                f"dz = 2d cos a = {dz/1000:+.2f} um\n"
                f"z real {p[2]/1000:+.2f}, reflejo {q[2]/1000:+.2f} um")
@@ -192,9 +190,9 @@ todas = np.concatenate([a.ravel() for f in paneles for a, *_ in f] + [g.ravel() 
 gmin, gmax = np.percentile(todas, [0.5, 99.95])                  # mismo contraste en toda la figura
 
 n_col = len(DS_UM) + (1 if args.real else 0)
-fig = plt.figure(figsize=(3.6 * max(n_col, 4) + 1, 3.6 * len(HS_UM) + 2.2))
-sub_top, sub_bot = fig.subfigures(2, 1, height_ratios=[3.6 * len(HS_UM), 2.2])
-axs = sub_top.subplots(len(HS_UM), n_col, squeeze=False)
+fig = plt.figure(figsize=(3.6 * max(n_col, 4) + 1, 3.6 * len(ZS_UM) + 2.2))
+sub_top, sub_bot = fig.subfigures(2, 1, height_ratios=[3.6 * len(ZS_UM), 2.2])
+axs = sub_top.subplots(len(ZS_UM), n_col, squeeze=False)
 medio_um = S * px / 2000                                         # semiancho fisico de cada panel [um]
 ext = lambda n: (-n * px / 2000, n * px / 2000, n * px / 2000, -n * px / 2000)
 for i, fila in enumerate(paneles):
@@ -213,7 +211,7 @@ for i, fila in enumerate(paneles):
         A.text(0.02, 0.02, txt, transform=A.transAxes, va="bottom", fontsize=7, color="w",
                bbox=dict(facecolor="k", alpha=0.45, lw=0))
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
-        if i == len(HS_UM) - 1:
+        if i == len(ZS_UM) - 1:
             A.set_xlabel("x [um]")
         if j == 0:
             A.set_ylabel("y [um]")
@@ -224,13 +222,13 @@ if args.real:
         real = real[args.frame]
     hy, hx = real.shape[0] * args.pixel_nm / 2000, real.shape[1] * args.pixel_nm / 2000
     rmin, rmax = np.percentile(real, [0.5, 99.9])
-    for i in range(len(HS_UM)):
+    for i in range(len(ZS_UM)):
         A = axs[i, -1]
         A.imshow(real, cmap="gray", vmin=rmin, vmax=rmax, extent=(-hx, hx, hy, -hy))
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
         A.set_title(f"real: {os.path.basename(args.real)}\n{args.pixel_nm:.1f} nm/px, contraste propio", fontsize=8)
 sub_top.suptitle(f"emisor (cian) y reflejo (naranja), alpha = {ALPHA:.0f} deg, {N_FOT:.0f} fotones, "
-                 f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo; plano focal a {(0 - z_cubre) * SIGNO_Z / 1000:.1f} um sobre el cubreobjetos",
+                 f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo",
                  fontsize=10)
 
 axg = sub_bot.subplots(1, len(GALERIA_UM))

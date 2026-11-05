@@ -61,7 +61,7 @@ def test_base_ortonormal():
         assert np.allclose(e.R @ e.R, np.eye(3)) and np.allclose(e.R, e.R.T)
         assert np.isclose(np.linalg.det(e.R), -1.0)              # reflexion, no rotacion
         assert np.isclose(e.distancia_nm(e.p0), 0.0)
-        # el angulo entre el espejo y el cubreobjetos es alpha: normal vs vertical
+        # el angulo entre el espejo y el plano focal es alpha: normal vs vertical
         assert np.isclose(np.degrees(np.arccos(abs(e.n @ e.arriba))), min(a, 180.0 - a))
 
 
@@ -116,7 +116,7 @@ def test_analitico_45():
     assert SIGNO_Z == 1 and SIGNO_INCLINACION == 1, "el caso analitico supone la convencion por defecto"
     cfg = cfg_espejo(angulo_espejo_deg=45.0)
     e, px = Espejo(cfg), cfg.pixel_nm
-    x0, z0 = cfg.espejo_punto_px[0], cfg.z_rango_nm[0]
+    x0, z0 = cfg.espejo_punto_px[0], cfg.z_ref_espejo_nm
     q = puntos()
     qr = e.reflejar(q)
     assert np.allclose(qr[:, 2] - z0, (q[:, 0] - x0) * px, atol=1e-6)
@@ -161,33 +161,35 @@ def test_plegar_lleva_al_dominio_y_respeta_puntos_dentro():
         assert np.array_equal(r[dentro], q[dentro])               # lo que ya estaba dentro no se toca
 
 
-def test_z_cubreobjetos():
-    """None -> la pared del lado del objetivo (z_rango_nm[0]); un valor propio mueve
-    p0 (y el foco respecto del cubreobjetos) y el caso de 45 grados sigue valiendo
-    con z0 = z_cubreobjetos_nm; no puede dejar reales dentro del vidrio."""
-    assert SIGNO_Z == 1, "el test supone la convencion por defecto"
-    assert Espejo(cfg_espejo()).z_cubre == BASE.get("z_rango_nm", Config().z_rango_nm)[0]
-    for zc in (-800.0, -2500.0):
-        cfg = cfg_espejo(angulo_espejo_deg=45.0, z_cubreobjetos_nm=zc)
+def test_z_ref_espejo():
+    """0 por defecto (la linea es la interseccion con el plano focal); un valor
+    propio mueve p0 y el caso de 45 grados sigue valiendo con z0 = z_ref_espejo_nm.
+    Sin cubreobjetos no hay restriccion: el plano de referencia puede quedar
+    dentro o fuera de z_rango_nm, y los reales nunca cruzan el espejo."""
+    assert SIGNO_Z == 1 and SIGNO_INCLINACION == 1, "el test supone la convencion por defecto"
+    assert Config().z_ref_espejo_nm == 0.0 and Espejo(cfg_espejo()).p0[2] == 0.0
+    for zr in (0.0, -800.0, 300.0, -2500.0, 1500.0):
+        cfg = cfg_espejo(angulo_espejo_deg=45.0, z_ref_espejo_nm=zr)
         e, px, x0 = Espejo(cfg), cfg.pixel_nm, cfg.espejo_punto_px[0]
-        assert e.p0[2] == zc == e.z_cubre
+        assert e.p0[2] == zr == e.z_ref
         q = puntos()
         qr = e.reflejar(q)
-        assert np.allclose(qr[:, 2] - zc, (q[:, 0] - x0) * px, atol=1e-6)
-        assert np.allclose((qr[:, 0] - x0) * px, q[:, 2] - zc, atol=1e-6)
+        assert np.allclose(qr[:, 2] - zr, (q[:, 0] - x0) * px, atol=1e-6)
+        assert np.allclose((qr[:, 0] - x0) * px, q[:, 2] - zr, atol=1e-6)
         lo, hi = rango_banco_nm(cfg)
         assert lo <= cfg.z_rango_nm[0] and hi >= rango_z_reflejo(cfg)[1] - 1e-6
-    # foco mas alto sobre el cubreobjetos -> el pie del espejo esta mas lejos de los reales
-    tray, _ = generar_trayectorias(cfg_espejo(z_cubreobjetos_nm=-2500.0, n_frames=100), 100,
-                                   np.random.default_rng(0))
-    e = Espejo(cfg_espejo(z_cubreobjetos_nm=-2500.0))
-    assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all()
-    try:
-        Espejo(cfg_espejo(z_cubreobjetos_nm=-500.0))           # por encima de z_rango_nm[0] = -800
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("z_cubreobjetos_nm dentro del rango de los reales no lanzo ValueError")
+        tray, _ = generar_trayectorias(cfg_espejo(z_ref_espejo_nm=zr, n_frames=100), 100,
+                                       np.random.default_rng(0))
+        e = Espejo(cfg_espejo(z_ref_espejo_nm=zr))
+        assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all()
+        # punto_en_z_nm: en el plano del espejo, a esa z, y en z_ref es p0
+        for z in (-1000.0, 0.0, zr, 2000.0):
+            q = e.punto_en_z_nm(z)
+            assert np.isclose(e.distancia_nm(q), 0.0, atol=1e-9) and q[2] == z
+        assert np.allclose(e.punto_en_z_nm(zr), e.p0)
+    # 45 grados: subir dz desplaza la linea dz hacia la muestra
+    e = Espejo(cfg_espejo(angulo_espejo_deg=45.0, z_ref_espejo_nm=-300.0))
+    assert np.allclose(e.punto_en_z_nm(700.0) - e.p0, [1000.0, 0.0, 1000.0])
 
 
 def test_dist_max_espejo():
@@ -389,7 +391,7 @@ def test_espejo_apagado_ignora_sus_parametros():
     """Con usar_espejo=False los demas parametros del espejo no cambian nada."""
     cfg_a = Config(**BASE)
     cfg_b = Config(**{**BASE, "angulo_espejo_deg": 120.0, "orientacion_espejo_deg": 33.0,
-                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_cubreobjetos_nm": -3000.0,
+                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_ref_espejo_nm": -3000.0,
                       "dist_max_espejo_um": 2.0})
     va, fa = generar_video(cfg_a, BancoPSF(cfg_a), np.random.default_rng(4), 0)
     vb, fb = generar_video(cfg_b, BancoPSF(cfg_b), np.random.default_rng(4), 0)

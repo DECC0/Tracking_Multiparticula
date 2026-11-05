@@ -95,15 +95,15 @@ class Config:
 
     # --- espejo (vista reflejada; geometria y convencion de signos en espejo.py) ---
     usar_espejo: bool = False           # False: salidas identicas a las de antes del espejo
-    angulo_espejo_deg: float = 53.0     # angulo espejo-cubreobjetos, dentro de la cuna de la muestra, en (0, 180)
+    angulo_espejo_deg: float = 53.0     # angulo espejo-plano focal, dentro de la cuna de la muestra, en (0, 180)
     orientacion_espejo_deg: float = 0.0  # (ver docstring: desde ImageJ) azimut [grados] de la direccion de la linea del espejo hacia la
                                          # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
-    espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el cubreobjetos
+    espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
     ratio_reflejo: float = 0.8          # fotones del reflejo / fotones del real, en (0, 1]
-    z_cubreobjetos_nm: float = None     # z del cubreobjetos respecto del plano focal (z = 0) [nm]; fija la
-                                        # altura del foco sobre el cubreobjetos. None -> z_rango_nm[0], la pared
-                                        # del lado del objetivo (con espejo.SIGNO_Z = -1, z_rango_nm[1]).
-                                        # Debe quedar del lado del objetivo de todos los reales (Espejo lo valida)
+    z_ref_espejo_nm: float = 0.0        # z [nm] del plano de referencia del espejo respecto del plano focal
+                                        # (z = 0): espejo_punto_px es un punto del espejo a esa altura. 0 -> la
+                                        # linea es la interseccion del espejo con el plano focal. Sin
+                                        # cubreobjetos: z_rango_nm solo delimita el volumen simulado
     dist_max_espejo_um: float = None    # si se da [um]: las posiciones iniciales se muestrean solo hasta esa
                                         # distancia de la base del espejo en la direccion m (posiciones.py);
                                         # None -> en todo el FOV ampliado, como siempre
@@ -159,7 +159,7 @@ class Config:
             texto += (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
                       f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                       f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
-                      f"cubreobjetos z = {'z_rango_nm' if self.z_cubreobjetos_nm is None else f'{self.z_cubreobjetos_nm:.0f} nm'}")
+                      f"plano de referencia z = {self.z_ref_espejo_nm:.0f} nm")
             if self.dist_max_espejo_um is not None:
                 texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um de la base del espejo"
         return texto

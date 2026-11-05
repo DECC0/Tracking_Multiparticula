@@ -64,19 +64,21 @@ trayectorias reales; en cada frame el reflejo es
 `R = I - 2 n n^T` y nunca tiene browniano propio. El espejo no consume el rng
 y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
 
-- Parametros: `angulo_espejo_deg` (angulo espejo-cubreobjetos dentro de la
+- El montaje no tiene cubreobjetos: el espejo se define respecto del plano
+  focal, y `z_rango_nm` solo delimita el volumen simulado (el espejo lo corta a
+  cualquier altura).
+- Parametros: `angulo_espejo_deg` (angulo espejo-plano focal dentro de la
   cuna de la muestra, en (0, 180); 53 por defecto; si se mide desde el eje
   optico, `alpha = 90 - beta`), `orientacion_espejo_deg` (azimut, de +x hacia
   +y, de la direccion desde la linea del espejo hacia la muestra),
-  `espejo_punto_px` (un punto de esa linea sobre el cubreobjetos) y
+  `espejo_punto_px` (un punto de esa linea en el plano de referencia),
+  `z_ref_espejo_nm` (z del plano de referencia respecto del foco; 0 por
+  defecto: la linea es la interseccion del espejo con el plano focal),
   `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8) y
-  `z_cubreobjetos_nm` (z del cubreobjetos respecto del plano focal: fija la
-  altura del foco sobre el cubreobjetos; None -> `z_rango_nm[0]`) y
   `dist_max_espejo_um` (si se da, las posiciones iniciales se sortean solo
   hasta esa distancia de la base del espejo, hacia la muestra, reescalando los
   mismos sorteos; None -> todo el FOV).
-- Convencion de signos: `SIGNO_Z` (+z lejos del objetivo, cubreobjetos en
-  `z_rango_nm[0]`) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
+- Convencion de signos: `SIGNO_Z` (+z lejos del objetivo) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
   sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.
 - El espejo es una pared reflectante mas para el browniano: los emisores
   reales nunca lo cruzan (posiciones iniciales plegadas al lado de la muestra,
@@ -84,7 +86,7 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
 - El reflejo se renderiza con la misma optica en su (x', y', z') con
   `ratio_reflejo * photons`; el ruido se aplica una vez sobre la suma. El banco
   de PSF se amplia solo (`z_banco_nm=None`) para cubrir las z' de la caja de
-  posiciones iniciales (a 53 grados con el FOV de 64 px: [-800, 4100] nm, 247
+  posiciones iniciales (a 53 grados con el FOV de 64 px: [-800, 4680] nm, 275
   planos); un reflejo que aun asi queda fuera no se renderiza.
 - Ground truth: con espejo se agregan `x_reflejo_px, y_reflejo_px,
   z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la
@@ -96,8 +98,8 @@ lobulos. Con los signos actuales (`SIGNO_Z = SIGNO_INCLINACION = +1`) el
 reflejo queda en +z respecto de la particula (z' - z = 2 d cos(alpha) *
 SIGNO_INCLINACION * SIGNO_Z), y en la galeria de `checks/fig_espejo_comparacion.png`
 la PSF esferica es compacta en -z y gana anillos hacia +z: el reflejo saldria
-con mas anillos que la particula, al reves de lo observado, y mover el foco
-(`z_cubreobjetos_nm`) no lo arregla. Causas posibles y su bandera:
+con mas anillos que la particula, al reves de lo observado, y mover el plano
+de referencia (`z_ref_espejo_nm`) no lo arregla. Causas posibles y su bandera:
 
 - El lado del foco donde la PSF del codigo tiene anillos es el opuesto al
   fisico (la fase `k z cos(theta)` no esta atada a una direccion fisica):

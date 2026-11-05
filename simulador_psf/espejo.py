@@ -25,7 +25,7 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
 
   Vista lateral (corte perpendicular a la linea del espejo):
 
-    altura sobre el cubreobjetos (+z: lejos del objetivo)
+    altura respecto del plano focal (+z: lejos del objetivo)
        ^
        |              / espejo (plano): con alpha < 90 se inclina SOBRE la muestra
        |    p' o     /
@@ -33,8 +33,9 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
        |        .  /    .
        |          /  .        p' = p - 2 d n,   d = (p - p0) . n
        |         / alpha      n = normal unitaria hacia la muestra
-    ===+========P0=========================> m  (lateral, hacia la muestra)
-       cubreobjetos (z = z_rango_nm[0])     ^ objetivo abajo
+    ---+--------P0-------------------------> m  (lateral, hacia la muestra)
+       |       /  plano de referencia z = z_ref_espejo_nm (0: el plano focal)
+       |      /                               ^ objetivo abajo
 
   Vista desde la camara (x a la derecha, y hacia abajo, como imshow):
 
@@ -44,27 +45,27 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
            |        |       de +x hacia +y)|   de +x hacia +y (en pantalla se
            |        P (x0, y0)   muestra   |   ve horario porque y baja)
            |        |                      |
-           |  linea del espejo en el       |
-           |  cubreobjetos (direccion t)   |
+           |  interseccion del espejo con  |
+           |  el plano de ref. (dir. t)    |
            +-------------------------------+
      y [px]
 
-  - alpha = angulo_espejo_deg: angulo entre el espejo y el cubreobjetos,
-    medido dentro de la cuna donde esta la muestra; valido en (0, 180).
-    90 = pared vertical. Si el angulo se mide respecto del eje optico (beta),
-    alpha = 90 - beta.
+  - alpha = angulo_espejo_deg: angulo entre el espejo y el plano focal (o
+    cualquier plano z = cte), medido dentro de la cuna donde esta la muestra;
+    valido en (0, 180). 90 = pared vertical. Si el angulo se mide respecto del
+    eje optico (beta), alpha = 90 - beta.
   - phi = orientacion_espejo_deg: azimut de m, la direccion lateral desde la
     linea del espejo hacia la muestra. La linea va en la direccion
     t = (-sin phi, cos phi, 0), es decir a phi + 90 grados. Un solo numero
     fija la linea y el lado de la muestra. Como obtenerlo de una medicion en
     ImageJ (que mide antihorario, y hacia arriba): docstring de config.Config.
-  - P = espejo_punto_px = (x0, y0): un punto de la linea del espejo sobre el
-    cubreobjetos; p0 = (x0 px, y0 px, z0) en nm, con z0 = z_cubreobjetos_nm, la
-    z del cubreobjetos respecto del plano focal (z = 0). Con None, z0 es la
-    pared en z de los reales del lado del objetivo (z_rango_nm[0] con
-    SIGNO_Z = +1). Moverlo mueve el foco respecto del cubreobjetos (y del pie
-    del espejo) sin tocar las paredes en z de los reales, que deben quedar
-    todas del lado de la muestra del cubreobjetos.
+  - P = espejo_punto_px = (x0, y0): un punto de la interseccion del espejo con
+    el plano de referencia z = z_ref_espejo_nm (altura respecto del foco; 0 por
+    defecto, el plano focal); p0 = (x0 px, y0 px, z_ref_espejo_nm) en nm. El
+    montaje no tiene cubreobjetos: el espejo se define respecto del plano
+    focal, y z_rango_nm solo delimita el volumen simulado (el espejo lo corta
+    a cualquier altura). A otra altura z la linea del espejo esta desplazada
+    en m (Espejo.punto_en_z_nm).
   - Con arriba = SIGNO_Z * z_hat (direccion que se aleja del objetivo):
         m = (cos phi, sin phi, 0)
         n = sin(alpha) m - SIGNO_INCLINACION cos(alpha) arriba
@@ -99,8 +100,8 @@ from .config import Config, MARGEN_PX
 
 # --- convencion de signos: UNICO lugar donde se fija ----------------------------
 # Si al comparar con datos reales resulta al reves, se cambia aqui y nada mas.
-SIGNO_Z = +1            # +1: +z se aleja del objetivo, el cubreobjetos es z_rango_nm[0]
-                        # -1: +z se acerca al objetivo, el cubreobjetos es z_rango_nm[1]
+SIGNO_Z = +1            # +1: +z se aleja del objetivo
+                        # -1: +z se acerca al objetivo
 SIGNO_INCLINACION = +1  # +1: con alpha < 90 el espejo se inclina SOBRE la muestra
                         # -1: se inclina alejandose de ella (equivale a alpha -> 180 - alpha)
 
@@ -118,17 +119,18 @@ class Espejo:
 
     Atributos (todos en nm salvo pixel_nm):
         m        direccion lateral desde la linea del espejo hacia la muestra
-        t        direccion de la linea del espejo en el cubreobjetos
+        t        direccion de la linea del espejo (horizontal)
         arriba   direccion que se aleja del objetivo (SIGNO_Z * z_hat)
         n        normal unitaria del espejo, hacia la muestra
-        p0       punto del plano del espejo sobre el cubreobjetos [nm]
-        z_cubre  z del cubreobjetos respecto del plano focal [nm] (= p0[2])
+        p0       punto del espejo en el plano de referencia [nm]
+        z_ref    z del plano de referencia respecto del plano focal [nm] (= p0[2])
+        alpha    angulo_espejo_deg [rad]
         R        matriz de reflexion
         z_lo, z_hi  paredes en z de los emisores reales (cfg.z_rango_nm)"""
 
     def __init__(self, cfg: Config):
         self.pixel_nm = cfg.pixel_nm
-        a = np.radians(cfg.angulo_espejo_deg)
+        self.alpha = a = np.radians(cfg.angulo_espejo_deg)          # [rad]
         f = np.radians(cfg.orientacion_espejo_deg)
         self.m = np.array([np.cos(f), np.sin(f), 0.0])
         self.t = np.array([-np.sin(f), np.cos(f), 0.0])
@@ -136,18 +138,9 @@ class Espejo:
         self.n = np.sin(a) * self.m - SIGNO_INCLINACION * np.cos(a) * self.arriba
         self.R = matriz_R(self.n)
         self.z_lo, self.z_hi = cfg.z_rango_nm
-        z_cubre = cfg.z_cubreobjetos_nm
-        if z_cubre is None:                                     # la pared en z del lado del objetivo
-            z_cubre = self.z_lo if SIGNO_Z > 0 else self.z_hi
-        # ningun real puede estar dentro del vidrio: el cubreobjetos va del lado del objetivo de las paredes
-        pared = self.z_lo if SIGNO_Z > 0 else self.z_hi         # pared de los reales del lado del objetivo
-        if SIGNO_Z * (pared - z_cubre) < 0:                     # el cubreobjetos quedaria mas lejos del objetivo
-            raise ValueError(f"z_cubreobjetos_nm = {z_cubre} deja reales dentro del cubreobjetos: con SIGNO_Z = "
-                             f"{SIGNO_Z} debe ser {'<=' if SIGNO_Z > 0 else '>='} {pared} "
-                             f"(z_rango_nm = {cfg.z_rango_nm})")
-        self.z_cubre = float(z_cubre)
+        self.z_ref = float(cfg.z_ref_espejo_nm)
         x0, y0 = cfg.espejo_punto_px
-        self.p0 = np.array([x0 * self.pixel_nm, y0 * self.pixel_nm, z_cubre])
+        self.p0 = np.array([x0 * self.pixel_nm, y0 * self.pixel_nm, self.z_ref])
 
     # --- conversion de unidades: [px, px, nm] <-> nm ---
     def a_nm(self, pos):
@@ -166,6 +159,14 @@ class Espejo:
     def distancia_nm(self, p_nm):
         """Distancia con signo al plano [nm] (...,): > 0 del lado de la muestra."""
         return (np.asarray(p_nm, dtype=float) - self.p0) @ self.n
+
+    def punto_en_z_nm(self, z_nm):
+        """Punto [nm] (3,) de la linea del espejo a la altura z_nm: p0 + s m en
+        el plano z = z_nm, con d = 0 -> s sin(alpha) = SIGNO_INCLINACION SIGNO_Z
+        (z_nm - z_ref) cos(alpha). punto_en_z_nm(0) es la interseccion del
+        espejo con el plano focal; la linea sigue en la direccion t."""
+        s = SIGNO_INCLINACION * SIGNO_Z * (z_nm - self.z_ref) / np.tan(self.alpha)
+        return self.p0 + s * self.m + np.array([0.0, 0.0, z_nm - self.z_ref])
 
     def reflejar_nm(self, p_nm):
         """p' = p - 2 [(p - p0) . n] n, todo en nm; p_nm (..., 3)."""
