@@ -78,8 +78,8 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   defecto: la linea es la interseccion del espejo con el plano focal),
   `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8) y
   `dist_max_espejo_um` (si se da, las posiciones iniciales se sortean solo
-  hasta esa distancia de la base del espejo, hacia la muestra, reescalando los
-  mismos sorteos; None -> todo el FOV).
+  hasta esa distancia perpendicular al plano del espejo, dentro del FOV
+  ampliado, reescalando los mismos sorteos; None -> todo el FOV).
 - Convencion de signos: `SIGNO_Z` (+z lejos del objetivo) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
   sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.
 - El espejo es una pared reflectante mas para el browniano: los emisores

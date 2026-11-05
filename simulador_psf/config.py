@@ -107,7 +107,7 @@ class Config:
                                         # linea es la interseccion del espejo con el plano focal. Sin
                                         # cubreobjetos: z_rango_nm solo delimita el volumen simulado
     dist_max_espejo_um: float = None    # si se da [um]: las posiciones iniciales se muestrean solo hasta esa
-                                        # distancia de la base del espejo en la direccion m (posiciones.py);
+                                        # distancia (perpendicular) al PLANO del espejo (posiciones.py);
                                         # None -> en todo el FOV ampliado, como siempre
     z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
                                         # automaticamente con el espejo para cubrir las z de los reflejos
@@ -163,5 +163,5 @@ class Config:
                       f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
                       f"plano de referencia z = {self.z_ref_espejo_nm:.0f} nm")
             if self.dist_max_espejo_um is not None:
-                texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um de la base del espejo"
+                texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um del plano del espejo"
         return texto

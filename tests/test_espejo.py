@@ -193,41 +193,53 @@ def test_z_ref_espejo():
 
 
 def test_dist_max_espejo():
-    """dist_max_espejo_um reescala los mismos sorteos: el rng termina igual que
-    sin el, z es la misma, la distancia a la base en m queda en [0, dist_max]
-    (antes de plegar) y el resultado es el plegado de esa construccion."""
+    """dist_max_espejo_um es la distancia maxima al PLANO del espejo: reescala
+    los mismos sorteos (el rng termina igual que sin el), z es la misma, todos
+    los puntos quedan con d en [0, dist_max] sin plegar, y la posicion es la
+    construccion esperada: s_t del sorteo de y, s_m del sorteo de x en la franja
+    d en [0, dist_max] a esa z recortada al FOV ampliado proyectado sobre m."""
     from simulador_psf.config import MARGEN_PX
     n, dmax = 4000, 1.5
-    for a, f, p in GEOMETRIAS:
-        kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p)
-        cfg = cfg_espejo(dist_max_espejo_um=dmax, **kw)
-        e, px = Espejo(cfg), cfg.pixel_nm
-        r1, r2, r3 = (np.random.default_rng(7) for _ in range(3))
-        pos = posiciones_iniciales(cfg, n, r1)
-        posiciones_iniciales(cfg_espejo(**kw), n, r2)
-        crudo = posiciones_iniciales(Config(**BASE), n, r3)     # sin espejo: los sorteos sin plegar
-        assert r1.bit_generator.state == r2.bit_generator.state == r3.bit_generator.state
-        # sorteos uniformes recuperados de la version sin espejo
-        U1 = (crudo[:, 0] / px + MARGEN_PX) / (cfg.W + 2 * MARGEN_PX)
-        U2 = (crudo[:, 1] / px + MARGEN_PX) / (cfg.H + 2 * MARGEN_PX)
-        esq = np.array([[x, y] for x in (-MARGEN_PX, cfg.W + MARGEN_PX) for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px
-        s = (esq - e.p0[:2]) @ e.t[:2]
-        sin_plegar = np.column_stack([e.p0[:2] + np.outer(U1 * dmax * 1000, e.m[:2])
-                                      + np.outer(s.min() + U2 * (s.max() - s.min()), e.t[:2]), crudo[:, 2]])
-        assert np.allclose(pos, e.plegar_nm(sin_plegar), atol=1e-6)
-        quieto = e.distancia_nm(sin_plegar) >= 0                 # no se plegaron
-        assert quieto.sum() > 100, (a, f, quieto.mean())      # con alpha chico el espejo tapa casi todo
-        s_m = (pos[quieto, :2] - e.p0[:2]) @ e.m[:2]
-        assert (s_m >= -1e-6).all() and (s_m <= dmax * 1000 + 1e-6).all()
-        assert np.array_equal(pos[quieto, 2], crudo[quieto, 2])
-        assert (e.distancia_nm(pos) >= -1e-6).all()
-    # con orientacion 0 el rango de y es el de siempre
+    for a, f, p in GEOMETRIAS + [(34.4, 0.0, (12.0, 20.0))]:
+        for zr in (0.0, -500.0):
+            kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
+            cfg = cfg_espejo(dist_max_espejo_um=dmax, **kw)
+            e, px = Espejo(cfg), cfg.pixel_nm
+            r1, r2, r3 = (np.random.default_rng(7) for _ in range(3))
+            pos = posiciones_iniciales(cfg, n, r1)
+            posiciones_iniciales(cfg_espejo(**kw), n, r2)
+            crudo = posiciones_iniciales(Config(**BASE), n, r3)     # sin espejo: los sorteos sin plegar
+            assert r1.bit_generator.state == r2.bit_generator.state == r3.bit_generator.state
+            assert np.array_equal(pos[:, 2], crudo[:, 2])           # z: el mismo sorteo
+            d = e.distancia_nm(pos)
+            assert (d >= -1e-6).all() and (d <= dmax * 1000 + 1e-6).all(), (a, f, d.min(), d.max())
+            # construccion esperada desde los sorteos uniformes de la version sin espejo
+            U1 = (crudo[:, 0] / px + MARGEN_PX) / (cfg.W + 2 * MARGEN_PX)
+            U2 = (crudo[:, 1] / px + MARGEN_PX) / (cfg.H + 2 * MARGEN_PX)
+            esq = np.array([[x, y, 0.0] for x in (-MARGEN_PX, cfg.W + MARGEN_PX)
+                            for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * [px, px, 0] - [*e.p0[:2], 0]
+            st, sm = esq @ e.t, esq @ e.m
+            s_t = st.min() + U2 * (st.max() - st.min())
+            # franja por la recta p0 + s m + s_t t a la altura z: d(s) = d(0) + s (n . m)
+            base = np.column_stack([e.p0[:2] + np.outer(s_t, e.t[:2]), crudo[:, 2]])
+            d0, pend = e.distancia_nm(base), e.n @ e.m
+            f0, f1 = -d0 / pend, (dmax * 1000 - d0) / pend
+            lo, hi = np.maximum(f0, sm.min()), np.minimum(f1, sm.max())
+            vacia = lo > hi
+            lo[vacia], hi[vacia] = f0[vacia], f1[vacia]
+            esperado = base.copy()
+            esperado[:, :2] += np.outer(lo + U1 * (hi - lo), e.m[:2])
+            assert np.allclose(pos, esperado, rtol=0, atol=1e-6)
+            # dentro del FOV ampliado salvo donde la franja no lo toca
+            s_m = (pos[:, :2] - e.p0[:2]) @ e.m[:2]
+            assert ((s_m >= sm.min() - 1e-6) & (s_m <= sm.max() + 1e-6))[~vacia].all()
+            if a == 34.4:                                           # el caso del montaje: la franja siempre toca el FOV
+                assert not vacia.any()
+    # con orientacion 0 el y es el de siempre
     cfg = cfg_espejo(dist_max_espejo_um=dmax)
     pos = posiciones_iniciales(cfg, n, np.random.default_rng(3))
     crudo = posiciones_iniciales(Config(**BASE), n, np.random.default_rng(3))
-    e = Espejo(cfg)
-    quieto = e.distancia_nm(pos) > 0
-    assert np.allclose(pos[quieto, 1], crudo[quieto, 1], atol=1e-6)
+    assert np.allclose(pos[:, 1], crudo[:, 1], rtol=0, atol=1e-6)
 
 
 def test_config_valida():
