@@ -1,5 +1,5 @@
 """
-Regresion bit a bit del simulador de sim_imagenesPSF.py.
+Regresion bit a bit del simulador (paquete simulador_psf, antes sim_imagenesPSF.py).
 
 Con semillas fijas genera un conjunto pequeno de salidas y lo compara con la
 referencia guardada en tests/referencia/ (escrita con el codigo anterior a la
@@ -17,7 +17,7 @@ poder compararlo con tolerancia, y termina con codigo 1.
 Uso:
     $PY tests/regresion.py                              # compara con la referencia
     $PY tests/regresion.py --generar                    # (re)escribe la referencia
-    $PY tests/regresion.py --modulo sim_imagenesPSF --script sim_imagenesPSF.py
+    $PY tests/regresion.py --modulo sim_imagenesPSF     # la capa de compatibilidad
 """
 import argparse
 import contextlib
@@ -162,8 +162,8 @@ def comparar_tif(nombre, nuevo, ref):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--generar", action="store_true", help="reescribe tests/referencia/")
-    p.add_argument("--modulo", default="sim_imagenesPSF", help="modulo que se prueba")
-    p.add_argument("--script", default="sim_imagenesPSF.py", help="punto de entrada (relativo a la raiz)")
+    p.add_argument("--modulo", default="simulador_psf", help="modulo que se prueba")
+    p.add_argument("--script", default="generar_dataset.py", help="punto de entrada (relativo a la raiz)")
     args = p.parse_args()
 
     sim = importlib.import_module(args.modulo)
