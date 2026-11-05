@@ -5,7 +5,7 @@ Config (el video 0 de generar_dataset con esa semilla).
 
 Escribe en --salida (por defecto muestra_espejo/ en el directorio actual):
     frame_000_camara.png        frame 0 tal como lo ve la camara (con ruido), sin marcas
-    frame_000_marcadores.png    el mismo frame con reales (circulos cian) y reflejos
+    frame_000_marcadores.png    el mismo frame con reales (circulos cian, con su particle_id) y reflejos
                                 (cuadrados naranja) unidos por una linea fina, la
                                 interseccion del espejo con el plano focal en linea
                                 discontinua, y una leyenda en una franja debajo de la imagen
@@ -23,6 +23,8 @@ Uso:
     ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py [--seed 0] [--salida muestra_espejo]
     # celula de levadura pegada al espejo:
     ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 4 [--z-ref-espejo-nm 0] [--z-rango-nm MIN MAX]
+    # pares separados visibles (emisores brillantes, fondo bajo):
+    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 4 --fotones-rango 20000 30000 --fondo-rango 5 10
 """
 import sys
 import os
@@ -48,6 +50,10 @@ ap.add_argument("--dist-max-um", type=float, default=None, help="Config.dist_max
 ap.add_argument("--z-ref-espejo-nm", type=float, default=None, help="Config.z_ref_espejo_nm [nm]")
 ap.add_argument("--z-rango-nm", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
                 help="Config.z_rango_nm [nm]")
+ap.add_argument("--fotones-rango", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
+                help=f"Config.fotones_rango [fotones por emisor y frame] (por defecto {Config.fotones_rango})")
+ap.add_argument("--fondo-rango", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
+                help=f"Config.fondo_rango [fotones/px] (por defecto {Config.fondo_rango})")
 args = ap.parse_args()
 
 extra = {}                                                      # solo lo que se pide; el resto, por defecto
@@ -57,6 +63,10 @@ if args.z_ref_espejo_nm is not None:
     extra["z_ref_espejo_nm"] = args.z_ref_espejo_nm
 if args.z_rango_nm is not None:
     extra["z_rango_nm"] = tuple(args.z_rango_nm)
+if args.fotones_rango is not None:
+    extra["fotones_rango"] = tuple(args.fotones_rango)
+if args.fondo_rango is not None:
+    extra["fondo_rango"] = tuple(args.fondo_rango)
 cfg = Config(usar_espejo=True, seed=args.seed, **extra)
 print(cfg.resumen())
 banco = BancoPSF(cfg)
@@ -133,6 +143,8 @@ def con_marcas(frame, t):
         a, b = img_px(f.x_px, f.y_px), img_px(f.x_reflejo_px, f.y_reflejo_px)
         dr.line([a, b], fill=GRIS, width=1)
         dr.ellipse([a[0] - r, a[1] - r, a[0] + r, a[1] + r], outline=CIAN, width=2)
+        dr.text((a[0] + r + 2, a[1] - r - 12), str(f.particle_id), fill=CIAN, font=FUENTE,
+                stroke_width=2, stroke_fill=(0, 0, 0))                          # para cruzar con el CSV
         color = NARANJA if f.reflejo_en_banco else ROJO               # rojo: reflejo no renderizado
         dr.rectangle([b[0] - r, b[1] - r, b[0] + r, b[1] + r], outline=color, width=2)
     return leyenda(im)
@@ -168,6 +180,9 @@ lineas = [
     f"  banco de PSF: z en [{banco.z_grid[0]:.0f}, {banco.z_grid[-1]:.0f}] nm, {len(banco.z_grid)} planos",
     "",
     f"video: {cfg.n_frames} frames de {cfg.H}x{cfg.W} px, dt {cfg.dt_s} s, semilla {cfg.seed}, video_id 0",
+    f"fotones_rango {cfg.fotones_rango} fotones/emisor/frame ({cfg.muestreo_fotones}), "
+    f"fondo_rango {cfg.fondo_rango} fotones/px (fondo_no_uniforme {cfg.fondo_no_uniforme})"
+    + ("" if "fotones_rango" in extra or "fondo_rango" in extra else ", los de Config"),
     f"emisores: {len(D)}",
     "  particle_id  D [um^2/s]  fotones/frame  fotones reflejo",
     *[f"  {p:11d}  {D[p]:10.4f}  {N[p]:13.0f}  {cfg.ratio_reflejo * N[p]:15.0f}" for p in D.index],
@@ -176,7 +191,8 @@ lineas = [
     "",
     f"contraste fijo (todos los PNG y GIF): negro = {lo:.0f} ADU, blanco = {hi:.0f} ADU "
     f"(percentiles {args.percentiles[0]}, {args.percentiles[1]} del video); zoom x{Z}",
-    "marcas: circulo cian = real, cuadrado naranja = reflejo (rojo si no se renderizo: fuera del banco),",
+    "marcas: circulo cian = real con su particle_id, cuadrado naranja = reflejo (rojo si no se renderizo:",
+    "        fuera del banco),",
     "        linea gris = vinculo real-reflejo, linea amarilla discontinua = interseccion del",
     "        espejo con el plano focal; leyenda en una franja bajo la imagen",
     "",
