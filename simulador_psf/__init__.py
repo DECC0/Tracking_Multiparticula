@@ -1,6 +1,22 @@
 """
 simulador_psf: videos sinteticos de fluorescencia (un solo canal) con
 emisores en movimiento browniano 3D y PSF con aberracion esferica.
+
+    posiciones -> browniano -> optica -> + fondo -> ruido -> io_gt
+                (generacion orquesta; config tiene los parametros)
+
+Modulos:
+    config        Config y constantes fijas
+    posiciones    numero de emisores, posiciones iniciales, fotones
+    browniano     trayectorias 3D con paredes reflectantes en z
+    optica        pupila, banco de PSF en z, colocacion subpixel
+    fondo         fondo de fluorescencia (fotones/px)
+    ruido         Poisson -> ganancia -> lectura -> offset -> uint16
+    io_gt         escritura de videos .tif y ground_truth.csv
+    generacion    generar_video, generar_dataset
+    diagnosticos  energia encerrada y SNR pico del banco
+
+Todo lo publico se importa desde aqui: from simulador_psf import Config, BancoPSF, ...
 """
 
 from .config import Config
