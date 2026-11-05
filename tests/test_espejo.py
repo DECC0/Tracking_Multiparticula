@@ -190,10 +190,48 @@ def test_z_cubreobjetos():
         raise AssertionError("z_cubreobjetos_nm dentro del rango de los reales no lanzo ValueError")
 
 
+def test_dist_max_espejo():
+    """dist_max_espejo_um reescala los mismos sorteos: el rng termina igual que
+    sin el, z es la misma, la distancia a la base en m queda en [0, dist_max]
+    (antes de plegar) y el resultado es el plegado de esa construccion."""
+    from simulador_psf.config import MARGEN_PX
+    n, dmax = 4000, 1.5
+    for a, f, p in GEOMETRIAS:
+        kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p)
+        cfg = cfg_espejo(dist_max_espejo_um=dmax, **kw)
+        e, px = Espejo(cfg), cfg.pixel_nm
+        r1, r2, r3 = (np.random.default_rng(7) for _ in range(3))
+        pos = posiciones_iniciales(cfg, n, r1)
+        posiciones_iniciales(cfg_espejo(**kw), n, r2)
+        crudo = posiciones_iniciales(Config(**BASE), n, r3)     # sin espejo: los sorteos sin plegar
+        assert r1.bit_generator.state == r2.bit_generator.state == r3.bit_generator.state
+        # sorteos uniformes recuperados de la version sin espejo
+        U1 = (crudo[:, 0] / px + MARGEN_PX) / (cfg.W + 2 * MARGEN_PX)
+        U2 = (crudo[:, 1] / px + MARGEN_PX) / (cfg.H + 2 * MARGEN_PX)
+        esq = np.array([[x, y] for x in (-MARGEN_PX, cfg.W + MARGEN_PX) for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px
+        s = (esq - e.p0[:2]) @ e.t[:2]
+        sin_plegar = np.column_stack([e.p0[:2] + np.outer(U1 * dmax * 1000, e.m[:2])
+                                      + np.outer(s.min() + U2 * (s.max() - s.min()), e.t[:2]), crudo[:, 2]])
+        assert np.allclose(pos, e.plegar_nm(sin_plegar), atol=1e-6)
+        quieto = e.distancia_nm(sin_plegar) >= 0                 # no se plegaron
+        assert quieto.sum() > 100, (a, f, quieto.mean())      # con alpha chico el espejo tapa casi todo
+        s_m = (pos[quieto, :2] - e.p0[:2]) @ e.m[:2]
+        assert (s_m >= -1e-6).all() and (s_m <= dmax * 1000 + 1e-6).all()
+        assert np.array_equal(pos[quieto, 2], crudo[quieto, 2])
+        assert (e.distancia_nm(pos) >= -1e-6).all()
+    # con orientacion 0 el rango de y es el de siempre
+    cfg = cfg_espejo(dist_max_espejo_um=dmax)
+    pos = posiciones_iniciales(cfg, n, np.random.default_rng(3))
+    crudo = posiciones_iniciales(Config(**BASE), n, np.random.default_rng(3))
+    e = Espejo(cfg)
+    quieto = e.distancia_nm(pos) > 0
+    assert np.allclose(pos[quieto, 1], crudo[quieto, 1], atol=1e-6)
+
+
 def test_config_valida():
     for kw in (dict(angulo_espejo_deg=0.0), dict(angulo_espejo_deg=180.0), dict(angulo_espejo_deg=-5.0),
                dict(ratio_reflejo=0.0), dict(ratio_reflejo=1.01), dict(espejo_punto_px=(1.0,)),
-               dict(z_banco_nm=(100.0, -100.0))):
+               dict(z_banco_nm=(100.0, -100.0)), dict(dist_max_espejo_um=0.0), dict(dist_max_espejo_um=-1.0)):
         try:
             Config(**kw)
         except ValueError:
@@ -351,7 +389,8 @@ def test_espejo_apagado_ignora_sus_parametros():
     """Con usar_espejo=False los demas parametros del espejo no cambian nada."""
     cfg_a = Config(**BASE)
     cfg_b = Config(**{**BASE, "angulo_espejo_deg": 120.0, "orientacion_espejo_deg": 33.0,
-                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_cubreobjetos_nm": -3000.0})
+                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_cubreobjetos_nm": -3000.0,
+                      "dist_max_espejo_um": 2.0})
     va, fa = generar_video(cfg_a, BancoPSF(cfg_a), np.random.default_rng(4), 0)
     vb, fb = generar_video(cfg_b, BancoPSF(cfg_b), np.random.default_rng(4), 0)
     assert np.array_equal(va, vb) and fa == fb

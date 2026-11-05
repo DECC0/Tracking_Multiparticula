@@ -71,7 +71,10 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   `espejo_punto_px` (un punto de esa linea sobre el cubreobjetos) y
   `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8) y
   `z_cubreobjetos_nm` (z del cubreobjetos respecto del plano focal: fija la
-  altura del foco sobre el cubreobjetos; None -> `z_rango_nm[0]`).
+  altura del foco sobre el cubreobjetos; None -> `z_rango_nm[0]`) y
+  `dist_max_espejo_um` (si se da, las posiciones iniciales se sortean solo
+  hasta esa distancia de la base del espejo, hacia la muestra, reescalando los
+  mismos sorteos; None -> todo el FOV).
 - Convencion de signos: `SIGNO_Z` (+z lejos del objetivo, cubreobjetos en
   `z_rango_nm[0]`) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
   sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.

@@ -27,14 +27,50 @@ def posiciones_iniciales(cfg: Config, n, rng):
     Con cfg.usar_espejo, los puntos que caen detras del espejo se llevan al
     lado de la muestra con Espejo.plegar_nm (reflexion en el espejo y en las
     paredes en z): mismas llamadas al rng, sin sorteos extra. La densidad
-    deja de ser exactamente uniforme cerca del espejo."""
+    deja de ser exactamente uniforme cerca del espejo.
+
+    Con cfg.usar_espejo y cfg.dist_max_espejo_um, la posicion lateral se
+    sortea en el sistema del espejo en vez de en x, y (ver _cerca_del_espejo):
+    mismos tres sorteos, reescalados, y z igual que sin dist_max_espejo_um."""
     px = cfg.pixel_nm
-    pos = np.stack([rng.uniform(-MARGEN_PX, cfg.W + MARGEN_PX, n) * px,
-                    rng.uniform(-MARGEN_PX, cfg.H + MARGEN_PX, n) * px,
-                    rng.uniform(*cfg.z_rango_nm, n)], axis=1)    # (n, 3) en nm
+    if cfg.usar_espejo and cfg.dist_max_espejo_um is not None:
+        pos = _cerca_del_espejo(cfg, n, rng)
+    else:
+        pos = np.stack([rng.uniform(-MARGEN_PX, cfg.W + MARGEN_PX, n) * px,
+                        rng.uniform(-MARGEN_PX, cfg.H + MARGEN_PX, n) * px,
+                        rng.uniform(*cfg.z_rango_nm, n)], axis=1)    # (n, 3) en nm
     if cfg.usar_espejo:
         pos = Espejo(cfg).plegar_nm(pos)
     return pos
+
+
+def _cerca_del_espejo(cfg: Config, n, rng):
+    """Posiciones iniciales (n, 3) [nm] sin plegar, con la posicion lateral
+    escrita como p0 + s_m m + s_t t (base del espejo, espejo.py):
+        s_m uniforme en [0, dist_max_espejo_um]: distancia a la base del espejo,
+            medida en el cubreobjetos hacia la muestra (el sorteo de x de siempre,
+            reescalado);
+        s_t uniforme en la proyeccion sobre la linea del espejo del FOV ampliado
+            MARGEN_PX px por lado (el sorteo de y, reescalado; con
+            orientacion_espejo_deg = 0 es el mismo rango de y de siempre);
+        z uniforme en cfg.z_rango_nm (el mismo sorteo, sin cambios).
+    rng.uniform(0, 1, n) consume lo mismo que rng.uniform(a, b, n): no hay
+    sorteos extra. Los puntos que caen detras del espejo (a altura h, el
+    espejo esta en s_m = h cot(alpha) si se inclina sobre la muestra) los
+    pliega posiciones_iniciales, y pueden quedar algo mas lejos que
+    dist_max_espejo_um."""
+    e = Espejo(cfg)
+    px = cfg.pixel_nm
+    u_m = rng.uniform(0.0, 1.0, n)                               # sorteo de x
+    u_t = rng.uniform(0.0, 1.0, n)                               # sorteo de y
+    z = rng.uniform(*cfg.z_rango_nm, n)                          # sorteo de z
+    esq = np.array([[x, y] for x in (-MARGEN_PX, cfg.W + MARGEN_PX)
+                    for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px
+    s = (esq - e.p0[:2]) @ e.t[:2]                               # FOV ampliado proyectado sobre t [nm]
+    s_m = u_m * cfg.dist_max_espejo_um * 1000.0
+    s_t = s.min() + u_t * (s.max() - s.min())
+    lat = e.p0[:2] + s_m[:, None] * e.m[:2] + s_t[:, None] * e.t[:2]
+    return np.column_stack([lat, z])
 
 
 def muestrear_fotones(cfg: Config, n, rng):

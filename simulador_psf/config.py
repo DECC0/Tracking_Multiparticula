@@ -104,6 +104,9 @@ class Config:
                                         # altura del foco sobre el cubreobjetos. None -> z_rango_nm[0], la pared
                                         # del lado del objetivo (con espejo.SIGNO_Z = -1, z_rango_nm[1]).
                                         # Debe quedar del lado del objetivo de todos los reales (Espejo lo valida)
+    dist_max_espejo_um: float = None    # si se da [um]: las posiciones iniciales se muestrean solo hasta esa
+                                        # distancia de la base del espejo en la direccion m (posiciones.py);
+                                        # None -> en todo el FOV ampliado, como siempre
     z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
                                         # automaticamente con el espejo para cubrir las z de los reflejos
 
@@ -120,6 +123,8 @@ class Config:
             raise ValueError(f"ratio_reflejo debe estar en (0, 1]: {self.ratio_reflejo}")
         if len(self.espejo_punto_px) != 2:
             raise ValueError(f"espejo_punto_px debe ser (x, y) en px: {self.espejo_punto_px}")
+        if self.dist_max_espejo_um is not None and not self.dist_max_espejo_um > 0:
+            raise ValueError(f"dist_max_espejo_um debe ser > 0 o None: {self.dist_max_espejo_um}")
         if self.z_banco_nm is not None and not self.z_banco_nm[0] < self.z_banco_nm[1]:
             raise ValueError(f"z_banco_nm debe ser (z_min, z_max) con z_min < z_max: {self.z_banco_nm}")
 
@@ -155,4 +160,6 @@ class Config:
                       f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                       f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
                       f"cubreobjetos z = {'z_rango_nm' if self.z_cubreobjetos_nm is None else f'{self.z_cubreobjetos_nm:.0f} nm'}")
+            if self.dist_max_espejo_um is not None:
+                texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um de la base del espejo"
         return texto
