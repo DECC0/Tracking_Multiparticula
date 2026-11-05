@@ -10,3 +10,4 @@ from .optica import fase_esferica, Pupila, fase_de_mascara, construir_pupila, ps
 from .fondo import generar_fondo
 from .ruido import aplicar_camara
 from .io_gt import COLUMNAS_GT, nombre_video, guardar_video, guardar_gt
+from .diagnosticos import energia_encerrada, snr_pico, imprimir_snr_pico
