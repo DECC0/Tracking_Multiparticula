@@ -21,6 +21,8 @@ camara queda como un bloque).
 
 Uso:
     ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py [--seed 0] [--salida muestra_espejo]
+    # celula de levadura pegada al espejo (foco 2.5 um sobre el cubreobjetos, reales hasta 3 um de la base):
+    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 3 --z-cubreobjetos-nm -2500 --z-rango-nm -2500 1500
 """
 import sys
 import os
@@ -42,9 +44,20 @@ ap.add_argument("--salida", default="muestra_espejo")
 ap.add_argument("--zoom", type=int, default=8)
 ap.add_argument("--percentiles", type=float, nargs=2, default=(1.0, 99.9), metavar=("NEGRO", "BLANCO"))
 ap.add_argument("--ms", type=int, default=100, help="duracion de cada cuadro del GIF [ms]")
+ap.add_argument("--dist-max-um", type=float, default=None, help="Config.dist_max_espejo_um [um]")
+ap.add_argument("--z-cubreobjetos-nm", type=float, default=None, help="Config.z_cubreobjetos_nm [nm]")
+ap.add_argument("--z-rango-nm", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
+                help="Config.z_rango_nm [nm]")
 args = ap.parse_args()
 
-cfg = Config(usar_espejo=True, seed=args.seed)
+extra = {}                                                      # solo lo que se pide; el resto, por defecto
+if args.dist_max_um is not None:
+    extra["dist_max_espejo_um"] = args.dist_max_um
+if args.z_cubreobjetos_nm is not None:
+    extra["z_cubreobjetos_nm"] = args.z_cubreobjetos_nm
+if args.z_rango_nm is not None:
+    extra["z_rango_nm"] = tuple(args.z_rango_nm)
+cfg = Config(usar_espejo=True, seed=args.seed, **extra)
 print(cfg.resumen())
 banco = BancoPSF(cfg)
 espejo = Espejo(cfg)
@@ -136,9 +149,10 @@ D = gt.groupby("particle_id").D_um2_s.first()
 N = gt.groupby("particle_id").photons.first()
 lineas = [
     "Muestra del espejo de simulador_psf (figuras/muestra_espejo.py)",
-    f"reproducir: ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --seed {args.seed} "
-    f"--salida {args.salida} --zoom {Z}",
-    "    = generar_video(Config(usar_espejo=True, seed=SEED), BancoPSF(cfg), np.random.default_rng(SEED), 0)",
+    "reproducir: ~/miniforge3/envs/tesis/bin/python " + " ".join(["figuras/muestra_espejo.py"] + sys.argv[1:]),
+    f"    = generar_video(Config(usar_espejo=True, seed={cfg.seed}"
+    + "".join(f", {k}={v!r}" for k, v in extra.items())
+    + f"), BancoPSF(cfg), np.random.default_rng({cfg.seed}), 0)",
     "",
     "espejo:",
     f"  angulo_espejo_deg      {cfg.angulo_espejo_deg} (espejo-cubreobjetos, dentro de la cuna de la muestra)",
@@ -147,6 +161,9 @@ lineas = [
     f"  p0 [nm]                {np.round(espejo.p0, 2).tolist()}",
     f"  normal n               {np.round(espejo.n, 6).tolist()}",
     f"  ratio_reflejo          {cfg.ratio_reflejo}",
+    f"  z_cubreobjetos_nm      {espejo.z_cubre} (foco a {SIGNO_Z * (0 - espejo.z_cubre) / 1000:.2f} um sobre el cubreobjetos)",
+    f"  dist_max_espejo_um     {cfg.dist_max_espejo_um}",
+    f"  z_rango_nm (reales)    {cfg.z_rango_nm}",
     f"  SIGNO_Z {SIGNO_Z}, SIGNO_INCLINACION {SIGNO_INCLINACION}",
     f"  banco de PSF: z en [{banco.z_grid[0]:.0f}, {banco.z_grid[-1]:.0f}] nm, {len(banco.z_grid)} planos",
     "",
