@@ -56,7 +56,8 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
   - phi = orientacion_espejo_deg: azimut de m, la direccion lateral desde la
     linea del espejo hacia la muestra. La linea va en la direccion
     t = (-sin phi, cos phi, 0), es decir a phi + 90 grados. Un solo numero
-    fija la linea y el lado de la muestra.
+    fija la linea y el lado de la muestra. Como obtenerlo de una medicion en
+    ImageJ (que mide antihorario, y hacia arriba): docstring de config.Config.
   - P = espejo_punto_px = (x0, y0): un punto de la linea del espejo sobre el
     cubreobjetos; p0 = (x0 px, y0 px, z0) en nm, con z0 = z_cubreobjetos_nm, la
     z del cubreobjetos respecto del plano focal (z = 0). Con None, z0 es la

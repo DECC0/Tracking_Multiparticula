@@ -28,7 +28,31 @@ ADU_MAX = 65535                 # saturacion de la camara (uint16)
 class Config:
     """Configuracion de un dataset. Unidades: nm para longitudes en la
     muestra, px para el sensor, um^2/s para D, s para el tiempo, fotones
-    (= e-, eficiencia cuantica 1) para la senal y ADU para la salida."""
+    (= e-, eficiencia cuantica 1) para la senal y ADU para la salida.
+
+    orientacion_espejo_deg (phi) desde una medicion en ImageJ
+    ---------------------------------------------------------
+    phi es el azimut de la direccion que va de la linea del espejo hacia la
+    muestra, medido de +x hacia +y con y hacia ABAJO (filas de la imagen): en
+    pantalla crece en sentido HORARIO. ImageJ mide los angulos de una seleccion
+    de linea recta en sentido ANTIHORARIO en pantalla (y hacia arriba), del
+    punto inicial al final. Por eso, para una misma direccion:
+        phi = -angulo_ImageJ   (mod 360)
+    - Desde un par particula-reflejo (lo mas directo): el segmento que une una
+      particula con su reflejo es perpendicular a la linea del espejo (p' - p es
+      paralelo a la normal), y va del reflejo hacia la particula en la direccion
+      +m. Trazar la linea en ImageJ DEL REFLEJO A LA PARTICULA y usar
+      phi = -angulo (mod 360).
+    - Desde la linea del espejo: la linea esta a phi + 90 grados, asi que con su
+      angulo en ImageJ, phi = -angulo - 90 o -angulo + 90 (mod 360); de los dos,
+      el que apunta hacia la muestra.
+    Ejemplo: la linea reflejo -> particula mide 30 grados en ImageJ (hacia arriba
+    a la derecha en pantalla) -> phi = -30 = 330 grados, m = (0.866, -0.500). La
+    linea del espejo mide entonces -60 (o 120) grados en ImageJ, y
+    -(-60) - 90 = 330 coincide (la otra opcion, 150, apunta lejos de la muestra).
+    Para espejo_punto_px: este simulador centra el pixel (fila i, columna j) en
+    (x = j, y = i); ImageJ con coordenadas subpixel pone el pixel j en
+    [j, j + 1), asi que hay que restar 0.5 px a x e y (medir en px, no en um)."""
 
     # --- optica ---
     NA: float = 1.1
@@ -72,7 +96,7 @@ class Config:
     # --- espejo (vista reflejada; geometria y convencion de signos en espejo.py) ---
     usar_espejo: bool = False           # False: salidas identicas a las de antes del espejo
     angulo_espejo_deg: float = 53.0     # angulo espejo-cubreobjetos, dentro de la cuna de la muestra, en (0, 180)
-    orientacion_espejo_deg: float = 0.0  # azimut [grados] de la direccion de la linea del espejo hacia la
+    orientacion_espejo_deg: float = 0.0  # (ver docstring: desde ImageJ) azimut [grados] de la direccion de la linea del espejo hacia la
                                          # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el cubreobjetos
     ratio_reflejo: float = 0.8          # fotones del reflejo / fotones del real, en (0, 1]
