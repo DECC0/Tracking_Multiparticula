@@ -11,3 +11,4 @@ from .fondo import generar_fondo
 from .ruido import aplicar_camara
 from .io_gt import COLUMNAS_GT, nombre_video, guardar_video, guardar_gt
 from .diagnosticos import energia_encerrada, snr_pico, imprimir_snr_pico
+from .generacion import generar_video, generar_dataset

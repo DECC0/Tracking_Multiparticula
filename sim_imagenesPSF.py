@@ -46,45 +46,7 @@ from simulador_psf.fondo import generar_fondo
 from simulador_psf.ruido import aplicar_camara
 from simulador_psf.io_gt import nombre_video, guardar_video, guardar_gt
 from simulador_psf.diagnosticos import energia_encerrada, snr_pico, imprimir_snr_pico
-
-
-# ----------------------------------------------------------------------------
-# Generacion
-# ----------------------------------------------------------------------------
-
-def generar_video(cfg: Config, banco, rng, video_id):
-    # randomizacion agresiva por video: numero de emisores, brillo, D y fondo
-    n = muestrear_n_emisores(cfg, rng)
-    tray, D = generar_trayectorias(cfg, n, rng)
-    Ns = muestrear_fotones(cfg, n, rng)                          # fijo por particula en todo el video
-    fondo = generar_fondo(cfg, rng)                              # fijo en el video
-
-    video = np.zeros((cfg.n_frames, cfg.H, cfg.W), dtype=np.uint16)
-    filas = []
-    for t in range(cfg.n_frames):
-        img = np.zeros((cfg.H, cfg.W))
-        for p in range(n):
-            x, y, z = tray[p, t]
-            banco.colocar(img, x, y, z, Ns[p])
-            filas.append(dict(video_id=video_id, frame=t, particle_id=p,
-                              x_px=x, y_px=y, z_nm=z, photons=Ns[p],
-                              D_um2_s=D[p],
-                              en_fov=bool(0 <= x < cfg.W and 0 <= y < cfg.H)))
-        video[t] = aplicar_camara(img + fondo, cfg, rng)          # ruido nuevo por frame
-    return video, filas
-
-
-def generar_dataset(cfg: Config, banco=None, carpeta="videos"):
-    rng = np.random.default_rng(cfg.seed)
-    banco = banco or BancoPSF(cfg)
-    Path(carpeta).mkdir(exist_ok=True)
-
-    filas = []
-    for v in range(cfg.n_videos):
-        video, f = generar_video(cfg, banco, rng, v)
-        guardar_video(Path(carpeta) / nombre_video(v), video, cfg.dt_s)
-        filas += f
-    return pd.DataFrame(filas)
+from simulador_psf.generacion import generar_video, generar_dataset
 
 
 # ----------------------------------------------------------------------------
