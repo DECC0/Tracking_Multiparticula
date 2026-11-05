@@ -69,7 +69,9 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   optico, `alpha = 90 - beta`), `orientacion_espejo_deg` (azimut, de +x hacia
   +y, de la direccion desde la linea del espejo hacia la muestra),
   `espejo_punto_px` (un punto de esa linea sobre el cubreobjetos) y
-  `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8).
+  `ratio_reflejo` (fotones del reflejo / del real, en (0, 1], 0.8) y
+  `z_cubreobjetos_nm` (z del cubreobjetos respecto del plano focal: fija la
+  altura del foco sobre el cubreobjetos; None -> `z_rango_nm[0]`).
 - Convencion de signos: `SIGNO_Z` (+z lejos del objetivo, cubreobjetos en
   `z_rango_nm[0]`) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
   sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.

@@ -161,6 +161,35 @@ def test_plegar_lleva_al_dominio_y_respeta_puntos_dentro():
         assert np.array_equal(r[dentro], q[dentro])               # lo que ya estaba dentro no se toca
 
 
+def test_z_cubreobjetos():
+    """None -> la pared del lado del objetivo (z_rango_nm[0]); un valor propio mueve
+    p0 (y el foco respecto del cubreobjetos) y el caso de 45 grados sigue valiendo
+    con z0 = z_cubreobjetos_nm; no puede dejar reales dentro del vidrio."""
+    assert SIGNO_Z == 1, "el test supone la convencion por defecto"
+    assert Espejo(cfg_espejo()).z_cubre == BASE.get("z_rango_nm", Config().z_rango_nm)[0]
+    for zc in (-800.0, -2500.0):
+        cfg = cfg_espejo(angulo_espejo_deg=45.0, z_cubreobjetos_nm=zc)
+        e, px, x0 = Espejo(cfg), cfg.pixel_nm, cfg.espejo_punto_px[0]
+        assert e.p0[2] == zc == e.z_cubre
+        q = puntos()
+        qr = e.reflejar(q)
+        assert np.allclose(qr[:, 2] - zc, (q[:, 0] - x0) * px, atol=1e-6)
+        assert np.allclose((qr[:, 0] - x0) * px, q[:, 2] - zc, atol=1e-6)
+        lo, hi = rango_banco_nm(cfg)
+        assert lo <= cfg.z_rango_nm[0] and hi >= rango_z_reflejo(cfg)[1] - 1e-6
+    # foco mas alto sobre el cubreobjetos -> el pie del espejo esta mas lejos de los reales
+    tray, _ = generar_trayectorias(cfg_espejo(z_cubreobjetos_nm=-2500.0, n_frames=100), 100,
+                                   np.random.default_rng(0))
+    e = Espejo(cfg_espejo(z_cubreobjetos_nm=-2500.0))
+    assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all()
+    try:
+        Espejo(cfg_espejo(z_cubreobjetos_nm=-500.0))           # por encima de z_rango_nm[0] = -800
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("z_cubreobjetos_nm dentro del rango de los reales no lanzo ValueError")
+
+
 def test_config_valida():
     for kw in (dict(angulo_espejo_deg=0.0), dict(angulo_espejo_deg=180.0), dict(angulo_espejo_deg=-5.0),
                dict(ratio_reflejo=0.0), dict(ratio_reflejo=1.01), dict(espejo_punto_px=(1.0,)),
@@ -322,7 +351,7 @@ def test_espejo_apagado_ignora_sus_parametros():
     """Con usar_espejo=False los demas parametros del espejo no cambian nada."""
     cfg_a = Config(**BASE)
     cfg_b = Config(**{**BASE, "angulo_espejo_deg": 120.0, "orientacion_espejo_deg": 33.0,
-                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1})
+                      "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_cubreobjetos_nm": -3000.0})
     va, fa = generar_video(cfg_a, BancoPSF(cfg_a), np.random.default_rng(4), 0)
     vb, fb = generar_video(cfg_b, BancoPSF(cfg_b), np.random.default_rng(4), 0)
     assert np.array_equal(va, vb) and fa == fb

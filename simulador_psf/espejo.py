@@ -58,7 +58,12 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
     t = (-sin phi, cos phi, 0), es decir a phi + 90 grados. Un solo numero
     fija la linea y el lado de la muestra.
   - P = espejo_punto_px = (x0, y0): un punto de la linea del espejo sobre el
-    cubreobjetos; p0 = (x0 px, y0 px, z del cubreobjetos) en nm.
+    cubreobjetos; p0 = (x0 px, y0 px, z0) en nm, con z0 = z_cubreobjetos_nm, la
+    z del cubreobjetos respecto del plano focal (z = 0). Con None, z0 es la
+    pared en z de los reales del lado del objetivo (z_rango_nm[0] con
+    SIGNO_Z = +1). Moverlo mueve el foco respecto del cubreobjetos (y del pie
+    del espejo) sin tocar las paredes en z de los reales, que deben quedar
+    todas del lado de la muestra del cubreobjetos.
   - Con arriba = SIGNO_Z * z_hat (direccion que se aleja del objetivo):
         m = (cos phi, sin phi, 0)
         n = sin(alpha) m - SIGNO_INCLINACION cos(alpha) arriba
@@ -116,6 +121,7 @@ class Espejo:
         arriba   direccion que se aleja del objetivo (SIGNO_Z * z_hat)
         n        normal unitaria del espejo, hacia la muestra
         p0       punto del plano del espejo sobre el cubreobjetos [nm]
+        z_cubre  z del cubreobjetos respecto del plano focal [nm] (= p0[2])
         R        matriz de reflexion
         z_lo, z_hi  paredes en z de los emisores reales (cfg.z_rango_nm)"""
 
@@ -129,7 +135,16 @@ class Espejo:
         self.n = np.sin(a) * self.m - SIGNO_INCLINACION * np.cos(a) * self.arriba
         self.R = matriz_R(self.n)
         self.z_lo, self.z_hi = cfg.z_rango_nm
-        z_cubre = self.z_lo if SIGNO_Z > 0 else self.z_hi       # el cubreobjetos es la pared del lado del objetivo
+        z_cubre = cfg.z_cubreobjetos_nm
+        if z_cubre is None:                                     # la pared en z del lado del objetivo
+            z_cubre = self.z_lo if SIGNO_Z > 0 else self.z_hi
+        # ningun real puede estar dentro del vidrio: el cubreobjetos va del lado del objetivo de las paredes
+        pared = self.z_lo if SIGNO_Z > 0 else self.z_hi         # pared de los reales del lado del objetivo
+        if SIGNO_Z * (pared - z_cubre) < 0:                     # el cubreobjetos quedaria mas lejos del objetivo
+            raise ValueError(f"z_cubreobjetos_nm = {z_cubre} deja reales dentro del cubreobjetos: con SIGNO_Z = "
+                             f"{SIGNO_Z} debe ser {'<=' if SIGNO_Z > 0 else '>='} {pared} "
+                             f"(z_rango_nm = {cfg.z_rango_nm})")
+        self.z_cubre = float(z_cubre)
         x0, y0 = cfg.espejo_punto_px
         self.p0 = np.array([x0 * self.pixel_nm, y0 * self.pixel_nm, z_cubre])
 

@@ -147,7 +147,7 @@ SG = 64                                      # lado de cada panel de la galeria 
 base = Config(z_banco_nm=(-2100.0, 4200.0))
 bc = BancoPSF(base)
 px = base.pixel_nm
-z_cubre = base.z_rango_nm[0] if SIGNO_Z > 0 else base.z_rango_nm[1]
+z_cubre = Espejo(Config(usar_espejo=True, z_banco_nm=base.z_banco_nm)).z_cubre
 rng = np.random.default_rng(0)
 al = np.radians(ALPHA)
 

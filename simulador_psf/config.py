@@ -76,6 +76,10 @@ class Config:
                                          # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el cubreobjetos
     ratio_reflejo: float = 0.8          # fotones del reflejo / fotones del real, en (0, 1]
+    z_cubreobjetos_nm: float = None     # z del cubreobjetos respecto del plano focal (z = 0) [nm]; fija la
+                                        # altura del foco sobre el cubreobjetos. None -> z_rango_nm[0], la pared
+                                        # del lado del objetivo (con espejo.SIGNO_Z = -1, z_rango_nm[1]).
+                                        # Debe quedar del lado del objetivo de todos los reales (Espejo lo valida)
     z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
                                         # automaticamente con el espejo para cubrir las z de los reflejos
 
@@ -125,5 +129,6 @@ class Config:
         if self.usar_espejo:        # sin espejo el texto queda como antes (la regresion lo compara)
             texto += (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
                       f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
-                      f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}")
+                      f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
+                      f"cubreobjetos z = {'z_rango_nm' if self.z_cubreobjetos_nm is None else f'{self.z_cubreobjetos_nm:.0f} nm'}")
         return texto
