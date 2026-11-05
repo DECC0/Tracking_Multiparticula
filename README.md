@@ -87,6 +87,27 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la
   misma fila (`particle_id` vincula real y reflejo).
 
+**Signos pendientes de verificar.** En los datos reales la particula es la
+mancha mas brillante y con anillos, y el reflejo la mas tenue, compacta y con
+lobulos. Con los signos actuales (`SIGNO_Z = SIGNO_INCLINACION = +1`) el
+reflejo queda en +z respecto de la particula (z' - z = 2 d cos(alpha) *
+SIGNO_INCLINACION * SIGNO_Z), y en la galeria de `checks/fig_espejo_comparacion.png`
+la PSF esferica es compacta en -z y gana anillos hacia +z: el reflejo saldria
+con mas anillos que la particula, al reves de lo observado, y mover el foco
+(`z_cubreobjetos_nm`) no lo arregla. Causas posibles y su bandera:
+
+- El lado del foco donde la PSF del codigo tiene anillos es el opuesto al
+  fisico (la fase `k z cos(theta)` no esta atada a una direccion fisica):
+  `SIGNO_Z = -1`. Se decide con un z-stack de una bead (de que lado del foco
+  aparecen los anillos al alejarla del objetivo).
+- El espejo se inclina alejandose de la muestra, no sobre ella:
+  `SIGNO_INCLINACION = -1` (equivale a `alpha -> 180 - alpha`). Se decide con
+  la geometria del montaje.
+- Cambiar las dos banderas a la vez deja el signo de z' - z igual: la
+  discrepancia pide cambiar exactamente una. Si ninguna basta, la causa esta
+  fuera del modelo (abajo): los lobulos, por ejemplo, no salen de una PSF de
+  simetria circular y apuntan al truncamiento de la pupila.
+
 Supuestos (no modelados): espejo plano ideal sin aberraciones ni
 polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y
 coleccion); el reflejo es una fuente puntual vista por la misma optica, sin
