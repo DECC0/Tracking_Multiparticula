@@ -43,22 +43,12 @@ from simulador_psf.config import Config
 from simulador_psf.posiciones import muestrear_n_emisores, posiciones_iniciales, muestrear_fotones
 from simulador_psf.browniano import reflejar, generar_trayectorias
 from simulador_psf.optica import fase_esferica, BancoPSF
+from simulador_psf.fondo import generar_fondo
 
 
 # ----------------------------------------------------------------------------
 # Fondo y camara
 # ----------------------------------------------------------------------------
-
-def generar_fondo(cfg: Config, rng):
-    base = rng.uniform(*cfg.fondo_rango)
-    if not cfg.fondo_no_uniforme:
-        return np.full((cfg.H, cfg.W), base)
-    pico = rng.uniform(*cfg.fondo_rango)
-    x0, y0 = rng.uniform(0.3, 0.7) * cfg.W, rng.uniform(0.3, 0.7) * cfg.H
-    sx, sy = rng.uniform(0.3, 0.8) * cfg.W, rng.uniform(0.3, 0.8) * cfg.H
-    yy, xx = np.mgrid[0:cfg.H, 0:cfg.W]
-    return base + pico * np.exp(-(((xx-x0)/sx)**2 + ((yy-y0)/sy)**2) / 2.0)
-
 
 def aplicar_camara(fotones, cfg: Config, rng):
     """Poisson -> ganancia -> ruido de lectura -> offset -> uint16."""
