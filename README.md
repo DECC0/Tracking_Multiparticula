@@ -64,12 +64,14 @@ trayectorias reales; en cada frame el reflejo es
 `R = I - 2 n n^T` y nunca tiene browniano propio. El espejo no consume el rng
 y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
 
-- El montaje no tiene cubreobjetos: el espejo se define respecto del plano
-  focal, y `z_rango_nm` solo delimita el volumen simulado (el espejo lo corta a
-  cualquier altura).
+- Montaje (grupo de Biofisica): sin cubreobjetos, celulas pegadas al espejo y
+  el espejo detras de la muestra vista desde el objetivo. El espejo se define
+  respecto del plano focal, y `z_rango_nm` solo delimita el volumen simulado
+  (el espejo lo corta a cualquier altura).
 - Parametros: `angulo_espejo_deg` (angulo espejo-plano focal dentro de la
-  cuna de la muestra, en (0, 180); 53 por defecto; si se mide desde el eje
-  optico, `alpha = 90 - beta`), `orientacion_espejo_deg` (azimut, de +x hacia
+  cuna de la muestra, en (0, 180); medido desde el plano focal; si se mide
+  desde el eje optico (beta = 55.6 grados en el montaje actual),
+  `alpha = 90 - beta`, y 34.4 es el valor por defecto), `orientacion_espejo_deg` (azimut, de +x hacia
   +y, de la direccion desde la linea del espejo hacia la muestra),
   `espejo_punto_px` (un punto de esa linea en el plano de referencia),
   `z_ref_espejo_nm` (z del plano de referencia respecto del foco; 0 por
@@ -86,7 +88,7 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
 - El reflejo se renderiza con la misma optica en su (x', y', z') con
   `ratio_reflejo * photons`; el ruido se aplica una vez sobre la suma. El banco
   de PSF se amplia solo (`z_banco_nm=None`) para cubrir las z' de la caja de
-  posiciones iniciales (a 53 grados con el FOV de 64 px: [-800, 4680] nm, 275
+  posiciones iniciales (a 34.4 grados con el FOV de 64 px: [-800, 4620] nm, 272
   planos); un reflejo que aun asi queda fuera no se renderiza.
 - Ground truth: con espejo se agregan `x_reflejo_px, y_reflejo_px,
   z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la

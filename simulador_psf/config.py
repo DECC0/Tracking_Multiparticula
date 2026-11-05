@@ -95,7 +95,9 @@ class Config:
 
     # --- espejo (vista reflejada; geometria y convencion de signos en espejo.py) ---
     usar_espejo: bool = False           # False: salidas identicas a las de antes del espejo
-    angulo_espejo_deg: float = 53.0     # angulo espejo-plano focal, dentro de la cuna de la muestra, en (0, 180)
+    angulo_espejo_deg: float = 34.4     # alpha [grados] en (0, 180), dentro de la cuna de la muestra: medido
+                                        # desde el plano focal; si se mide desde el eje optico (beta = 55.6
+                                        # en el montaje actual), alpha = 90 - beta
     orientacion_espejo_deg: float = 0.0  # (ver docstring: desde ImageJ) azimut [grados] de la direccion de la linea del espejo hacia la
                                          # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia

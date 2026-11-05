@@ -5,13 +5,13 @@
                               unidos, y la trayectoria de un par real <-> reflejo
                               (desde la camara, vista lateral y z vs frame).
   fig_espejo_comparacion.png  para comparar con datos reales (particulas puntuales):
-                              - un emisor y su reflejo con alpha = 53 grados a
+                              - un emisor y su reflejo con el alpha por defecto (34.4 grados) a
                                 d = 0.5, 1, 2 y 3 um del espejo y a dos z respecto
                                 del plano focal, SNR alta (20000 fotones, fondo
                                 5 fot/px) y contraste fijo, con la separacion lateral
                                 2 d sin(alpha) y la diferencia de z 2 d cos(alpha);
                               - una galeria de la PSF esferica sola en z = -2.0 ...
-                                +3.0 um (respecto del plano focal), mismo contraste,
+                                +5.5 um (respecto del plano focal), mismo contraste,
                                 para estimar z de la particula y de su reflejo y de
                                 ahi alpha = atan(dlat / dz) y los signos de
                                 SIGNO_Z / SIGNO_INCLINACION (espejo.py);
@@ -87,7 +87,7 @@ for k, zp in enumerate(cfg.z_rango_nm):
     linea_espejo(A, e, cfg, zp, color="yellow", lw=0.8, ls=":",
                  label="espejo en z = z_rango_nm (paredes de los reales)" if k == 0 else None)
 A.set_xlim(-0.5, cfg.W - 0.5); A.set_ylim(cfg.H - 0.5, -0.5)
-A.set_title(f"frame 0 (alpha {cfg.angulo_espejo_deg:.0f} deg, ratio {cfg.ratio_reflejo}), contraste fijo", fontsize=10)
+A.set_title(f"frame 0 (alpha {cfg.angulo_espejo_deg:.1f} deg, ratio {cfg.ratio_reflejo}), contraste fijo", fontsize=10)
 A.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.07), ncol=2)   # fuera de la imagen
 plt.colorbar(im, ax=A, fraction=0.046, label="ADU")
 
@@ -135,15 +135,15 @@ plt.close(fig)
 print("guardada fig_espejo_frame.png")
 
 # =============================== figura 2: comparacion con datos reales ===============================
-ALPHA = 53.0
+ALPHA = Config.angulo_espejo_deg
 DS_UM = (0.5, 1.0, 2.0, 3.0)                 # distancia del emisor al plano del espejo
 ZS_UM = (-0.4, 0.4)                          # z del emisor respecto del plano focal
 N_FOT, FONDO, RATIO = 20000.0, 5.0, 0.8
-GALERIA_UM = (-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+GALERIA_UM = tuple(np.arange(-2.0, 5.51, 0.5))   # hasta la z del reflejo mas alto (+0.4 + 2*3 cos 34.4 = 5.35 um)
 S = 112                                      # lado de cada panel del par [px]
 SG = 64                                      # lado de cada panel de la galeria [px]
 
-base = Config(z_banco_nm=(-2100.0, 4200.0))
+base = Config(z_banco_nm=(-2100.0, 5600.0))
 bc = BancoPSF(base)
 px = base.pixel_nm
 rng = np.random.default_rng(0)
@@ -227,18 +227,18 @@ if args.real:
         A.imshow(real, cmap="gray", vmin=rmin, vmax=rmax, extent=(-hx, hx, hy, -hy))
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
         A.set_title(f"real: {os.path.basename(args.real)}\n{args.pixel_nm:.1f} nm/px, contraste propio", fontsize=8)
-sub_top.suptitle(f"emisor (cian) y reflejo (naranja), alpha = {ALPHA:.0f} deg, {N_FOT:.0f} fotones, "
+sub_top.suptitle(f"emisor (cian) y reflejo (naranja), alpha = {ALPHA:.1f} deg, {N_FOT:.0f} fotones, "
                  f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo",
                  fontsize=10)
 
 axg = sub_bot.subplots(1, len(GALERIA_UM))
 for A, z, gimg in zip(axg, GALERIA_UM, galeria):
     A.imshow(gimg, cmap="gray", vmin=gmin, vmax=gmax, extent=ext(SG))
-    A.set_title(f"z = {z:+.1f} um", fontsize=9)
+    A.set_title(f"{z:+.1f}", fontsize=8)
     A.set_xticks([]); A.set_yticks([])
 lado = "lejos del objetivo" if SIGNO_Z > 0 else "hacia el objetivo"
 sub_bot.suptitle(f"PSF esferica sola (mismo contraste, {N_FOT:.0f} fotones, panel de "
-                 f"{SG * px / 1000:.1f} um), z respecto del plano focal:   "
+                 f"{SG * px / 1000:.1f} um), z [um] respecto del plano focal:   "
                  f"<-  -z  hacia el objetivo   |   +z  {lado}  ->", fontsize=10)
 fig.savefig(os.path.join(OUT, "fig_espejo_comparacion.png"), dpi=120)
 plt.close(fig)
