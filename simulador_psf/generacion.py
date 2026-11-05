@@ -20,7 +20,16 @@ fondo_rango, fotones_rango ni read_noise):
     7. por frame: Poisson y lectura   ruido.aplicar_camara
 
 Con cfg.usar_espejo se agrega en cada frame el reflejo de cada emisor
-(espejo.py), sin consumir el rng: el orden de arriba no cambia.
+(espejo.py), sin consumir el rng: el orden de arriba no cambia, y al llegar
+al paso 7 el rng esta en el mismo estado con y sin espejo (mismos n, D,
+fotones y fondo). Desde ahi ya no: rng.poisson consume una cantidad de
+numeros que depende de la imagen, y los reflejos cambian la imagen. Por eso,
+en un dataset de varios videos (rng compartido en secuencia), el video 0
+tiene con y sin espejo los mismos n, D, fotones y fondo, pero los videos
+siguientes difieren por completo entre espejo encendido y apagado (igual que
+pasaria cambiando fotones_rango). Ademas, con espejo las trayectorias ya
+difieren desde el video 0: las posiciones iniciales detras del espejo se
+pliegan y el browniano se integra paso a paso (browniano.py).
 """
 
 from pathlib import Path
