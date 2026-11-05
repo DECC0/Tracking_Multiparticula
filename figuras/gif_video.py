@@ -1,5 +1,5 @@
 """
-GIF (+ tif y ground truth) de un video de sim_imagenesPSF.py.
+GIF (+ tif y ground truth) de un video de simulador_psf.
 
 Por defecto reproduce el video de la seed 89 de fig_cuadros_gt a 256x256
 (video_fig_cuadros_gt_b_256). Cambiar --fondo, --fotones o --read-noise no
@@ -25,7 +25,7 @@ import pandas as pd
 import tifffile
 from PIL import Image
 
-from sim_imagenesPSF import Config, BancoPSF, generar_video
+from simulador_psf import Config, BancoPSF, generar_video
 
 base = Config()
 ap = argparse.ArgumentParser()

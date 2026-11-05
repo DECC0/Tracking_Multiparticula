@@ -1,5 +1,5 @@
 """
-Figuras para el documento a partir de sim_imagenesPSF.py.
+Figuras para el documento a partir de simulador_psf.
 
 Genera (PNG 300 dpi + PDF vectorial) en figuras/:
   - fig_banco_psf_montaje : banco de PSF en z, sin mascara vs esferica (Z4^0)
@@ -25,8 +25,8 @@ from matplotlib.colors import LogNorm, TwoSlopeNorm
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from sim_imagenesPSF import (Config, BancoPSF, generar_video, energia_encerrada,
-                             generar_trayectorias, generar_fondo, muestrear_fotones)
+from simulador_psf import (Config, BancoPSF, generar_video, energia_encerrada,
+                           generar_trayectorias, generar_fondo, muestrear_fotones)
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 # figuras a generar: todas por defecto, o las pasadas por argumento
@@ -234,7 +234,7 @@ def fondo_del_video(cfg):
 
 
 def snr_emisores(g, fondo, cfg):
-    """SNR pico de cada emisor (misma formula que snr_pico de sim_imagenesPSF),
+    """SNR pico de cada emisor (misma formula que snr_pico de simulador_psf.diagnosticos),
     con p_max en su z y el fondo local en su pixel."""
     p_max = np.array([banco_esf.psf_en_z(z).max() for z in g.z_nm])
     iy = np.clip(g.y_px.astype(int), 0, cfg.H - 1)

@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sim_imagenesPSF import Config, generar_trayectorias
+from simulador_psf import Config, generar_trayectorias
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 cfg = Config(n_frames=200)

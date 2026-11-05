@@ -1,6 +1,6 @@
 """
 Checks de la PSF esferica (Config default ahora es mascara='esferica')
-en sim_imagenesPSF.py. Genera:
+en simulador_psf. Genera:
   - reporte de texto (energia recortada, compacidad vs z)
   - fig_psf_montage.png     : PSF a distintos z
   - fig_psf_metrics_vs_z.png: pico relativo y energia encerrada vs z
@@ -14,7 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from sim_imagenesPSF import Config, BancoPSF, angulo_lobulo, energia_encerrada
+from simulador_psf import Config, BancoPSF, energia_encerrada
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 

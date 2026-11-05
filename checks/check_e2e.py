@@ -1,7 +1,7 @@
 """Check 5: consistencia ground truth <-> imagen generada (end-to-end),
-usando generar_video de sim_imagenesPSF.py (mascara='esferica' por default).
+usando generar_video de simulador_psf (mascara='esferica' por default).
 
-API real de sim_imagenesPSF.py (video con difusion 3D, SIN fotofisica on/off):
+API real de simulador_psf (video con difusion 3D, SIN fotofisica on/off):
   generar_video(cfg, banco, rng, video_id) -> video, filas
   filas: video_id, frame, particle_id, x_px, y_px, z_nm, photons, D_um2_s, en_fov
 """
@@ -13,7 +13,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sim_imagenesPSF import Config, BancoPSF, generar_video, generar_fondo, generar_trayectorias
+from simulador_psf import Config, BancoPSF, generar_video, generar_fondo, generar_trayectorias
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 

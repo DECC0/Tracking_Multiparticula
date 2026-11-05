@@ -1,5 +1,5 @@
 """
-Corre todos los checks de sim_imagenesPSF.py en orden y da un resumen final.
+Corre todos los checks de simulador_psf en orden y da un resumen final.
 
 Uso:
     ~/miniforge3/envs/tesis/bin/python checks/run_all_checks.py

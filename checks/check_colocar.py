@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sim_imagenesPSF import Config, BancoPSF
+from simulador_psf import Config, BancoPSF
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 
