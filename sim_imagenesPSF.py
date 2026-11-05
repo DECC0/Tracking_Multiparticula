@@ -33,86 +33,13 @@ Salidas:
                           photons, D_um2_s, en_fov
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import tifffile
 
-
-# ----------------------------------------------------------------------------
-
-@dataclass
-class Config:
-    # --- optica ---
-    NA: float = 1.1
-    n_medio: float = 1.333
-    lambda_nm: float = 530.0
-    pixel_camara_um: float = 6.5
-    magnificacion: float = 66.0
-
-    # --- video ---
-    H: int = 64
-    W: int = 64
-    n_videos: int = 10
-    n_frames: int = 50
-    dt_s: float = 0.1               # 10 Hz, como en la tesis
-
-    # --- camara ---
-    gain: float = 0.46              # e- por ADU; valor tipico de la Orca Flash 4.0 V3, consistente
-                                    # con el ruido medido en el fondo; pendiente de confirmar
-    offset: float = 99.0            # ADU, medido en la zona sin luz del sensor
-    read_noise: float = 3.26        # ADU rms (se suma despues de e/gain) = 1.5 e- rms / 0.46 e-/ADU
-
-    # --- PSF (numerico) ---
-    mascara: str = "esferica"       # "corkscrew", "esferica" o "ninguna"
-    anillos_corkscrew: int = 3      # N en la Ec. 8.1
-    amp_esferica: float = 1.5 * np.pi  # amplitud maxima de Z4^0 [rad] (tesis: 1.5 pi)
-    M_pupila: int = 256             # rejilla FFT
-    K_psf: int = None               # recorte de la PSF [px]; None -> 48, o 128 para "esferica"
-    z_paso_nm: float = 20.0         # resolucion del banco precalculado
-    blur_extra_px: float = 0.6      # tamano finito del emisor + aberraciones
-
-    # --- muestra (rangos: se muestrean por video / por particula) ---
-    n_emisores_rango: tuple = (1, 12)
-    z_rango_nm: tuple = (-800.0, 800.0)
-    fotones_rango: tuple = (1000.0, 30000.0)  # calibrado con muNS reales (microscopio de Alex): offset ~99 ADU,
-                                              # ganancia asumida ~0.46 e-/ADU, fondo ~15 fotones/px, particula
-                                              # tenue ~1000-2600 fotones, p_max experimental ~0.010-0.019
-    muestreo_fotones: str = "log"           # "log" (log-uniforme en fotones_rango) o "uniforme" (comportamiento anterior)
-    fondo_rango: tuple = (5.0, 40.0)
-    fondo_no_uniforme: bool = True
-    D_rango_um2_s: tuple = (0.01, 0.3)  # coeficiente de difusion por particula
-
-    seed: int = 0
-
-    def __post_init__(self):
-        # la esferica deja un halo ancho: con 48 px se pierde ~25% de la energia
-        if self.K_psf is None:
-            self.K_psf = 128 if self.mascara == "esferica" else 48
-
-    @property
-    def pixel_nm(self):
-        return self.pixel_camara_um * 1000.0 / self.magnificacion
-
-    @property
-    def sigma0_nm(self):
-        return 0.21 * self.lambda_nm / self.NA
-
-    @property
-    def dof_nm(self):
-        return self.n_medio * self.lambda_nm / self.NA ** 2
-
-    def resumen(self):
-        px, nyq = self.pixel_nm, self.lambda_nm / (4 * self.NA)
-        paso_max = np.sqrt(2 * self.D_rango_um2_s[1] * self.dt_s) * 1000.0
-        return (f"pixel en muestra : {px:.2f} nm\n"
-                f"sigma0 en foco   : {self.sigma0_nm:.1f} nm = {self.sigma0_nm/px:.2f} px\n"
-                f"Nyquist (l/4NA)  : {nyq:.1f} nm -> {nyq/px:.2f}x "
-                f"({'OK' if px < nyq else 'SUBMUESTREADO'})\n"
-                f"DOF              : {self.dof_nm:.0f} nm\n"
-                f"FOV              : {self.W*px/1000:.2f} x {self.H*px/1000:.2f} um\n"
-                f"paso rms max/eje : {paso_max:.0f} nm = {paso_max/px:.2f} px por frame")
+from simulador_psf.config import Config
 
 
 # ----------------------------------------------------------------------------
