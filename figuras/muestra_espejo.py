@@ -6,8 +6,9 @@ Config (el video 0 de generar_dataset con esa semilla).
 Escribe en --salida (por defecto muestra_espejo/ en el directorio actual):
     frame_000_camara.png        frame 0 tal como lo ve la camara (con ruido), sin marcas
     frame_000_marcadores.png    el mismo frame con reales (circulos cian) y reflejos
-                                (cuadrados naranja) unidos por una linea fina, y la
-                                linea del espejo en el cubreobjetos
+                                (cuadrados naranja) unidos por una linea fina, la
+                                base del espejo (contacto con el cubreobjetos) en linea
+                                discontinua, y una leyenda en una franja debajo de la imagen
     video.gif / video_marcadores.gif   toda la secuencia, sin y con marcas
     video.tif                   el video en ADU (uint16, ImageJ TYX)
     ground_truth.csv            GT con las columnas del reflejo
@@ -30,7 +31,7 @@ from dataclasses import asdict
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from simulador_psf import Config, BancoPSF, Espejo, generar_video, guardar_video, guardar_gt
 from simulador_psf.espejo import SIGNO_Z, SIGNO_INCLINACION
@@ -76,18 +77,52 @@ seg = espejo.p0 + np.outer([-L, L], espejo.t)
 linea = [img_px(*(seg[k, :2] / cfg.pixel_nm)) for k in range(2)]
 
 
+def discontinua(dr, a, b, fill, largo=8, hueco=6, width=1):
+    """Linea discontinua de a a b (PIL no las tiene)."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    L = np.hypot(*(b - a))
+    u = (b - a) / L
+    for s in np.arange(0.0, L, largo + hueco):
+        dr.line([tuple(a + s * u), tuple(a + min(s + largo, L) * u)], fill=fill, width=width)
+
+
+AMARILLO, CIAN, NARANJA, ROJO, GRIS = (255, 230, 0), (0, 255, 255), (255, 150, 0), (255, 0, 0), (200, 200, 200)
+FUENTE = ImageFont.load_default(size=13)
+FRANJA = 44                                                     # alto de la leyenda bajo la imagen [px]
+
+
+def leyenda(im):
+    """Agrega debajo de im una franja negra con la leyenda (no tapa la imagen)."""
+    out = Image.new("RGB", (im.width, im.height + FRANJA), (0, 0, 0))
+    out.paste(im, (0, 0))
+    dr = ImageDraw.Draw(out)
+    y1, y2 = im.height + 6, im.height + 25
+    r = 5
+    dr.ellipse([8 - r, y1 + 7 - r, 8 + r, y1 + 7 + r], outline=CIAN, width=2)
+    dr.text((18, y1), "real", fill=(255, 255, 255), font=FUENTE)
+    dr.rectangle([68 - r, y1 + 7 - r, 68 + r, y1 + 7 + r], outline=NARANJA, width=2)
+    dr.text((78, y1), "reflejo", fill=(255, 255, 255), font=FUENTE)
+    dr.rectangle([148 - r, y1 + 7 - r, 148 + r, y1 + 7 + r], outline=ROJO, width=2)
+    dr.text((158, y1), "reflejo no renderizado", fill=(255, 255, 255), font=FUENTE)
+    dr.line([(4, y2 + 7), (24, y2 + 7)], fill=GRIS, width=1)
+    dr.text((30, y2), "vinculo", fill=(255, 255, 255), font=FUENTE)
+    discontinua(dr, (98, y2 + 7), (128, y2 + 7), AMARILLO, largo=6, hueco=4)
+    dr.text((134, y2), "base del espejo (contacto con el cubreobjetos)", fill=(255, 255, 255), font=FUENTE)
+    return out
+
+
 def con_marcas(frame, t):
     im = a_rgb(frame)
     dr = ImageDraw.Draw(im)
-    dr.line(linea, fill=(255, 230, 0), width=1)
+    discontinua(dr, linea[0], linea[1], AMARILLO)
     r = 0.45 * Z
     for f in gt[gt.frame == t].itertuples():
         a, b = img_px(f.x_px, f.y_px), img_px(f.x_reflejo_px, f.y_reflejo_px)
-        dr.line([a, b], fill=(200, 200, 200), width=1)
-        dr.ellipse([a[0] - r, a[1] - r, a[0] + r, a[1] + r], outline=(0, 255, 255), width=2)
-        color = (255, 150, 0) if f.reflejo_en_banco else (255, 0, 0)   # rojo: reflejo no renderizado
+        dr.line([a, b], fill=GRIS, width=1)
+        dr.ellipse([a[0] - r, a[1] - r, a[0] + r, a[1] + r], outline=CIAN, width=2)
+        color = NARANJA if f.reflejo_en_banco else ROJO               # rojo: reflejo no renderizado
         dr.rectangle([b[0] - r, b[1] - r, b[0] + r, b[1] + r], outline=color, width=2)
-    return im
+    return leyenda(im)
 
 
 a_rgb(video[0]).save(sal / "frame_000_camara.png")
@@ -125,7 +160,8 @@ lineas = [
     f"contraste fijo (todos los PNG y GIF): negro = {lo:.0f} ADU, blanco = {hi:.0f} ADU "
     f"(percentiles {args.percentiles[0]}, {args.percentiles[1]} del video); zoom x{Z}",
     "marcas: circulo cian = real, cuadrado naranja = reflejo (rojo si no se renderizo: fuera del banco),",
-    "        linea gris = vinculo real-reflejo, linea amarilla = espejo en el cubreobjetos",
+    "        linea gris = vinculo real-reflejo, linea amarilla discontinua = base del espejo",
+    "        (contacto con el cubreobjetos); leyenda en una franja bajo la imagen",
     "",
     "Config completa:",
     *[f"  {k} = {v}" for k, v in asdict(cfg).items()],

@@ -84,12 +84,13 @@ for r in g0.itertuples():
 A.scatter(g0.x_px, g0.y_px, s=60, facecolors="none", edgecolors="cyan", lw=1.2, label="real")
 A.scatter(g0.x_reflejo_px, g0.y_reflejo_px, s=60, marker="s", facecolors="none", edgecolors="orange",
           lw=1.2, label="reflejo")
-linea_espejo(A, e, cfg, 0.0, color="yellow", lw=1.0, label="espejo en el cubreobjetos")
-linea_espejo(A, e, cfg, cfg.z_rango_nm[1] - cfg.z_rango_nm[0], color="yellow", lw=0.8, ls=":",
-             label="espejo a la altura de la pared superior")
+BASE_ESPEJO = "base del espejo (contacto con el cubreobjetos)"
+linea_espejo(A, e, cfg, 0.0, color="yellow", lw=1.0, ls="--", label=BASE_ESPEJO)
+linea_espejo(A, e, cfg, SIGNO_Z * (cfg.z_rango_nm[1] - e.z_cubre), color="yellow", lw=0.8, ls=":",
+             label="espejo a la altura de la pared superior de los reales")
 A.set_xlim(-0.5, cfg.W - 0.5); A.set_ylim(cfg.H - 0.5, -0.5)
 A.set_title(f"frame 0 (alpha {cfg.angulo_espejo_deg:.0f} deg, ratio {cfg.ratio_reflejo}), contraste fijo", fontsize=10)
-A.legend(fontsize=7, loc="lower right")
+A.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.07), ncol=2)   # fuera de la imagen
 plt.colorbar(im, ax=A, fraction=0.046, label="ADU")
 
 # el par con mas frames con real y reflejo dentro del FOV
@@ -102,7 +103,7 @@ B.plot(g.x_reflejo_px, g.y_reflejo_px, "-", color="tab:orange", lw=1, label="ref
 B.plot(g.x_px.iloc[0], g.y_px.iloc[0], "o", color="tab:blue"); B.plot(g.x_reflejo_px.iloc[0], g.y_reflejo_px.iloc[0], "s", color="tab:orange")
 for k in range(0, len(g), 5):
     B.plot([g.x_px.iloc[k], g.x_reflejo_px.iloc[k]], [g.y_px.iloc[k], g.y_reflejo_px.iloc[k]], color="0.7", lw=0.5)
-linea_espejo(B, e, cfg, 0.0, color="k", lw=1.0)
+linea_espejo(B, e, cfg, 0.0, color="k", lw=1.0, ls="--", label=BASE_ESPEJO)
 B.set_aspect("equal"); B.invert_yaxis(); B.set_xlabel("x [px]"); B.set_ylabel("y [px]")
 xs = np.concatenate([g.x_px, g.x_reflejo_px]); ys = np.concatenate([g.y_px, g.y_reflejo_px])
 B.set_xlim(xs.min() - 3, xs.max() + 3); B.set_ylim(ys.max() + 3, ys.min() - 3)
@@ -202,9 +203,13 @@ for i, fila in enumerate(paneles):
         A.imshow(adu, cmap="gray", vmin=gmin, vmax=gmax, extent=ext(S))
         cpx = (S - 1) / 2
         um = lambda v: (v - cpx) * px / 1000
-        A.axvline(um(xlin), color="yellow", lw=0.6, ls="--")         # linea del espejo en el cubreobjetos
-        A.plot(um(pr_[0]), -medio_um * 0.93, "v", color="cyan", ms=7)          # marcas fuera de la mancha
-        A.plot(um(prf[0]), -medio_um * 0.93, "v", color="orange", ms=7)
+        primero = (i, j) == (0, 0)
+        A.axvline(um(xlin), color="yellow", lw=0.8, ls="--", label=BASE_ESPEJO if primero else None)
+        A.plot(um(pr_[0]), -medio_um * 0.93, "v", color="cyan", ms=7,           # marcas fuera de la mancha
+               label="x del real" if primero else None)
+        A.plot(um(prf[0]), -medio_um * 0.93, "v", color="orange", ms=7, label="x del reflejo" if primero else None)
+        if primero:
+            A.legend(loc="upper right", fontsize=6, framealpha=0.7)
         A.text(0.02, 0.02, txt, transform=A.transAxes, va="bottom", fontsize=7, color="w",
                bbox=dict(facecolor="k", alpha=0.45, lw=0))
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
@@ -225,8 +230,7 @@ if args.real:
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
         A.set_title(f"real: {os.path.basename(args.real)}\n{args.pixel_nm:.1f} nm/px, contraste propio", fontsize=8)
 sub_top.suptitle(f"emisor (cian) y reflejo (naranja), alpha = {ALPHA:.0f} deg, {N_FOT:.0f} fotones, "
-                 f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo; amarillo: linea del espejo en "
-                 f"el cubreobjetos; plano focal a {(0 - z_cubre) * SIGNO_Z / 1000:.1f} um sobre el cubreobjetos",
+                 f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo; plano focal a {(0 - z_cubre) * SIGNO_Z / 1000:.1f} um sobre el cubreobjetos",
                  fontsize=10)
 
 axg = sub_bot.subplots(1, len(GALERIA_UM))
