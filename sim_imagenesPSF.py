@@ -40,6 +40,7 @@ import pandas as pd
 import tifffile
 
 from simulador_psf.config import Config
+from simulador_psf.posiciones import muestrear_n_emisores, posiciones_iniciales, muestrear_fotones
 
 
 # ----------------------------------------------------------------------------
@@ -147,14 +148,11 @@ def reflejar(z, lo, hi):
 def generar_trayectorias(cfg: Config, n, rng):
     """Trayectorias 3D (n, T, 3) en [px, px, nm] y D por particula [um^2/s]."""
     T, px = cfg.n_frames, cfg.pixel_nm
-    margen = 3  # los emisores pueden acercarse al borde
 
     D = rng.uniform(*cfg.D_rango_um2_s, n)
     sigma_nm = np.sqrt(2 * D * cfg.dt_s) * 1000.0                # rms por eje por frame
 
-    pos0 = np.stack([rng.uniform(-margen, cfg.W + margen, n) * px,
-                     rng.uniform(-margen, cfg.H + margen, n) * px,
-                     rng.uniform(*cfg.z_rango_nm, n)], axis=1)   # (n, 3) en nm
+    pos0 = posiciones_iniciales(cfg, n, rng)                     # (n, 3) en nm
 
     pasos = rng.normal(size=(n, T, 3)) * sigma_nm[:, None, None]
     pasos[:, 0] = 0.0                                            # frame 0 = pos0
@@ -191,21 +189,9 @@ def aplicar_camara(fotones, cfg: Config, rng):
 # Generacion
 # ----------------------------------------------------------------------------
 
-def muestrear_fotones(cfg: Config, n, rng):
-    """Fotones por emisor. "log": N = exp(U(log Nmin, log Nmax)), cubre por
-    igual cada decada del rango; "uniforme": U(Nmin, Nmax). Ambos consumen
-    el mismo numero de llamadas al rng."""
-    Nmin, Nmax = cfg.fotones_rango
-    if cfg.muestreo_fotones == "log":
-        return np.exp(rng.uniform(np.log(Nmin), np.log(Nmax), n))
-    if cfg.muestreo_fotones == "uniforme":
-        return rng.uniform(Nmin, Nmax, n)
-    raise ValueError(f"muestreo_fotones desconocido: {cfg.muestreo_fotones}")
-
-
 def generar_video(cfg: Config, banco, rng, video_id):
     # randomizacion agresiva por video: numero de emisores, brillo, D y fondo
-    n = rng.integers(cfg.n_emisores_rango[0], cfg.n_emisores_rango[1] + 1)
+    n = muestrear_n_emisores(cfg, rng)
     tray, D = generar_trayectorias(cfg, n, rng)
     Ns = muestrear_fotones(cfg, n, rng)                          # fijo por particula en todo el video
     fondo = generar_fondo(cfg, rng)                              # fijo en el video
