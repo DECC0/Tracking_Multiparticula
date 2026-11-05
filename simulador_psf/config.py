@@ -51,8 +51,7 @@ class Config:
     read_noise: float = 3.26        # ADU rms (se suma despues de e/gain) = 1.5 e- rms / 0.46 e-/ADU
 
     # --- PSF (numerico) ---
-    mascara: str = "esferica"       # "corkscrew", "esferica" o "ninguna"
-    anillos_corkscrew: int = 3      # N en la Ec. 8.1
+    mascara: str = "esferica"       # "esferica" o "ninguna" (BancoPSF rechaza "corkscrew")
     amp_esferica: float = 1.5 * np.pi  # amplitud maxima de Z4^0 [rad] (tesis: 1.5 pi)
     M_pupila: int = 256             # rejilla FFT
     K_psf: int = None               # recorte de la PSF [px]; None -> 48, o 128 para "esferica"
