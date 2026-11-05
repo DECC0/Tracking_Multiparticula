@@ -22,6 +22,7 @@ SCRIPTS = [
     "check_camara.py",
     "check_difusion.py",
     "check_e2e.py",
+    "check_espejo.py",
 ]
 
 

@@ -36,6 +36,8 @@ from .ruido import aplicar_camara
 from .io_gt import nombre_video, guardar_video
 from .espejo import Espejo
 
+TOL_BANCO_NM = 1e-6     # [nm] redondeo de z' en el borde del banco (p. ej. un emisor en el pie del espejo)
+
 
 def generar_video(cfg: Config, banco, rng, video_id):
     """Un video de cfg.n_frames frames.
@@ -74,7 +76,7 @@ def generar_video(cfg: Config, banco, rng, video_id):
                         en_fov=bool(0 <= x < cfg.W and 0 <= y < cfg.H))
             if cfg.usar_espejo:
                 xr, yr, zr = tray_r[p, t]
-                en_banco = bool(banco.z_grid[0] <= zr <= banco.z_grid[-1])
+                en_banco = bool(banco.z_grid[0] - TOL_BANCO_NM <= zr <= banco.z_grid[-1] + TOL_BANCO_NM)
                 if en_banco:                                     # fuera del banco psf_en_z recortaria z
                     banco.colocar(img, xr, yr, zr, Ns_r[p])
                 fila.update(x_reflejo_px=xr, y_reflejo_px=yr, z_reflejo_nm=zr,
