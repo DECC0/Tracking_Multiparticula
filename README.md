@@ -94,26 +94,31 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la
   misma fila (`particle_id` vincula real y reflejo).
 
-**Signos pendientes de verificar.** En los datos reales la particula es la
+**Signos: SIGNO_INCLINACION confirmado, SIGNO_Z pendiente.** En el montaje
+las celulas estan pegadas al espejo y el espejo queda detras de la muestra
+vista desde el objetivo, asi que el reflejo esta siempre mas lejos del
+objetivo que la particula: `SIGNO_INCLINACION = +1` queda confirmado
+(z' - z = 2 d cos(alpha) * SIGNO_INCLINACION * SIGNO_Z > 0 con `SIGNO_Z = +1`).
+Sigue la discrepancia de los anillos: en los datos reales la particula es la
 mancha mas brillante y con anillos, y el reflejo la mas tenue, compacta y con
-lobulos. Con los signos actuales (`SIGNO_Z = SIGNO_INCLINACION = +1`) el
-reflejo queda en +z respecto de la particula (z' - z = 2 d cos(alpha) *
-SIGNO_INCLINACION * SIGNO_Z), y en la galeria de `checks/fig_espejo_comparacion.png`
-la PSF esferica es compacta en -z y gana anillos hacia +z: el reflejo saldria
-con mas anillos que la particula, al reves de lo observado, y mover el plano
-de referencia (`z_ref_espejo_nm`) no lo arregla. Causas posibles y su bandera:
+lobulos; en la galeria de `checks/fig_espejo_comparacion.png` la PSF esferica
+del codigo es compacta en -z y gana anillos hacia +z, asi que el reflejo (en
++z) sale con mas anillos que la particula, al reves de lo observado. Mover el
+plano de referencia (`z_ref_espejo_nm`) no lo arregla. Con la inclinacion
+fijada quedan dos causas:
 
 - El lado del foco donde la PSF del codigo tiene anillos es el opuesto al
   fisico (la fase `k z cos(theta)` no esta atada a una direccion fisica):
-  `SIGNO_Z = -1`. Se decide con un z-stack de una bead (de que lado del foco
-  aparecen los anillos al alejarla del objetivo).
-- El espejo se inclina alejandose de la muestra, no sobre ella:
-  `SIGNO_INCLINACION = -1` (equivale a `alpha -> 180 - alpha`). Se decide con
-  la geometria del montaje.
-- Cambiar las dos banderas a la vez deja el signo de z' - z igual: la
-  discrepancia pide cambiar exactamente una. Si ninguna basta, la causa esta
-  fuera del modelo (abajo): los lobulos, por ejemplo, no salen de una PSF de
-  simetria circular y apuntan al truncamiento de la pupila.
+  `SIGNO_Z = -1`.
+- El truncamiento de la pupila (no modelado, abajo): solo parte del cono de
+  coleccion pasa por el espejo, lo que cambiaria la forma de la PSF del
+  reflejo; los lobulos, que no salen de una PSF de simetria circular, apuntan
+  a esto.
+
+Se decidira con un z-stack de una bead: de que lado del foco aparecen los
+anillos al alejarla del objetivo. Si aparecen al alejarla, `SIGNO_Z = +1` es
+correcto y la discrepancia viene del truncamiento; si aparecen al acercarla,
+`SIGNO_Z = -1`. Hasta entonces los signos no se cambian.
 
 Supuestos (no modelados): espejo plano ideal sin aberraciones ni
 polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y

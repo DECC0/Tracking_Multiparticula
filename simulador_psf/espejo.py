@@ -107,9 +107,10 @@ from .config import Config, MARGEN_PX
 
 # --- convencion de signos: UNICO lugar donde se fija ----------------------------
 # Si al comparar con datos reales resulta al reves, se cambia aqui y nada mas.
-SIGNO_Z = +1            # +1: +z se aleja del objetivo
+SIGNO_Z = +1            # +1: +z se aleja del objetivo (pendiente: z-stack de una bead, README)
                         # -1: +z se acerca al objetivo
-SIGNO_INCLINACION = +1  # +1: con alpha < 90 el espejo se inclina SOBRE la muestra
+SIGNO_INCLINACION = +1  # +1: con alpha < 90 el espejo se inclina SOBRE la muestra (confirmado en el
+                        #     montaje: el espejo esta detras de la muestra, z' > z)
                         # -1: se inclina alejandose de ella (equivale a alpha -> 180 - alpha)
 
 MAX_PLIEGUES = 1000     # reflexiones maximas por punto en plegar_nm (en la practica, unas pocas)
