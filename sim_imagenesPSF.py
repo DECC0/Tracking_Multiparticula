@@ -41,6 +41,7 @@ import tifffile
 
 from simulador_psf.config import Config
 from simulador_psf.posiciones import muestrear_n_emisores, posiciones_iniciales, muestrear_fotones
+from simulador_psf.browniano import reflejar, generar_trayectorias
 
 
 # ----------------------------------------------------------------------------
@@ -132,35 +133,6 @@ class BancoPSF:
         ye, xe = min(img.shape[0], y0 + K), min(img.shape[1], x0 + K)
         if ys < ye and xs < xe:
             img[ys:ye, xs:xe] += N * parche[ys-y0: ye-y0, xs-x0: xe-x0]
-
-
-# ----------------------------------------------------------------------------
-# Movimiento browniano
-# ----------------------------------------------------------------------------
-
-def reflejar(z, lo, hi):
-    """Paredes reflectantes en [lo, hi] (funciona aunque el paso cruce varias veces)."""
-    L = hi - lo
-    u = np.mod(z - lo, 2 * L)
-    return lo + np.where(u > L, 2 * L - u, u)
-
-
-def generar_trayectorias(cfg: Config, n, rng):
-    """Trayectorias 3D (n, T, 3) en [px, px, nm] y D por particula [um^2/s]."""
-    T, px = cfg.n_frames, cfg.pixel_nm
-
-    D = rng.uniform(*cfg.D_rango_um2_s, n)
-    sigma_nm = np.sqrt(2 * D * cfg.dt_s) * 1000.0                # rms por eje por frame
-
-    pos0 = posiciones_iniciales(cfg, n, rng)                     # (n, 3) en nm
-
-    pasos = rng.normal(size=(n, T, 3)) * sigma_nm[:, None, None]
-    pasos[:, 0] = 0.0                                            # frame 0 = pos0
-    tray = pos0[:, None, :] + np.cumsum(pasos, axis=1)
-
-    tray[..., 2] = reflejar(tray[..., 2], *cfg.z_rango_nm)
-    tray[..., :2] /= px                                          # x, y a px
-    return tray, D
 
 
 # ----------------------------------------------------------------------------
