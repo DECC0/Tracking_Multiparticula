@@ -44,17 +44,7 @@ from simulador_psf.posiciones import muestrear_n_emisores, posiciones_iniciales,
 from simulador_psf.browniano import reflejar, generar_trayectorias
 from simulador_psf.optica import fase_esferica, BancoPSF
 from simulador_psf.fondo import generar_fondo
-
-
-# ----------------------------------------------------------------------------
-# Fondo y camara
-# ----------------------------------------------------------------------------
-
-def aplicar_camara(fotones, cfg: Config, rng):
-    """Poisson -> ganancia -> ruido de lectura -> offset -> uint16."""
-    e = rng.poisson(np.clip(fotones, 0, None))
-    adu = e / cfg.gain + rng.normal(0.0, cfg.read_noise, e.shape) + cfg.offset
-    return np.clip(np.round(adu), 0, 65535).astype(np.uint16)
+from simulador_psf.ruido import aplicar_camara
 
 
 # ----------------------------------------------------------------------------
