@@ -19,6 +19,10 @@ La camara (ganancia, offset) para normalizar sale del config.json del
 simulador junto a la entrada (config_simulador.json en las de pregenerar.py)
 si existe; si no, de la configuracion de entrenamiento. La red es
 convolucional: H y W pueden ser distintos a los de entrenamiento.
+Una red con canal de distancia al espejo (datos.canal_distancia_espejo) toma
+la geometria del espejo de cada imagen de muestras.csv (pregenerar.py) o, en
+los .tif, del config.json del simulador (usar_espejo); el canal se normaliza
+con la escala de entrenamiento.
 
 Escribe <salida>.csv y <salida>.yaml (checkpoint, entradas, postproc usado) y,
 con --figuras N, <salida>_figuras/ con las detecciones de los primeros N frames.
@@ -34,8 +38,8 @@ import tifffile
 import torch
 
 from config import MODOS_AMP, a_dict, guardar_yaml
-from data.dataset import normalizar
-from data.simulacion import sim, config_simulador
+from data.dataset import normalizar, entrada_red
+from data.simulacion import sim, config_simulador, escala_distancia, COLUMNAS_GEOMETRIA
 from postproc import COLUMNAS_PRED, detectar
 from utils import elegir_dispositivo, modo_amp, autocast, rejilla_de, cargar_modelo, con_postproc, resumen_tiempo
 
@@ -59,8 +63,15 @@ def _entrada_tif(ruta, por_defecto):
         raise ValueError(f"{ruta}: se espera un video T x H x W (forma {imagenes.shape})")
     T = len(imagenes)
     vid = _video_id(ruta, por_defecto)
+    config_sim = ruta.parent / "config.json"
+    geometria = None
+    if config_sim.exists():
+        cs = sim.cargar_config(config_sim)
+        if cs.usar_espejo:                                       # geometria fija en todo el dataset
+            geometria = pd.DataFrame([[cs.angulo_espejo_deg, cs.orientacion_espejo_deg, *cs.espejo_punto_px]] * T,
+                                     columns=COLUMNAS_GEOMETRIA)
     return dict(nombre=ruta.name, imagenes=imagenes, video_id=np.full(T, vid), frame=np.arange(T),
-                config_sim=ruta.parent / "config.json")
+                config_sim=config_sim, geometria=geometria)
 
 
 def leer_entradas(rutas):
@@ -73,8 +84,12 @@ def leer_entradas(rutas):
             if imagenes.shape[1] != 1:
                 raise NotImplementedError("entradas con C > 1 canales quedan pendientes del simulador biplano")
             n = len(imagenes)
+            muestras = pd.read_csv(r / "muestras.csv") if (r / "muestras.csv").exists() else None
+            geometria = (muestras[COLUMNAS_GEOMETRIA].reset_index(drop=True)
+                         if muestras is not None and set(COLUMNAS_GEOMETRIA) <= set(muestras) else None)
             entradas.append(dict(nombre=r.name, imagenes=imagenes[:, 0], video_id=np.arange(n),
-                                 frame=np.zeros(n, int), config_sim=r / "config_simulador.json"))
+                                 frame=np.zeros(n, int), config_sim=r / "config_simulador.json",
+                                 geometria=geometria))
         elif r.is_dir():
             tifs = sorted(r.glob("*.tif"))
             if not tifs:
@@ -116,14 +131,25 @@ def batch_por_defecto(H, W):
 
 
 @torch.no_grad()
-def predecir(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16"):
-    """Salida de la red (B, Nz, s H, s W) para imagenes (B, H, W) en ADU."""
-    x = normalizar(np.asarray(imagenes), cfg.datos, cfg_sim)[:, None]
+def predecir(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16", geometria=None):
+    """Salida de la red (B, Nz, s H, s W) para imagenes (B, H, W) en ADU;
+    geometria: DataFrame (B filas, COLUMNAS_GEOMETRIA) si la red usa el canal
+    de distancia al espejo."""
+    imagenes = np.asarray(imagenes)
+    if cfg.datos.canal_distancia_espejo:
+        if geometria is None:
+            raise ValueError("la red usa el canal de distancia al espejo y la entrada no trae la geometria "
+                             "del espejo (muestras.csv o config.json con usar_espejo)")
+        escala = escala_distancia(cfg.datos, config_simulador(cfg.datos, cfg.datos.seed_train))
+        x = np.stack([entrada_red(im[None], cfg.datos, cfg_sim, geometria.iloc[b], escala)
+                      for b, im in enumerate(imagenes)])
+    else:
+        x = normalizar(imagenes, cfg.datos, cfg_sim)[:, None]
     with autocast(modo_amp(amp, dispositivo), dispositivo):
         return modelo(torch.from_numpy(x).to(dispositivo)).float()
 
 
-def localizar(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16", batch=None):
+def localizar(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16", batch=None, geometria=None):
     """Detecciones de imagenes (T, H, W) en ADU: DataFrame con t (indice de
     la imagen), x_px, y_px, z_nm y conf, con cfg.postproc."""
     if cfg.datos.canales != 1:
@@ -133,7 +159,9 @@ def localizar(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16", batch=Non
     batch = batch or batch_por_defecto(H, W)
     partes = []
     for i0 in range(0, T, batch):
-        det = detectar(predecir(modelo, imagenes[i0:i0 + batch], cfg, cfg_sim, dispositivo, amp), rejilla, cfg.postproc)
+        geo = geometria.iloc[i0:i0 + batch] if geometria is not None else None
+        det = detectar(predecir(modelo, imagenes[i0:i0 + batch], cfg, cfg_sim, dispositivo, amp, geo),
+                       rejilla, cfg.postproc)
         det["b"] += i0
         partes.append(det)
     return pd.concat(partes, ignore_index=True).rename(columns={"b": "t"})
@@ -141,7 +169,7 @@ def localizar(modelo, imagenes, cfg, cfg_sim, dispositivo, amp="fp16", batch=Non
 
 def detecciones_de(modelo, entrada, cfg, cfg_sim, dispositivo, amp="fp16", batch=None):
     """Detecciones (COLUMNAS_PRED) de una entrada de leer_entradas."""
-    det = localizar(modelo, entrada["imagenes"], cfg, cfg_sim, dispositivo, amp, batch)
+    det = localizar(modelo, entrada["imagenes"], cfg, cfg_sim, dispositivo, amp, batch, entrada.get("geometria"))
     t = det.pop("t").to_numpy()
     det.insert(0, "video_id", entrada["video_id"][t])
     det.insert(1, "frame", entrada["frame"][t])

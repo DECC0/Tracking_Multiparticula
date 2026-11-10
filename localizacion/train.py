@@ -36,10 +36,10 @@ from utils import (elegir_dispositivo, modo_amp, autocast, rejilla_de, carpeta_n
 def _compatible(ds, rejilla, canales):
     """Un dataset pregenerado debe tener la misma imagen, z_rango y canales que la corrida."""
     cs = ds.cfg_sim
-    if (cs.H, cs.W, tuple(cs.z_rango_nm), ds.cfg_datos.canales) != (rejilla.H, rejilla.W,
-                                                                     (rejilla.z_min, rejilla.z_max), canales):
+    if (cs.H, cs.W, tuple(cs.z_rango_nm), ds.cfg_datos.canales_entrada) != (rejilla.H, rejilla.W,
+                                                                             (rejilla.z_min, rejilla.z_max), canales):
         raise ValueError(f"datos pregenerados incompatibles con la corrida: H, W = {cs.H}, {cs.W}, "
-                         f"z_rango {cs.z_rango_nm}, canales {ds.cfg_datos.canales}")
+                         f"z_rango {cs.z_rango_nm}, canales de entrada {ds.cfg_datos.canales_entrada}")
 
 
 def crear_datasets(cfg, rejilla):
@@ -52,7 +52,7 @@ def crear_datasets(cfg, rejilla):
         DatasetSimulado(cfg.datos, cfg.datos.n_val, cfg.datos.seed_val, banco=banco)
     for ds in (train, val):
         if isinstance(ds, DatasetDisco):
-            _compatible(ds, rejilla, cfg.datos.canales)
+            _compatible(ds, rejilla, cfg.datos.canales_entrada)
     return train, val
 
 

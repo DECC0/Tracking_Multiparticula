@@ -43,10 +43,41 @@ class ConfigDatos:
     seed_val: int = 2
     renovar_por_epoca: bool = False     # True: muestras de train nuevas en cada epoca
 
+    # espejo (requiere datos.simulador.usar_espejo: true; signo_z y el resto de sus campos van en
+    # datos.simulador). Geometria aleatoria por muestra, con su propio flujo aleatorio (data/simulacion.py)
+    espejo_angulo_rango_deg: tuple = None   # alpha uniforme en [min, max]; None -> el de datos.simulador
+    espejo_orientacion_aleatoria: bool = False  # phi uniforme en [0, 360)
+    espejo_punto_aleatorio: bool = False    # punto de la linea del espejo aleatorio: uniforme en el FOV o, con
+                                            # espejo_linea_rango_fov, con la linea en el borde de la imagen
+    espejo_linea_rango_fov: tuple = None    # [min, max]: la interseccion del espejo con el plano focal queda a
+                                            # u * h del centro del FOV, u uniforme en [min, max], h = semiancho del
+                                            # FOV a lo largo de m (1 = el borde), con el centro del lado de la
+                                            # muestra (phi apunta hacia el interior). [1/3, 1.1]: tercio exterior
+    canal_distancia_espejo: bool = False    # entrada con un canal mas: distancia con signo a la interseccion del
+                                            # espejo con el plano focal (+ hacia la muestra), / escala_distancia_px
+    escala_distancia_px: float = None       # None -> max(H, W) de datos.simulador (el FOV de entrenamiento)
+    max_reintentos_espejo: int = 20         # una muestra con algun reflejo sin dibujar (fuera del banco) se
+                                            # regenera con otro video_id del simulador; se cuenta en meta
+
     def __post_init__(self):
         if self.read_noise_rango is not None:
             self.read_noise_rango = tuple(float(v) for v in self.read_noise_rango)
+        if self.espejo_angulo_rango_deg is not None:
+            self.espejo_angulo_rango_deg = tuple(float(v) for v in self.espejo_angulo_rango_deg)
+        if self.espejo_linea_rango_fov is not None:
+            self.espejo_linea_rango_fov = tuple(float(v) for v in self.espejo_linea_rango_fov)
         self.validar()
+
+    @property
+    def usa_espejo(self):
+        """True si alguna opcion de espejo de esta seccion esta activa."""
+        return (self.espejo_angulo_rango_deg is not None or self.espejo_orientacion_aleatoria
+                or self.espejo_punto_aleatorio or self.canal_distancia_espejo)
+
+    @property
+    def canales_entrada(self):
+        """Canales de entrada de la red: los de la imagen mas el de distancia al espejo."""
+        return self.canales + int(self.canal_distancia_espejo)
 
     def validar(self):
         _exige(isinstance(self.simulador, dict), "datos.simulador debe ser un diccionario")
@@ -62,6 +93,18 @@ class ConfigDatos:
         _exige(self.escala_entrada > 0, "datos.escala_entrada debe ser positiva")
         _exige(self.n_train >= 1 and self.n_val >= 1, "datos.n_train y datos.n_val deben ser >= 1")
         _exige(self.seed_train != self.seed_val, "seed_train y seed_val deben ser distintas (si no, train y val se solapan)")
+        if self.espejo_angulo_rango_deg is not None:
+            lo, hi = self.espejo_angulo_rango_deg
+            _exige(0 < lo <= hi < 180, "datos.espejo_angulo_rango_deg: se requiere 0 < min <= max < 180")
+        if self.espejo_linea_rango_fov is not None:
+            lo, hi = self.espejo_linea_rango_fov
+            _exige(0 <= lo <= hi, "datos.espejo_linea_rango_fov: se requiere 0 <= min <= max")
+            _exige(self.espejo_punto_aleatorio, "datos.espejo_linea_rango_fov requiere espejo_punto_aleatorio: true")
+        _exige(self.escala_distancia_px is None or self.escala_distancia_px > 0,
+               "datos.escala_distancia_px debe ser positiva (o null)")
+        _exige(self.max_reintentos_espejo >= 0, "datos.max_reintentos_espejo debe ser >= 0")
+        _exige(not self.usa_espejo or self.simulador.get("usar_espejo", False),
+               "las opciones datos.espejo_* y canal_distancia_espejo requieren datos.simulador.usar_espejo: true")
 
 
 @dataclass

@@ -4,8 +4,9 @@ from models.perdidas import Perdida, TERMINOS
 
 
 def crear_modelo(cfg, rejilla):
-    """LocalizadorCNN para ConfigCorrida cfg: C canales de entrada, Nz planos y upsampling de la rejilla."""
-    return LocalizadorCNN(cfg.datos.canales, rejilla.Nz, rejilla.s, rejilla.escala, cfg.modelo)
+    """LocalizadorCNN para ConfigCorrida cfg: canales de entrada (imagen + distancia al espejo si
+    datos.canal_distancia_espejo), Nz planos y upsampling de la rejilla."""
+    return LocalizadorCNN(cfg.datos.canales_entrada, rejilla.Nz, rejilla.s, rejilla.escala, cfg.modelo)
 
 
 def crear_perdida(cfg, rejilla):

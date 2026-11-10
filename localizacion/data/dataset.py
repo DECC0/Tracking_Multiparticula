@@ -3,7 +3,8 @@ Datasets de torch:
     DatasetSimulado : muestras generadas on-the-fly con el simulador
     DatasetDisco    : muestras pregeneradas con pregenerar()
 Para el mismo (seed, idx) los dos devuelven lo mismo:
-    {"imagen": (C, H, W) float32 normalizada,
+    {"imagen": (C, H, W) float32 normalizada (+ el canal de distancia al espejo
+               si datos.canal_distancia_espejo: C + 1 canales),
      "pos":    (n, 3) float32 [x_px, y_px, z_nm] de los emisores dentro del FOV,
      "idx":    int}
 collate() rellena pos a (B, E_max, 3) con una mascara "valido" (B, E_max); el
@@ -18,7 +19,8 @@ import yaml
 from torch.utils.data import Dataset
 
 from config import ConfigDatos, a_dict, guardar_yaml
-from data.simulacion import sim, config_simulador, banco_compatible, generar_muestra
+from data.simulacion import (sim, config_simulador, banco_compatible, generar_muestra, config_geometria,
+                             escala_distancia, mapa_distancia_espejo)
 
 
 def normalizar(imagen, cfg_datos, cfg_sim):
@@ -34,8 +36,22 @@ def normalizar(imagen, cfg_datos, cfg_sim):
     return ((e - med) / np.maximum(1.4826 * mad, 1.0)).astype(np.float32)
 
 
-def _item(imagen, pos, idx, cfg_datos, cfg_sim):
-    return {"imagen": torch.from_numpy(normalizar(imagen, cfg_datos, cfg_sim)),
+def entrada_red(imagen, cfg_datos, cfg_sim, geometria=None, escala_px=None):
+    """Imagen (C, H, W) en ADU -> entrada de la red: normalizada y, con
+    canal_distancia_espejo, con el mapa de distancia al espejo de la geometria
+    (fila con COLUMNAS_GEOMETRIA) como canal extra."""
+    x = normalizar(imagen, cfg_datos, cfg_sim)
+    if not cfg_datos.canal_distancia_espejo:
+        return x
+    if geometria is None:
+        raise ValueError("la red usa el canal de distancia al espejo y la entrada no trae la geometria del espejo")
+    escala_px = escala_px or escala_distancia(cfg_datos, cfg_sim)
+    mapa = mapa_distancia_espejo(config_geometria(cfg_sim, geometria), x.shape[-2], x.shape[-1], escala_px)
+    return np.concatenate([x, mapa[None]], axis=0)
+
+
+def _item(imagen, pos, idx, cfg_datos, cfg_sim, geometria=None):
+    return {"imagen": torch.from_numpy(entrada_red(imagen, cfg_datos, cfg_sim, geometria)),
             "pos": torch.from_numpy(np.array(pos, dtype=np.float32)),   # copia: pandas 3 devuelve vistas de solo lectura
             "idx": int(idx)}
 
@@ -72,8 +88,8 @@ class DatasetSimulado(Dataset):
         return generar_muestra(self.cfg_datos, self.cfg_sim, self.banco, self.desfase + i)
 
     def __getitem__(self, i):
-        imagen, gt, _ = self.muestra(i)
-        return _item(imagen, _pos_en_fov(gt), self.desfase + i, self.cfg_datos, self.cfg_sim)
+        imagen, gt, meta = self.muestra(i)
+        return _item(imagen, _pos_en_fov(gt), self.desfase + i, self.cfg_datos, self.cfg_sim, meta)
 
 
 def collate(items):
@@ -148,4 +164,5 @@ class DatasetDisco(Dataset):
 
     def __getitem__(self, i):
         pos = self._pos.get(int(i), np.zeros((0, 3), np.float32))
-        return _item(np.asarray(self.imagenes[i]), pos, i, self.cfg_datos, self.cfg_sim)
+        geo = self.muestras.iloc[i] if self.cfg_datos.canal_distancia_espejo else None
+        return _item(np.asarray(self.imagenes[i]), pos, i, self.cfg_datos, self.cfg_sim, geo)
