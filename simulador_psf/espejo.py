@@ -18,7 +18,7 @@ Este modulo no consume el rng.
 
 Montaje (grupo de Biofisica): sin cubreobjetos; las celulas estan pegadas al
 espejo, que queda detras de la muestra vista desde el objetivo (z' > z
-siempre: SIGNO_INCLINACION = +1 confirmado). Angulo de 55.6 grados respecto
+siempre: signo_inclinacion = +1 confirmado). Angulo de 55.6 grados respecto
 del eje optico -> alpha = 34.4 grados respecto del plano focal.
 
 Unidades: la geometria se calcula en nm (x_nm = x_px * pixel_nm, y igual,
@@ -26,7 +26,7 @@ z en nm). Las funciones publicas reciben y devuelven posiciones en las
 unidades del ground truth, [x_px, y_px, z_nm]; las que terminan en _nm
 trabajan en nm en los tres ejes.
 
-Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
+Convencion (Config.signo_z y Config.signo_inclinacion, +1 por defecto):
 
   Vista lateral (corte perpendicular a la linea del espejo):
 
@@ -73,10 +73,12 @@ Convencion (ver SIGNO_Z y SIGNO_INCLINACION abajo):
     focal, y z_rango_nm solo delimita el volumen simulado (el espejo lo corta
     a cualquier altura). A otra altura z la linea del espejo esta desplazada
     en m (Espejo.punto_en_z_nm).
-  - Con arriba = SIGNO_Z * z_hat (direccion que se aleja del objetivo):
+  - Con arriba = signo_z * z_hat (direccion que se aleja del objetivo):
         m = (cos phi, sin phi, 0)
-        n = sin(alpha) m - SIGNO_INCLINACION cos(alpha) arriba
-    Una sola expresion para todo alpha, sin ramas. Consecuencias:
+        n = sin(alpha) m - signo_inclinacion cos(alpha) arriba
+    Una sola expresion para todo alpha, sin ramas. Los dos signos solo
+    entran como su producto, asi que signo_z = -1, signo_inclinacion = -1 y
+    alpha -> 180 - alpha dan la misma geometria. Consecuencias:
         p' - p = -2 d n:  lateral  -2 d sin(alpha) m       (hacia la linea del espejo)
                           axial    +2 d cos(alpha) arriba  (lejos del objetivo si alpha < 90)
     asi que tan(alpha) = separacion lateral / diferencia de z.
@@ -105,13 +107,10 @@ import numpy as np
 from .config import Config, MARGEN_PX
 
 
-# --- convencion de signos: UNICO lugar donde se fija ----------------------------
-# Si al comparar con datos reales resulta al reves, se cambia aqui y nada mas.
-SIGNO_Z = +1            # +1: +z se aleja del objetivo (pendiente: z-stack de una bead, README)
-                        # -1: +z se acerca al objetivo
-SIGNO_INCLINACION = +1  # +1: con alpha < 90 el espejo se inclina SOBRE la muestra (confirmado en el
-                        #     montaje: el espejo esta detras de la muestra, z' > z)
-                        # -1: se inclina alejandose de ella (equivale a alpha -> 180 - alpha)
+# La convencion de signos esta en Config.signo_z y Config.signo_inclinacion
+# (+1 por defecto). Espejo la lee de cfg y todo lo demas (posiciones.py,
+# rango_z_reflejo) la toma de una instancia de Espejo: no hay constantes de
+# modulo que se copien al importar.
 
 MAX_PLIEGUES = 1000     # reflexiones maximas por punto en plegar_nm (en la practica, unas pocas)
 
@@ -128,7 +127,8 @@ class Espejo:
     Atributos (todos en nm salvo pixel_nm):
         m        direccion lateral desde la linea del espejo hacia la muestra
         t        direccion de la linea del espejo (horizontal)
-        arriba   direccion que se aleja del objetivo (SIGNO_Z * z_hat)
+        arriba   direccion que se aleja del objetivo (signo_z * z_hat)
+        signo_z, signo_inclinacion  los de cfg (+1 o -1)
         n        normal unitaria del espejo, hacia la muestra
         p0       punto del espejo en el plano de referencia [nm]
         z_ref    z del plano de referencia respecto del plano focal [nm] (= p0[2])
@@ -142,8 +142,9 @@ class Espejo:
         f = np.radians(cfg.orientacion_espejo_deg)
         self.m = np.array([np.cos(f), np.sin(f), 0.0])
         self.t = np.array([-np.sin(f), np.cos(f), 0.0])
-        self.arriba = np.array([0.0, 0.0, float(SIGNO_Z)])
-        self.n = np.sin(a) * self.m - SIGNO_INCLINACION * np.cos(a) * self.arriba
+        self.signo_z, self.signo_inclinacion = int(cfg.signo_z), int(cfg.signo_inclinacion)
+        self.arriba = np.array([0.0, 0.0, float(self.signo_z)])
+        self.n = np.sin(a) * self.m - self.signo_inclinacion * np.cos(a) * self.arriba
         self.R = matriz_R(self.n)
         self.z_lo, self.z_hi = cfg.z_rango_nm
         self.z_ref = float(cfg.z_ref_espejo_nm)
@@ -170,10 +171,10 @@ class Espejo:
 
     def punto_en_z_nm(self, z_nm):
         """Punto [nm] (3,) de la linea del espejo a la altura z_nm: p0 + s m en
-        el plano z = z_nm, con d = 0 -> s sin(alpha) = SIGNO_INCLINACION SIGNO_Z
+        el plano z = z_nm, con d = 0 -> s sin(alpha) = signo_inclinacion signo_z
         (z_nm - z_ref) cos(alpha). punto_en_z_nm(0) es la interseccion del
         espejo con el plano focal; la linea sigue en la direccion t."""
-        s = SIGNO_INCLINACION * SIGNO_Z * (z_nm - self.z_ref) / np.tan(self.alpha)
+        s = self.signo_inclinacion * self.signo_z * (z_nm - self.z_ref) / np.tan(self.alpha)
         return self.p0 + s * self.m + np.array([0.0, 0.0, z_nm - self.z_ref])
 
     def reflejar_nm(self, p_nm):

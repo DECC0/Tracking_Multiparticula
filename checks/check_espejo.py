@@ -14,7 +14,7 @@
                                 +5.5 um (respecto del plano focal), mismo contraste,
                                 para estimar z de la particula y de su reflejo y de
                                 ahi alpha = atan(dlat / dz) y los signos de
-                                SIGNO_Z / SIGNO_INCLINACION (espejo.py);
+                                Config.signo_z / Config.signo_inclinacion;
                               - opcional: un recorte real al lado, con el mismo
                                 tamano fisico en um.
 
@@ -35,7 +35,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from simulador_psf import Config, BancoPSF, Espejo, generar_video, aplicar_camara
-from simulador_psf.espejo import SIGNO_Z, SIGNO_INCLINACION
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 
@@ -116,7 +115,7 @@ C.plot(*lat(pr), "-", color="tab:blue", lw=1, label="real")
 C.plot(*lat(prr), "-", color="tab:orange", lw=1, label="reflejo")
 zs = np.array([min(cfg.z_rango_nm[0], g.z_reflejo_nm.min()) - 500, max(cfg.z_rango_nm[1], g.z_reflejo_nm.max()) + 500])
 C.plot(*lat(np.array([e.punto_en_z_nm(z) for z in zs])), "k-", lw=2, label="espejo")
-C.axhspan(*sorted(SIGNO_Z * np.array(cfg.z_rango_nm) / 1000), color="tab:green", alpha=0.08,
+C.axhspan(*sorted(e.signo_z * np.array(cfg.z_rango_nm) / 1000), color="tab:green", alpha=0.08,
           label="paredes en z de los reales")
 C.axhline(0.0, color="tab:green", ls="-.", lw=0.8, label="plano focal")
 C.set_aspect("equal"); C.set_xlabel("distancia lateral a la linea del espejo en el plano focal, hacia la muestra [um]")
@@ -151,15 +150,16 @@ al = np.radians(ALPHA)
 
 paneles = []                                 # (imagen, textos, x real, x reflejo) por (altura, d)
 for zu in ZS_UM:
-    h = SIGNO_Z * zu                         # altura sobre el plano focal (= el de referencia del espejo)
+    h = base.signo_z * zu                         # altura sobre el plano focal (= el de referencia del espejo)
     fila = []
     for dd in DS_UM:
         # emisor a altura h y distancia dd del plano: p = p0 + L m + h arriba con L sin a - h cos a = dd
-        L = (dd * 1000 + SIGNO_INCLINACION * h * 1000 * np.cos(al)) / np.sin(al)
+        L = (dd * 1000 + base.signo_inclinacion * h * 1000 * np.cos(al)) / np.sin(al)
         m_medio = L - dd * 1000 * np.sin(al)        # el punto medio real-reflejo, en m (queda en el centro)
         c = (S - 1) / 2
         cfg_p = Config(usar_espejo=True, angulo_espejo_deg=ALPHA, espejo_punto_px=(c - m_medio / px, c),
-                       z_banco_nm=base.z_banco_nm)
+                       z_banco_nm=base.z_banco_nm, signo_z=base.signo_z,
+                       signo_inclinacion=base.signo_inclinacion)
         ep = Espejo(cfg_p)
         p = ep.p0 + L * ep.m + h * 1000 * ep.arriba
         q = ep.reflejar_nm(p)
@@ -236,7 +236,7 @@ for A, z, gimg in zip(axg, GALERIA_UM, galeria):
     A.imshow(gimg, cmap="gray", vmin=gmin, vmax=gmax, extent=ext(SG))
     A.set_title(f"{z:+.1f}", fontsize=8)
     A.set_xticks([]); A.set_yticks([])
-lado = "lejos del objetivo" if SIGNO_Z > 0 else "hacia el objetivo"
+lado = "lejos del objetivo" if base.signo_z > 0 else "hacia el objetivo"
 sub_bot.suptitle(f"PSF esferica sola (mismo contraste, {N_FOT:.0f} fotones, panel de "
                  f"{SG * px / 1000:.1f} um), z [um] respecto del plano focal:   "
                  f"<-  -z  hacia el objetivo   |   +z  {lado}  ->", fontsize=10)

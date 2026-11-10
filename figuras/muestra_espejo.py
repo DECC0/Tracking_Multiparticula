@@ -38,7 +38,6 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
 from simulador_psf import Config, BancoPSF, Espejo, generar_video, guardar_video, guardar_gt
-from simulador_psf.espejo import SIGNO_Z, SIGNO_INCLINACION
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--seed", type=int, default=Config.seed)
@@ -176,7 +175,7 @@ lineas = [
     f"  z_ref_espejo_nm        {espejo.z_ref} (z del plano de referencia respecto del foco)",
     f"  dist_max_espejo_um     {cfg.dist_max_espejo_um}",
     f"  z_rango_nm (reales)    {cfg.z_rango_nm}",
-    f"  SIGNO_Z {SIGNO_Z}, SIGNO_INCLINACION {SIGNO_INCLINACION}",
+    f"  signo_z {cfg.signo_z}, signo_inclinacion {cfg.signo_inclinacion}",
     f"  banco de PSF: z en [{banco.z_grid[0]:.0f}, {banco.z_grid[-1]:.0f}] nm, {len(banco.z_grid)} planos",
     "",
     f"video: {cfg.n_frames} frames de {cfg.H}x{cfg.W} px, dt {cfg.dt_s} s, semilla {cfg.seed}, video_id 0",

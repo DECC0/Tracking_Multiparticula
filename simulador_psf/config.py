@@ -111,6 +111,10 @@ class Config:
                                         # None -> en todo el FOV ampliado, como siempre
     z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
                                         # automaticamente con el espejo para cubrir las z de los reflejos
+    signo_z: int = +1                   # +1: +z se aleja del objetivo; -1: se acerca (pendiente: z-stack
+                                        # de una bead, README)
+    signo_inclinacion: int = +1         # +1: con alpha < 90 el espejo se inclina SOBRE la muestra (confirmado:
+                                        # espejo detras de la muestra, z' > z); -1: alejandose (= alpha -> 180 - alpha)
 
     seed: int = 0
 
@@ -127,6 +131,9 @@ class Config:
             raise ValueError(f"espejo_punto_px debe ser (x, y) en px: {self.espejo_punto_px}")
         if self.dist_max_espejo_um is not None and not self.dist_max_espejo_um > 0:
             raise ValueError(f"dist_max_espejo_um debe ser > 0 o None: {self.dist_max_espejo_um}")
+        for nombre in ("signo_z", "signo_inclinacion"):
+            if getattr(self, nombre) not in (1, -1):
+                raise ValueError(f"{nombre} debe ser +1 o -1: {getattr(self, nombre)}")
         if self.z_banco_nm is not None and not self.z_banco_nm[0] < self.z_banco_nm[1]:
             raise ValueError(f"z_banco_nm debe ser (z_min, z_max) con z_min < z_max: {self.z_banco_nm}")
 
@@ -164,4 +171,7 @@ class Config:
                       f"plano de referencia z = {self.z_ref_espejo_nm:.0f} nm")
             if self.dist_max_espejo_um is not None:
                 texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um del plano del espejo"
+            if (self.signo_z, self.signo_inclinacion) != (1, 1):   # con los signos por defecto el texto no cambia
+                texto += (f"\n                   signo_z {self.signo_z:+d}, "
+                          f"signo_inclinacion {self.signo_inclinacion:+d}")
         return texto

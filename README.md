@@ -80,8 +80,10 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   `dist_max_espejo_um` (si se da, las posiciones iniciales se sortean solo
   hasta esa distancia perpendicular al plano del espejo, dentro del FOV
   ampliado, reescalando los mismos sorteos; None -> todo el FOV).
-- Convencion de signos: `SIGNO_Z` (+z lejos del objetivo) y `SIGNO_INCLINACION` (con alpha < 90 el espejo se inclina
-  sobre la muestra), juntos al principio de `espejo.py`; diagramas en su docstring.
+- Convencion de signos: `Config.signo_z` (+1: +z lejos del objetivo) y `Config.signo_inclinacion`
+  (+1: con alpha < 90 el espejo se inclina sobre la muestra), +1 por defecto; diagramas en el
+  docstring de `espejo.py`. Solo entran como su producto: `signo_z = -1` equivale a
+  `signo_inclinacion = -1` y a alpha -> 180 - alpha (lo verifica `tests/test_espejo.py`).
 - El espejo es una pared reflectante mas para el browniano: los emisores
   reales nunca lo cruzan (posiciones iniciales plegadas al lado de la muestra,
   pasos integrados uno a uno con reflexion especular).
@@ -94,11 +96,11 @@ y con `usar_espejo=False` las salidas son identicas bit a bit a las de antes.
   z_reflejo_nm, photons_reflejo, reflejo_en_fov, reflejo_en_banco` en la
   misma fila (`particle_id` vincula real y reflejo).
 
-**Signos: SIGNO_INCLINACION confirmado, SIGNO_Z pendiente.** En el montaje
+**Signos: signo_inclinacion confirmado, signo_z pendiente.** En el montaje
 las celulas estan pegadas al espejo y el espejo queda detras de la muestra
 vista desde el objetivo, asi que el reflejo esta siempre mas lejos del
-objetivo que la particula: `SIGNO_INCLINACION = +1` queda confirmado
-(z' - z = 2 d cos(alpha) * SIGNO_INCLINACION * SIGNO_Z > 0 con `SIGNO_Z = +1`).
+objetivo que la particula: `signo_inclinacion = +1` queda confirmado
+(z' - z = 2 d cos(alpha) * signo_inclinacion * signo_z > 0 con `signo_z = +1`).
 Sigue la discrepancia de los anillos: en los datos reales la particula es la
 mancha mas brillante y con anillos, y el reflejo la mas tenue, compacta y con
 lobulos; en la galeria de `checks/fig_espejo_comparacion.png` la PSF esferica
@@ -109,16 +111,16 @@ fijada quedan dos causas:
 
 - El lado del foco donde la PSF del codigo tiene anillos es el opuesto al
   fisico (la fase `k z cos(theta)` no esta atada a una direccion fisica):
-  `SIGNO_Z = -1`.
+  `signo_z = -1`.
 - El truncamiento de la pupila (no modelado, abajo): solo parte del cono de
   coleccion pasa por el espejo, lo que cambiaria la forma de la PSF del
   reflejo; los lobulos, que no salen de una PSF de simetria circular, apuntan
   a esto.
 
 Se decidira con un z-stack de una bead: de que lado del foco aparecen los
-anillos al alejarla del objetivo. Si aparecen al alejarla, `SIGNO_Z = +1` es
+anillos al alejarla del objetivo. Si aparecen al alejarla, `signo_z = +1` es
 correcto y la discrepancia viene del truncamiento; si aparecen al acercarla,
-`SIGNO_Z = -1`. Hasta entonces los signos no se cambian.
+`signo_z = -1`. Hasta entonces los valores por defecto no se cambian.
 
 Supuestos (no modelados): espejo plano ideal sin aberraciones ni
 polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y

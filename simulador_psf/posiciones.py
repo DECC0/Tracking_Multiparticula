@@ -10,7 +10,7 @@ cambiarse, porque check_e2e.py y figuras/figuras_documento.py lo repiten.
 import numpy as np
 
 from .config import Config, MARGEN_PX
-from .espejo import Espejo, SIGNO_Z, SIGNO_INCLINACION
+from .espejo import Espejo
 
 
 def muestrear_n_emisores(cfg: Config, rng):
@@ -55,9 +55,9 @@ def _cerca_del_espejo(cfg: Config, n, rng):
             lado (el sorteo de y, reescalado; con orientacion_espejo_deg = 0 es
             el mismo y de siempre);
         s_m uniforme en la franja d en [0, dist_max] a esa z (el sorteo de x,
-            reescalado). A altura z, d = s_m sin(alpha) - SIGNO_INCLINACION
-            SIGNO_Z cos(alpha) (z - z_ref), asi que la franja es
-                s_m en [s(0), s(dist_max)],  s(d) = (d + SIGNO_INCLINACION SIGNO_Z
+            reescalado). A altura z, d = s_m sin(alpha) - signo_inclinacion
+            signo_z cos(alpha) (z - z_ref), asi que la franja es
+                s_m en [s(0), s(dist_max)],  s(d) = (d + signo_inclinacion signo_z
                                                      cos(alpha) (z - z_ref)) / sin(alpha),
             recortada a la proyeccion sobre m del FOV ampliado (el espejo
             inclinado proyecta la franja a un ancho lateral dist_max / sin(alpha),
@@ -76,7 +76,7 @@ def _cerca_del_espejo(cfg: Config, n, rng):
                     for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px - e.p0[:2]
     st, sm = esq @ e.t[:2], esq @ e.m[:2]                        # FOV ampliado proyectado sobre t y m [nm]
     s_t = st.min() + u_t * (st.max() - st.min())
-    corr = SIGNO_INCLINACION * SIGNO_Z * np.cos(e.alpha) * (z - e.z_ref)   # [nm]
+    corr = e.signo_inclinacion * e.signo_z * np.cos(e.alpha) * (z - e.z_ref)   # [nm], signos de cfg via Espejo
     f0 = corr / np.sin(e.alpha)                                  # s_m con d = 0 a esa z
     f1 = (cfg.dist_max_espejo_um * 1000.0 + corr) / np.sin(e.alpha)   # s_m con d = dist_max
     lo, hi = np.maximum(f0, sm.min()), np.minimum(f1, sm.max())
