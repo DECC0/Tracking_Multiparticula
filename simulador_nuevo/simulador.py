@@ -57,6 +57,12 @@ aleatorios; con el espejo apagado todo es identico bit a bit a antes.
 La geometria vive en geometria_espejo.py, en la raiz del repo, compartida con
 simulador_psf: es la UNICA importacion de fuera de esta carpeta (ver abajo).
 
+Celula opcional (usar_celula=True; geometria_celula.py): los emisores estan
+dentro de una esfera (levadura) que, con espejo, lo toca. Posiciones
+iniciales uniformes en su volumen y browniano con frontera reflectante; z_rango_nm
+deja de limitarlos (solo define el rango axial de la red y la base del
+banco) y el GT agrega en_rango_z. Con la celula apagada todo es bit a bit igual.
+
 Aleatoriedad: cada video tiene flujos independientes por componente (muestra,
 trayectorias, fotones, fondo, camara) derivados de (seed, video_id). Asi un
 video se puede regenerar solo, y cambiar el ruido, el fondo o los fotones no
@@ -87,6 +93,7 @@ RAIZ_REPO = Path(__file__).resolve().parents[1]
 if str(RAIZ_REPO) not in sys.path:
     sys.path.append(str(RAIZ_REPO))
 from geometria_espejo import GeometriaEspejo  # noqa: E402
+from geometria_celula import GeometriaCelula  # noqa: E402
 
 
 MASCARAS = ("corkscrew", "esferica", "ninguna")
@@ -95,6 +102,7 @@ COLUMNAS_GT = ["video_id", "frame", "particle_id", "x_px", "y_px", "z_nm",
 COLUMNAS_REFLEJO = ["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm", "photons_reflejo",
                     "reflejo_en_fov", "reflejo_en_banco"]
 COLUMNAS_GT_ESPEJO = COLUMNAS_GT + COLUMNAS_REFLEJO
+COLUMNAS_CELULA = ["en_rango_z"]           # con celula: z dentro de z_rango_nm (el rango axial de la red)
 COMPONENTES_RNG = ("muestra", "trayectorias", "fotones", "fondo", "camara")
 # campos del espejo: con usar_espejo=False no se escriben en config.json (asi
 # el JSON queda como antes del espejo) y al leerlo toman su valor por defecto
@@ -103,6 +111,8 @@ CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_eje_deg", "orientacion_espejo_deg
 # convencion de z de este codigo: +z hacia el objetivo y angulo del espejo desde
 # el eje optico. config.json la guarda; cargar_config rechaza los que no la tienen.
 CONVENCION_Z = "hacia_objetivo"
+# campos de la celula: con usar_celula=False no se escriben en config.json
+CAMPOS_CELULA = ("usar_celula", "diametro_celula_um", "altura_celula_nm", "celula_centro_px")
 TOL_BANCO_NM = 1e-6     # [nm] redondeo de z' en el borde del banco
 _RANGOS = {"n_emisores_rango": int, "z_rango_nm": float, "fotones_rango": float,
            "fondo_rango": float, "D_rango_um2_s": float}
@@ -169,6 +179,13 @@ class Config:
     z_banco_nm: tuple = None        # rango que debe cubrir el banco de PSF [nm], ademas de z_rango_nm;
                                     # None -> z_rango_nm, ampliado solo con el espejo (rango_banco_nm)
 
+    # --- celula (geometria_celula.py): los emisores estan dentro de una esfera ---
+    usar_celula: bool = False       # False: salidas identicas a las de antes de la celula
+    diametro_celula_um: float = 5.0
+    altura_celula_nm: float = 0.0   # z del centro respecto del foco (+ hacia el objetivo)
+    celula_centro_px: tuple = (32.0, 32.0)  # (x, y) [px] del centro; con espejo solo fija su posicion a lo
+                                            # largo de la linea del espejo: la celula toca el espejo
+
     seed: int = 0
 
     def __post_init__(self):
@@ -176,6 +193,7 @@ class Config:
         for campo, tipo in _RANGOS.items():
             setattr(self, campo, tuple(tipo(v) for v in getattr(self, campo)))
         self.espejo_punto_px = tuple(float(v) for v in self.espejo_punto_px)
+        self.celula_centro_px = tuple(float(v) for v in self.celula_centro_px)
         if self.z_banco_nm is not None:
             self.z_banco_nm = tuple(float(v) for v in self.z_banco_nm)
         self.validar()
@@ -225,6 +243,11 @@ class Config:
               "dist_max_espejo_um debe ser > 0 o None")
         exige(self.z_banco_nm is None or (len(self.z_banco_nm) == 2 and self.z_banco_nm[0] < self.z_banco_nm[1]),
               "z_banco_nm debe ser (z_min, z_max) con z_min < z_max")
+        # celula (solo lanza: no cambia ninguna salida)
+        exige(self.diametro_celula_um > 0, "diametro_celula_um debe ser positivo")
+        exige(len(self.celula_centro_px) == 2, "celula_centro_px debe ser (x, y) en px")
+        exige(not (self.usar_celula and self.usar_espejo and self.dist_max_espejo_um is not None),
+              "con usar_celula la region de los emisores es la celula: dist_max_espejo_um debe ser None")
 
     @property
     def pixel_nm(self):
@@ -260,6 +283,9 @@ class Config:
         if not self.usar_espejo:
             for c in CAMPOS_ESPEJO:
                 d.pop(c)
+        if not self.usar_celula:
+            for c in CAMPOS_CELULA:
+                d.pop(c)
         if self.z_banco_nm is None:
             d.pop("z_banco_nm")
         return d
@@ -286,7 +312,10 @@ class Config:
                    f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                    f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
                    f"z_ref {self.z_ref_espejo_nm:.0f} nm"
-                   if self.usar_espejo else ""))
+                   if self.usar_espejo else "")
+                + (f"\ncelula           : {self.diametro_celula_um:.1f} um de diametro, centro a z = "
+                   f"{self.altura_celula_nm:.0f} nm" + (" (toca el espejo)" if self.usar_espejo else "")
+                   if self.usar_celula else ""))
 
 
 def guardar_config(cfg: Config, ruta, banco=None):
@@ -501,6 +530,33 @@ class Espejo(GeometriaEspejo):
         return self.a_gt(self.reflejar_nm(self.a_nm(pos)))
 
 
+class Celula(GeometriaCelula):
+    """Celula de cfg (geometria_celula.py) con la conversion [x_px, y_px, z_nm]
+    <-> nm. Con espejo es tangente a el (celula_centro_px solo fija la posicion
+    a lo largo de la linea); sin espejo, su centro es celula_centro_px a z =
+    altura_celula_nm."""
+
+    def __init__(self, cfg: Config):
+        self.pixel_nm = px = cfg.pixel_nm
+        R = cfg.diametro_celula_um * 500.0
+        xy = np.array(cfg.celula_centro_px) * px
+        if cfg.usar_espejo:
+            c = GeometriaCelula.tangente_al_espejo(Espejo(cfg), R, cfg.altura_celula_nm, xy).c
+        else:
+            c = [xy[0], xy[1], cfg.altura_celula_nm]
+        super().__init__(c, R)
+
+    def a_nm(self, pos):
+        p = np.array(pos, dtype=float)
+        p[..., :2] *= self.pixel_nm
+        return p
+
+    def a_gt(self, p_nm):
+        p = np.array(p_nm, dtype=float)
+        p[..., :2] /= self.pixel_nm
+        return p
+
+
 def _region_inicial_px(cfg: Config):
     """Region lateral de las posiciones iniciales [px]: el FOV ampliado margen_px."""
     m = cfg.margen_px
@@ -525,6 +581,10 @@ def rango_banco_nm(cfg: Config):
     if cfg.z_banco_nm is not None:
         return cfg.z_banco_nm
     zlo, zhi = cfg.z_rango_nm
+    if cfg.usar_celula:                                          # la celula y, con espejo, la celula virtual
+        cel = Celula(cfg)
+        zs = [*cel.rango_z()] + ([*cel.reflejada(Espejo(cfg)).rango_z()] if cfg.usar_espejo else [])
+        return min(zlo, *zs), max(zhi, *zs)
     if not cfg.usar_espejo:
         return zlo, zhi
     r1, r2 = rango_z_reflejo(cfg)
@@ -593,13 +653,23 @@ def generar_trayectorias(cfg: Config, n, rng):
 
     Con cfg.usar_espejo el espejo es una pared mas: las posiciones iniciales
     se pliegan (o se sortean cerca del espejo) y se integra subpaso a subpaso
-    en nm, plegando al dominio en cada uno; mismos sorteos del rng."""
+    en nm, plegando al dominio en cada uno; mismos sorteos del rng.
+
+    Con cfg.usar_celula los emisores estan dentro de la celula: posiciones
+    iniciales uniformes en su volumen (los mismos 3 sorteos por emisor) e
+    integracion subpaso a subpaso con reflexion especular en su superficie
+    (geometria_celula.py). z_rango_nm ya no los limita. Con espejo la celula
+    lo toca, asi que tampoco lo cruzan."""
     T, S, px = cfg.n_frames, cfg.n_subpasos, cfg.pixel_nm
     h = cfg.t_exp / S
     m = cfg.margen_px
 
     D = rng.uniform(*cfg.D_rango_um2_s, n)
-    if cfg.usar_espejo:
+    if cfg.usar_celula:
+        cel = Celula(cfg)
+        u = [rng.uniform(0.0, 1.0, n) for _ in range(3)]         # los 3 sorteos de x, y, z
+        pos0 = cel.a_gt(cel.uniforme(*u))
+    elif cfg.usar_espejo:
         pos0 = _posiciones_iniciales_espejo(cfg, n, rng)         # (n, 3) en px, px, nm
     else:
         pos0 = np.stack([rng.uniform(-0.5 - m, cfg.W - 0.5 + m, n),
@@ -612,6 +682,16 @@ def generar_trayectorias(cfg: Config, n, rng):
     sigma_nm = np.sqrt(2 * D[None, :] * dtau.reshape(-1, 1)) * 1000.0   # (T*S, n)
     escala = np.array([1 / px, 1 / px, 1.0])                     # nm -> px en x, y
 
+    if cfg.usar_celula:
+        pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None]   # [nm], mismos sorteos
+        pasos[..., 2] *= -1.0
+        sub = np.empty((T * S, n, 3))
+        actual = cel.a_nm(pos0)
+        for k in range(T * S):                                   # reflexion especular en la superficie
+            actual = cel.mover_nm(actual, pasos[k])
+            sub[k] = actual
+        sub = cel.a_gt(sub).reshape(T, S, n, 3).transpose(2, 0, 1, 3)   # (n, T, S, 3)
+        return sub.mean(axis=2), sub, D
     if cfg.usar_espejo:
         e = Espejo(cfg)
         pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None]   # [nm], mismos sorteos
@@ -688,6 +768,10 @@ def _tabla_gt(cfg: Config, video_id, tray, Ns, D, reflejo=None):
     pid = np.tile(np.arange(n), T)                               # orden: frame, luego particula
     pos = tray.transpose(1, 0, 2).reshape(-1, 3)
     x, y = pos[:, 0], pos[:, 1]
+    if cfg.usar_celula:                                          # z dentro del rango axial de la red
+        gt = _tabla_gt(replace(cfg, usar_celula=False), video_id, tray, Ns, D, reflejo)
+        gt["en_rango_z"] = (gt.z_nm >= cfg.z_rango_nm[0]) & (gt.z_nm <= cfg.z_rango_nm[1])
+        return gt
     if reflejo is not None:
         pr = reflejo["tray"].transpose(1, 0, 2).reshape(-1, 3)
         gt = _tabla_gt(cfg, video_id, tray, Ns, D)

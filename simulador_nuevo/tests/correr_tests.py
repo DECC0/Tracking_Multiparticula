@@ -26,6 +26,7 @@ MODULOS = [
     "test_video",
     "test_diagnosticos",
     "test_espejo",
+    "test_celula",
     "test_regresion",
 ]
 
