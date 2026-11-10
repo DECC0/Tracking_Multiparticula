@@ -20,9 +20,9 @@ import metricas
 
 RAIZ = Path(__file__).resolve().parents[1]
 ESPEJO_SIM = dict(usar_espejo=True, dist_max_espejo_um=1.0, K_psf=32, z_paso_nm=100.0)
-GEO = dict(espejo_angulo_rango_deg=(29.4, 39.4), espejo_orientacion_aleatoria=True, espejo_punto_aleatorio=True)
+GEO = dict(espejo_angulo_rango_deg=(29.0, 39.0), espejo_orientacion_aleatoria=True, espejo_punto_aleatorio=True)
 SMOKE_ESPEJO = ["datos.simulador.usar_espejo=true", "datos.simulador.dist_max_espejo_um=1.0",
-                "datos.espejo_angulo_rango_deg=[29.4, 39.4]", "datos.espejo_orientacion_aleatoria=true",
+                "datos.espejo_angulo_rango_deg=[29.0, 39.0]", "datos.espejo_orientacion_aleatoria=true",
                 "datos.espejo_punto_aleatorio=true", "datos.canal_distancia_espejo=true",
                 "modelo.dilataciones=[1, 2, 4, 8, 16, 32]"]
 mudo = lambda *a, **k: None
@@ -50,7 +50,7 @@ def test_config_del_espejo():
     e = cargar_config(RAIZ / "configs" / "espejo.yaml")
     assert e.datos.canales_entrada == 2 and e.modelo.dilataciones == (1, 2, 4, 8, 16, 32)
     assert e.datos.simulador["signo_z"] == 1 and e.datos.simulador["ratio_reflejo"] == 0.8
-    assert e.datos.simulador["dist_max_espejo_um"] == 4.0 and e.datos.espejo_angulo_rango_deg == (29.4, 39.4)
+    assert e.datos.simulador["dist_max_espejo_um"] == 4.0 and e.datos.espejo_angulo_rango_deg == (29.0, 39.0)
 
 
 def test_geometria_por_muestra():
@@ -61,7 +61,7 @@ def test_geometria_por_muestra():
     a = np.array([g["angulo_espejo_deg"] for g in gs])
     f = np.array([g["orientacion_espejo_deg"] for g in gs])
     p = np.array([g["espejo_punto_px"] for g in gs])
-    assert (a >= 29.4).all() and (a <= 39.4).all() and a.std() > 2
+    assert (a >= 29.0).all() and (a <= 39.0).all() and a.std() > 2
     assert (f >= 0).all() and (f < 360).all() and f.std() > 80
     assert (p[:, 0] >= -0.5).all() and (p[:, 0] < cs.W - 0.5).all() and (p[:, 1] < cs.H - 0.5).all()
     # flujo propio: activar una opcion no cambia lo que sortean las otras

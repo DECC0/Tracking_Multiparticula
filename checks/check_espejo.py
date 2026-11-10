@@ -5,7 +5,7 @@
                               unidos, y la trayectoria de un par real <-> reflejo
                               (desde la camara, vista lateral y z vs frame).
   fig_espejo_comparacion.png  para comparar con datos reales (particulas puntuales):
-                              - un emisor y su reflejo con el alpha por defecto (34.4 grados) a
+                              - un emisor y su reflejo con el alpha por defecto (34.0 grados) a
                                 d = 0.5, 1, 2 y 3 um del espejo y a dos z respecto
                                 del plano focal, SNR alta (20000 fotones, fondo
                                 5 fot/px) y contraste fijo, con la separacion lateral
@@ -138,7 +138,7 @@ ALPHA = Config.angulo_espejo_deg
 DS_UM = (0.5, 1.0, 2.0, 3.0)                 # distancia del emisor al plano del espejo
 ZS_UM = (-0.4, 0.4)                          # z del emisor respecto del plano focal
 N_FOT, FONDO, RATIO = 20000.0, 5.0, 0.8
-GALERIA_UM = tuple(np.arange(-2.0, 5.51, 0.5))   # hasta la z del reflejo mas alto (+0.4 + 2*3 cos 34.4 = 5.35 um)
+GALERIA_UM = tuple(np.arange(-2.0, 5.51, 0.5))   # hasta la z del reflejo mas alto (+0.4 + 2*3 cos 34.0 = 5.37 um)
 S = 112                                      # lado de cada panel del par [px]
 SG = 64                                      # lado de cada panel de la galeria [px]
 

@@ -141,7 +141,8 @@ class Config:
 
     # --- espejo (geometria y convencion: simulador_psf/espejo.py y config.py) ---
     usar_espejo: bool = False       # False: salidas identicas a las de antes del espejo
-    angulo_espejo_deg: float = 34.4  # alpha en (0, 180): espejo-plano focal, dentro de la cuna de la muestra
+    angulo_espejo_deg: float = 34.0  # alpha en (0, 180): espejo-plano focal, dentro de la cuna de la muestra
+                                     # (= 90 - 56: el montaje esta a 56 grados del eje optico, medido y redondeado)
     orientacion_espejo_deg: float = 0.0   # phi: azimut de la direccion linea del espejo -> muestra, de +x hacia +y
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
     ratio_reflejo: float = 0.8      # fotones del reflejo / del real, en (0, 1]

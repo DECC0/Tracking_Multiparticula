@@ -6,7 +6,7 @@ Compatibles con pytest, pero se corren solos (pytest no esta en el entorno):
     $PY tests/test_espejo.py involucion 45   # solo los que contienen alguna de esas subcadenas
 
 Cubren: involucion, punto medio sobre el plano y p' - p paralelo a n,
-distancias opuestas, casos analiticos (90 y 45 grados, y 34.4 y 53 contra
+distancias opuestas, casos analiticos (90 y 45 grados, y 34.0 y 53 contra
 la formula general), dist_max_espejo_um, z_ref_espejo_nm, dp' = R dp y MSD
 iguales, que ningun emisor real cruza el espejo, fotones del reflejo =
 ratio * fotones del real (en el GT y en la imagen de fotones esperados), que
@@ -32,7 +32,7 @@ from simulador_psf import (Config, BancoPSF, Espejo, generar_video, generar_tray
 # configuracion pequena y barata (PSF "ninguna", recorte chico, paso de banco grueso)
 BASE = dict(H=40, W=56, n_frames=30, mascara="ninguna", K_psf=32, z_paso_nm=50.0,
             n_emisores_rango=(6, 10), D_rango_um2_s=(0.1, 1.0), espejo_punto_px=(12.0, 20.0))
-GEOMETRIAS = [(a, f, p) for a in (20.0, 34.4, 45.0, 53.0, 90.0, 135.0)
+GEOMETRIAS = [(a, f, p) for a in (20.0, 34.0, 45.0, 53.0, 90.0, 135.0)
               for f, p in ((0.0, (12.0, 20.0)), (37.0, (30.0, 5.0)), (200.0, (40.0, 33.0)))]
 
 
@@ -125,15 +125,15 @@ def test_analitico_45():
 
 
 def test_analitico_contra_formula_general():
-    """alpha = 34.4 (el montaje: 55.6 grados desde el eje optico) y 53, con phi,
+    """alpha = 34.0 (el montaje: 56 grados desde el eje optico, medido y redondeado) y 53, con phi,
     punto y z_ref arbitrarios, contra una construccion independiente: en la
     base local (m, t, arriba) el espejo es la recta de angulo alpha en el plano
     (m, arriba), y reflejar es aplicar [[cos 2a, sin 2a], [sin 2a, -cos 2a]] a
     (u, w); t no cambia. Ademas tan(alpha) = separacion lateral / dif. de z."""
     assert Config().signo_z == 1 and Config().signo_inclinacion == 1, "la construccion supone la convencion por defecto"
-    assert Config().angulo_espejo_deg == 34.4 and np.isclose(90.0 - 55.6, 34.4)
-    for a, f, p, zr in ((34.4, 0.0, (20.0, 32.0), 0.0), (34.4, 37.0, (30.0, 5.0), -700.0),
-                        (34.4, 200.0, (40.0, 33.0), 450.0), (53.0, 37.0, (30.0, 5.0), 0.0)):
+    assert Config().angulo_espejo_deg == 34.0 == 90.0 - 56.0
+    for a, f, p, zr in ((34.0, 0.0, (20.0, 32.0), 0.0), (34.0, 37.0, (30.0, 5.0), -700.0),
+                        (34.0, 200.0, (40.0, 33.0), 450.0), (53.0, 37.0, (30.0, 5.0), 0.0)):
         cfg = cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
         e = Espejo(cfg)
         al, fr = np.radians(a), np.radians(f)
@@ -153,11 +153,11 @@ def test_analitico_contra_formula_general():
         assert np.allclose(np.hypot(dif[:, 0], dif[:, 1]), 2 * d * np.sin(al), atol=1e-6)
         assert np.allclose(dif[:, 2], 2 * d * np.cos(al), atol=1e-6) and (dif[:, 2] > 0).all()
         assert np.allclose(np.hypot(dif[:, 0], dif[:, 1]) / dif[:, 2], np.tan(al))
-    # numeros del montaje: un emisor a d = 1 um -> dlat = 2 sin(34.4) = 1.130 um, dz = 2 cos(34.4) = 1.650 um
+    # numeros del montaje: un emisor a d = 1 um -> dlat = 2 sin(34) = 1.118 um, dz = 2 cos(34) = 1.658 um
     e = Espejo(cfg_espejo())
     q = e.punto_en_z_nm(0.0) + 1000.0 * e.n
     dif = e.reflejar_nm(q) - q
-    assert np.isclose(np.hypot(*dif[:2]), 1129.9, atol=0.1) and np.isclose(dif[2], 1650.2, atol=0.1)
+    assert np.isclose(np.hypot(*dif[:2]), 1118.4, atol=0.1) and np.isclose(dif[2], 1658.1, atol=0.1)
 
 
 def test_plegar_lleva_al_dominio_y_respeta_puntos_dentro():
@@ -243,7 +243,7 @@ def test_dist_max_espejo():
             # dentro del FOV ampliado salvo donde la franja no lo toca
             s_m = (pos[:, :2] - e.p0[:2]) @ e.m[:2]
             assert ((s_m >= sm.min() - 1e-6) & (s_m <= sm.max() + 1e-6))[~vacia].all()
-            if a == 34.4 and f == 0.0:                              # el caso del montaje: la franja siempre toca el FOV
+            if a == 34.0 and f == 0.0:                              # el caso del montaje: la franja siempre toca el FOV
                 assert not vacia.any()
     # con orientacion 0 el y es el de siempre
     cfg = cfg_espejo(dist_max_espejo_um=dmax)
@@ -477,7 +477,7 @@ def test_signos_consistentes_en_plegado_muestreo_y_reflejo():
         refl = gt[["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]].to_numpy()
         assert np.allclose(refl, e.reflejar(real), rtol=0, atol=1e-9)
         dz = (gt.z_reflejo_nm - gt.z_nm).to_numpy()
-        assert (si * sz * dz >= -1e-6).all() and (np.abs(dz) > 1.0).any(), (sz, si)   # alpha = 34.4 < 90
+        assert (si * sz * dz >= -1e-6).all() and (np.abs(dz) > 1.0).any(), (sz, si)   # alpha = 34.0 < 90
         lo, hi = rango_banco_nm(cfg)
         assert (lo < cfg.z_rango_nm[0]) == (si * sz < 0) and (hi > cfg.z_rango_nm[1]) == (si * sz > 0)
         assert gt[gt.frame == 0].reflejo_en_banco.all()

@@ -18,8 +18,11 @@ Este modulo no consume el rng.
 
 Montaje (grupo de Biofisica): sin cubreobjetos; las celulas estan pegadas al
 espejo, que queda detras de la muestra vista desde el objetivo (z' > z
-siempre: signo_inclinacion = +1 confirmado). Angulo de 55.6 grados respecto
-del eje optico -> alpha = 34.4 grados respecto del plano focal.
+siempre: signo_inclinacion = +1 confirmado). Angulo de 56 grados respecto
+del eje optico (valor medido, redondeado al grado) -> alpha = 34.0 grados
+respecto del plano focal. Coincide, dentro de ese redondeo, con el semiangulo
+del cono de coleccion del objetivo, arcsin(NA/n) = arcsin(1.1/1.333) = 55.6
+grados.
 
 Unidades: la geometria se calcula en nm (x_nm = x_px * pixel_nm, y igual,
 z en nm). Las funciones publicas reciben y devuelven posiciones en las
@@ -58,9 +61,10 @@ Convencion (Config.signo_z y Config.signo_inclinacion, +1 por defecto):
   - alpha = angulo_espejo_deg: angulo entre el espejo y el plano focal (o
     cualquier plano z = cte), medido dentro de la cuna donde esta la muestra;
     valido en (0, 180). 90 = pared vertical. Medido desde el plano focal; si
-    se mide desde el eje optico (beta = 55.6 grados en el montaje actual),
-    alpha = 90 - beta (34.4 grados por defecto: un espejo perpendicular al
-    eje optico, de frente al objetivo, girado 34.4 grados).
+    se mide desde el eje optico (beta = 56 grados en el montaje actual, valor
+    medido redondeado al grado), alpha = 90 - beta (34.0 grados por defecto:
+    un espejo perpendicular al eje optico, de frente al objetivo, girado 34
+    grados).
   - phi = orientacion_espejo_deg: azimut de m, la direccion lateral desde la
     linea del espejo hacia la muestra. La linea va en la direccion
     t = (-sin phi, cos phi, 0), es decir a phi + 90 grados. Un solo numero

@@ -1,6 +1,6 @@
 """
 Genera un dataset con el espejo activo (formato de pregenerar.py) a partir de
-configs/espejo.yaml: alpha = 34.4 +- 5 grados, ratio_reflejo = 0.8,
+configs/espejo.yaml: alpha = 34.0 +- 5 grados, ratio_reflejo = 0.8,
 dist_max_espejo_um = 4, geometria aleatoria por muestra, y signo_z como
 parametro (no cambia el valor por defecto del simulador, +1).
 

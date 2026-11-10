@@ -5,7 +5,7 @@
 # la red recibe un segundo canal: la distancia con signo de cada pixel a la
 # interseccion del espejo con el plano focal (/ el FOV). Se agrega la
 # dilatacion 32 (campo receptivo 129 px) porque real y reflejo se separan hasta
-# 2 d sin(alpha) = 46 px con dist_max_espejo_um = 4. signo_z se cambia con
+# 2 d sin(alpha) = 45 px con dist_max_espejo_um = 4 y alpha = 34. signo_z se cambia con
 # --set datos.simulador.signo_z=-1 (pendiente del z-stack de una bead).
 #
 # Igual a mezcla_renovar.yaml, pero con 100 epocas: con 50 la mejor epoca fue
@@ -35,7 +35,7 @@ datos:
     fotones_rango: [1000.0, 30000.0]
     fondo_rango: [5.0, 40.0]
     usar_espejo: true
-    angulo_espejo_deg: 34.4   # centro del rango sorteado (espejo_angulo_rango_deg)
+    angulo_espejo_deg: 34.0   # centro del rango sorteado (espejo_angulo_rango_deg); 90 - 56 del eje optico
     ratio_reflejo: 0.8
     dist_max_espejo_um: 4.0   # posiciones iniciales hasta 4 um del plano del espejo
     signo_z: 1                # +1 / -1 (convencion pendiente; los dos pilotos difieren solo aqui)
@@ -51,7 +51,7 @@ datos:
   seed_train: 1
   seed_val: 2
   renovar_por_epoca: true     # epoca e: muestras e n_train ... (e + 1) n_train - 1 de seed_train
-  espejo_angulo_rango_deg: [29.4, 39.4]   # alpha uniforme: 34.4 +- 5 grados
+  espejo_angulo_rango_deg: [29.0, 39.0]   # alpha uniforme: 34.0 +- 5 grados (las corridas espejo_sz+-1 usaron [29.4, 39.4])
   espejo_orientacion_aleatoria: true      # phi uniforme en [0, 360)
   espejo_punto_aleatorio: true            # punto de la linea del espejo aleatorio ...
   espejo_linea_rango_fov: [0.333, 1.1]    # ... con la linea espejo-plano focal en el tercio exterior del FOV (hasta

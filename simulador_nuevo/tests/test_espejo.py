@@ -45,7 +45,7 @@ def test_config_valida_el_espejo():
                dict(signo_z=0), dict(signo_inclinacion=2), dict(z_banco_nm=(100.0, -100.0))):
         espera_error(ValueError, cfg_e, **kw)
     c = sim.Config()
-    assert not c.usar_espejo and c.angulo_espejo_deg == 34.4 and c.signo_z == 1 and c.signo_inclinacion == 1
+    assert not c.usar_espejo and c.angulo_espejo_deg == 34.0 and c.signo_z == 1 and c.signo_inclinacion == 1
 
 
 def test_config_json_con_y_sin_espejo():
@@ -69,7 +69,7 @@ def test_misma_geometria_que_simulador_psf():
     y simulador_nuevo dan la misma normal, p0 y reflexion."""
     import simulador_psf as sp                                   # la raiz ya esta en sys.path
     from geometria_espejo import GeometriaEspejo
-    for a, f, sz in ((34.4, 0.0, 1), (53.0, 37.0, -1), (120.0, 200.0, 1)):
+    for a, f, sz in ((34.0, 0.0, 1), (53.0, 37.0, -1), (120.0, 200.0, 1)):
         kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=(12.0, 20.0),
                   z_ref_espejo_nm=-300.0, signo_z=sz)
         en, ep = sim.Espejo(cfg_e(**kw)), sp.Espejo(sp.Config(usar_espejo=True, **kw))
@@ -102,7 +102,7 @@ def test_banco_ampliado_conserva_los_planos_de_z_rango():
 # --- trayectorias -----------------------------------------------------------
 
 def test_ningun_real_cruza_el_espejo_ni_en_los_subpasos():
-    for a, f in ((20.0, 0.0), (34.4, 37.0), (90.0, 200.0), (135.0, 300.0)):
+    for a, f in ((20.0, 0.0), (34.0, 37.0), (90.0, 200.0), (135.0, 300.0)):
         cfg = cfg_e(angulo_espejo_deg=a, orientacion_espejo_deg=f, n_frames=60, n_subpasos=3,
                     t_exp_s=0.06, D_rango_um2_s=(1.0, 3.0))
         e = sim.Espejo(cfg)
@@ -249,7 +249,7 @@ def test_signos_consistentes():
 
 def test_signos_solo_entran_como_producto():
     kw = dict(dist_max_espejo_um=2.5, orientacion_espejo_deg=37.0)
-    ref = {1: video(**kw)[2], -1: video(angulo_espejo_deg=180.0 - 34.4, **kw)[2]}
+    ref = {1: video(**kw)[2], -1: video(angulo_espejo_deg=180.0 - sim.Config().angulo_espejo_deg, **kw)[2]}
     cols = ["x_px", "y_px", "z_nm", "x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]
     for sz, si in SIGNOS:
         gt = video(signo_z=sz, signo_inclinacion=si, **kw)[2]
