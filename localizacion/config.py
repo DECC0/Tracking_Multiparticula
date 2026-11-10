@@ -60,6 +60,14 @@ class ConfigDatos:
     max_reintentos_espejo: int = 20         # una muestra con algun reflejo sin dibujar (fuera del banco) se
                                             # regenera con otro video_id del simulador; se cuenta en meta
 
+    # celula (requiere datos.simulador.usar_celula: true): sorteada por muestra con su propio flujo
+    celula_diametro_rango_um: tuple = None  # diametro uniforme en [min, max]; None -> el de datos.simulador
+    celula_altura_rango_nm: tuple = None    # z del centro uniforme en [min, max]; None -> el de datos.simulador
+    celula_contacto_centrado: bool = False  # el contacto celula-espejo en el centro del FOV (mas un
+                                            # desplazamiento uniforme de +-celula_desplazamiento_px por eje);
+                                            # fija espejo_punto_px y celula_centro_px de cada muestra
+    celula_desplazamiento_px: float = 0.0
+
     def __post_init__(self):
         if self.read_noise_rango is not None:
             self.read_noise_rango = tuple(float(v) for v in self.read_noise_rango)
@@ -67,6 +75,9 @@ class ConfigDatos:
             self.espejo_angulo_eje_rango_deg = tuple(float(v) for v in self.espejo_angulo_eje_rango_deg)
         if self.espejo_linea_rango_fov is not None:
             self.espejo_linea_rango_fov = tuple(float(v) for v in self.espejo_linea_rango_fov)
+        for c in ("celula_diametro_rango_um", "celula_altura_rango_nm"):
+            if getattr(self, c) is not None:
+                setattr(self, c, tuple(float(v) for v in getattr(self, c)))
         self.validar()
 
     @property
@@ -74,6 +85,12 @@ class ConfigDatos:
         """True si alguna opcion de espejo de esta seccion esta activa."""
         return (self.espejo_angulo_eje_rango_deg is not None or self.espejo_orientacion_aleatoria
                 or self.espejo_punto_aleatorio or self.canal_distancia_espejo)
+
+    @property
+    def celula_aleatoria(self):
+        """True si la celula se sortea o se ubica por muestra."""
+        return (self.celula_diametro_rango_um is not None or self.celula_altura_rango_nm is not None
+                or self.celula_contacto_centrado)
 
     @property
     def canales_entrada(self):
@@ -106,6 +123,19 @@ class ConfigDatos:
         _exige(self.max_reintentos_espejo >= 0, "datos.max_reintentos_espejo debe ser >= 0")
         _exige(not self.usa_espejo or self.simulador.get("usar_espejo", False),
                "las opciones datos.espejo_* y canal_distancia_espejo requieren datos.simulador.usar_espejo: true")
+        _exige(not self.celula_aleatoria or self.simulador.get("usar_celula", False),
+               "las opciones datos.celula_* requieren datos.simulador.usar_celula: true")
+        if self.celula_diametro_rango_um is not None:
+            lo, hi = self.celula_diametro_rango_um
+            _exige(0 < lo <= hi, "datos.celula_diametro_rango_um: se requiere 0 < min <= max")
+        if self.celula_altura_rango_nm is not None:
+            lo, hi = self.celula_altura_rango_nm
+            _exige(lo <= hi, "datos.celula_altura_rango_nm: se requiere min <= max")
+        _exige(self.celula_desplazamiento_px >= 0, "datos.celula_desplazamiento_px debe ser >= 0")
+        if self.celula_contacto_centrado:
+            _exige(self.simulador.get("usar_espejo", False) and not self.espejo_punto_aleatorio,
+                   "datos.celula_contacto_centrado requiere el espejo y espejo_punto_aleatorio: false "
+                   "(el contacto fija la linea del espejo)")
 
 
 @dataclass

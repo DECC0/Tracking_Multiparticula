@@ -26,6 +26,7 @@ MODULOS = [
     "test_infer",
     "test_evaluate",
     "test_espejo",
+    "test_celula",
 ]
 
 

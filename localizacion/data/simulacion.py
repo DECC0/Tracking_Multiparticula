@@ -41,6 +41,7 @@ import simulador as sim  # noqa: E402
 
 CLAVE_RNG = 1000                        # spawn_key del flujo de randomizacion; el simulador usa 0..4
 CLAVE_RNG_ESPEJO = 1001                 # spawn_key del flujo de la geometria del espejo
+CLAVE_RNG_CELULA = 1002                 # spawn_key del flujo de la celula
 DESFASE_REINTENTO = 2 ** 40             # video_id del simulador en el intento k: idx + k * DESFASE_REINTENTO
 CAMPOS_RESERVADOS = ("n_frames", "n_videos", "seed")
 COLUMNAS_GT = sim.COLUMNAS_GT + ["snr"]
@@ -49,6 +50,14 @@ CAMPOS_PSF = ("NA", "n_medio", "lambda_nm", "pixel_camara_um", "magnificacion", 
               "anillos_corkscrew", "amp_esferica", "M_pupila", "K_psf", "energia_max_recortada",
               "z_paso_nm", "blur_extra_px", "integrar_pixel", "z_rango_nm", "anillos_hacia_objetivo")
 COLUMNAS_GEOMETRIA = ["espejo_angulo_eje_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
+COLUMNAS_CELULA = ["celula_diametro_um", "celula_altura_nm", "celula_centro_x_px", "celula_centro_y_px"]
+
+
+def evaluable(gt):
+    """Emisores que la red debe encontrar: dentro del FOV y, con celula, del
+    rango axial de la red (en_rango_z). Los demas no son objetivo ni cuentan
+    como falsos negativos."""
+    return gt.en_fov & gt.en_rango_z if "en_rango_z" in gt else gt.en_fov
 
 
 def config_simulador(cfg_datos, seed):
@@ -59,9 +68,26 @@ def config_simulador(cfg_datos, seed):
     cfg = sim.Config(**cfg_datos.simulador, n_frames=1, n_videos=1, seed=seed)
     if cfg_datos.fotones_dispersion is not None and cfg.fotones_rango[0] <= 0:
         raise ValueError("fotones_dispersion requiere fotones_rango > 0")
-    if geometria_aleatoria(cfg_datos) and cfg.z_banco_nm is None:
+    if cfg.usar_celula and cfg.z_banco_nm is None:
+        cfg = replace(cfg, z_banco_nm=z_banco_celula(cfg_datos, cfg))
+    elif geometria_aleatoria(cfg_datos) and cfg.z_banco_nm is None:
         cfg = replace(cfg, z_banco_nm=z_banco_espejo(cfg_datos, cfg))
     return cfg
+
+
+def z_banco_celula(cfg_datos, cfg_sim):
+    """Rango z [nm] que cubre la celula y, con espejo, la celula virtual, para
+    cualquier diametro, altura y angulo sorteables. Los emisores estan en
+    z_c +- R; el centro virtual esta en z_c - 2 R sin(beta) (la celula toca el
+    espejo). Todo es monotono en cada variable: basta con las esquinas."""
+    Rs = np.array(cfg_datos.celula_diametro_rango_um or (cfg_sim.diametro_celula_um,) * 2) * 500.0
+    zcs = np.array(cfg_datos.celula_altura_rango_nm or (cfg_sim.altura_celula_nm,) * 2)
+    lo, hi = min(cfg_sim.z_rango_nm[0], zcs[0] - Rs[1]), max(cfg_sim.z_rango_nm[1], zcs[1] + Rs[1])
+    if cfg_sim.usar_espejo:
+        bs = np.radians(cfg_datos.espejo_angulo_eje_rango_deg or (cfg_sim.angulo_espejo_eje_deg,) * 2)
+        zv = np.array([zc - 2 * R * np.sin(b) + s * R for zc in zcs for R in Rs for b in bs for s in (-1, 1)])
+        lo, hi = min(lo, zv.min()), max(hi, zv.max())
+    return float(lo), float(hi)
 
 
 def geometria_aleatoria(cfg_datos):
@@ -169,11 +195,44 @@ def mapa_distancia_espejo(cfg_sim, H, W, escala_px):
     return (d / escala_px).astype(np.float32)
 
 
+def celula_muestra(cfg_datos, cfg_sim, idx, geometria, intento=0):
+    """Campos de la celula de la muestra idx (intento k), con su propio flujo:
+    siempre 4 uniformes (diametro, altura, desplazamiento x, y). Con
+    celula_contacto_centrado, el punto donde la celula toca el espejo queda en
+    el centro del FOV (+- celula_desplazamiento_px): el contacto esta a altura
+    z_c - R sin(beta); la linea del espejo pasa por el (espejo_punto_px es su
+    punto a la altura z_ref, corrido -(z_ref - z_q) tan(beta) en m) y el centro
+    de la celula esta R cos(beta) mas alla en m."""
+    rng = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG_CELULA, intento)))
+    u_d, u_h, u_x, u_y = rng.uniform(size=4)
+    c = dict(diametro_celula_um=cfg_sim.diametro_celula_um, altura_celula_nm=cfg_sim.altura_celula_nm)
+    if cfg_datos.celula_diametro_rango_um is not None:
+        lo, hi = cfg_datos.celula_diametro_rango_um
+        c["diametro_celula_um"] = float(lo + u_d * (hi - lo))
+    if cfg_datos.celula_altura_rango_nm is not None:
+        lo, hi = cfg_datos.celula_altura_rango_nm
+        c["altura_celula_nm"] = float(lo + u_h * (hi - lo))
+    if cfg_datos.celula_contacto_centrado:
+        px, R = cfg_sim.pixel_nm, c["diametro_celula_um"] * 500.0
+        b = np.radians(geometria.get("angulo_espejo_eje_deg", cfg_sim.angulo_espejo_eje_deg))
+        f = np.radians(geometria.get("orientacion_espejo_deg", cfg_sim.orientacion_espejo_deg))
+        m = np.array([np.cos(f), np.sin(f)])
+        dz = cfg_datos.celula_desplazamiento_px
+        Q = (np.array([(cfg_sim.W - 1) / 2, (cfg_sim.H - 1) / 2]) + dz * (2 * np.array([u_x, u_y]) - 1)) * px
+        z_q = c["altura_celula_nm"] - R * np.sin(b)
+        p0 = Q - (cfg_sim.z_ref_espejo_nm - z_q) * np.tan(b) * m
+        c["celula_centro_px"] = tuple(float(v) for v in (Q + R * np.cos(b) * m) / px)
+        c["espejo_punto_px"] = tuple(float(v) for v in p0 / px)
+    return c
+
+
 def config_muestra(cfg_datos, cfg_sim, idx, intento=0):
     """simulador.Config de la muestra idx, con la randomizacion extra (y, con
-    espejo, la geometria del intento)."""
+    espejo, la geometria del intento; con celula, la celula)."""
     u_fot, u_fondo, u_ruido, _ = _sorteos(cfg_sim, idx)
     cambios = geometria_muestra(cfg_datos, cfg_sim, idx, intento) if cfg_sim.usar_espejo else {}
+    if cfg_sim.usar_celula:
+        cambios.update(celula_muestra(cfg_datos, cfg_sim, idx, cambios, intento))
     d = cfg_datos.fotones_dispersion
     if not usa_rango_completo(cfg_datos, cfg_sim, idx):
         Nmin, Nmax = cfg_sim.fotones_rango
@@ -223,7 +282,7 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
                            "amplia datos.simulador.z_banco_nm")
     gt["video_id"] = idx
     gt["snr"] = snr_emisores(cfg_m, banco, gt, extra["fondo"])
-    meta = dict(video_id=idx, n_emisores=int(gt.en_fov.sum()),
+    meta = dict(video_id=idx, n_emisores=int(evaluable(gt).sum()),
                 fotones_min=cfg_m.fotones_rango[0], fotones_max=cfg_m.fotones_rango[1],
                 rango_completo=bool(usa_rango_completo(cfg_datos, cfg_sim, idx)),
                 fondo_medio=float(extra["fondo"].mean()), fondo_no_uniforme=cfg_m.fondo_no_uniforme,
@@ -232,4 +291,8 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
         meta.update(espejo_angulo_eje_deg=cfg_m.angulo_espejo_eje_deg, espejo_orientacion_deg=cfg_m.orientacion_espejo_deg,
                     espejo_punto_x_px=cfg_m.espejo_punto_px[0], espejo_punto_y_px=cfg_m.espejo_punto_px[1],
                     reintentos=intento, n_reflejos_en_fov=int(gt.reflejo_en_fov.sum()))
+    if cfg_sim.usar_celula:
+        meta.update(celula_diametro_um=cfg_m.diametro_celula_um, celula_altura_nm=cfg_m.altura_celula_nm,
+                    celula_centro_x_px=cfg_m.celula_centro_px[0], celula_centro_y_px=cfg_m.celula_centro_px[1],
+                    n_fuera_rango_z=int((gt.en_fov & ~gt.en_rango_z).sum()))
     return video, gt, meta                                       # video (T = 1, H, W) = (C = 1, H, W)

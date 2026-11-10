@@ -26,6 +26,7 @@
 
 # variables (las exporta lanzar_espejo.sh; aqui sus valores por defecto)
 ANILLOS=${ANILLOS:-lejos}                 # lejos | cerca (Config.anillos_hacia_objetivo false | true)
+PREFIJO=${PREFIJO:-espejo}                # espejo | celula (configs/celula.yaml)
 EPOCAS=${EPOCAS:-3}
 CONFIG=${CONFIG:-localizacion/configs/espejo.yaml}
 VENV=${VENV:-$HOME/envs/tracking}
@@ -45,8 +46,8 @@ fi
 set -e
 
 if [ "$ANILLOS" = "cerca" ]; then BANDERA=true; OPCION=--anillos-hacia-objetivo; else BANDERA=false; OPCION=; fi
-NOMBRE=hypatia_espejo_b45_${ANILLOS}
-TEST=$DATOS/test_espejo_b45_${ANILLOS}
+NOMBRE=hypatia_${PREFIJO}_b45_${ANILLOS}
+TEST=$DATOS/test_${PREFIJO}_b45_${ANILLOS}
 WORKERS=${SLURM_CPUS_PER_TASK:-4}
 
 echo "Corri en la maquina: $(/bin/hostname)  el: $(/bin/date)"

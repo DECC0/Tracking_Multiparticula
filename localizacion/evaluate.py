@@ -44,6 +44,7 @@ from infer import PIXELES_POR_BATCH, leer_entradas, camara_de, detecciones_de, g
 from metricas import (CLAVES, evaluar, resumen, tiene_reflejos, distancia_al_espejo_nm, fp_sobre_reflejos,
                       resumen_espejo)
 from utils import elegir_dispositivo, cargar_modelo, con_postproc, resumen_tiempo
+from data.simulacion import evaluable
 
 N_RANGOS = 8
 COLORES = {"lateral": "#2a78d6", "z": "#eb6834", "y": "#1baf7a", "recall": "#444444"}   # paleta categorica
@@ -65,7 +66,10 @@ def ground_truth(entrada, ruta_gt=None, cache=None):
         cache[ruta] = pd.read_csv(ruta)
     evaluados = pd.DataFrame({"video_id": entrada["video_id"], "frame": entrada["frame"]})
     gt = cache[ruta].merge(evaluados, on=CLAVES)
-    return gt if "en_fov" in gt else gt.assign(en_fov=True)
+    gt = gt if "en_fov" in gt else gt.assign(en_fov=True)
+    if "en_rango_z" in gt:                   # con celula: fuera del rango axial de la red = fuera del FOV
+        gt = gt.assign(en_fov=evaluable(gt))
+    return gt
 
 
 # ----------------------------------------------------------------------------

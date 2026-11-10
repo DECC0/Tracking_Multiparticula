@@ -19,7 +19,7 @@ import yaml
 from torch.utils.data import Dataset
 
 from config import ConfigDatos, a_dict, guardar_yaml
-from data.simulacion import (sim, config_simulador, banco_compatible, generar_muestra, config_geometria,
+from data.simulacion import (sim, config_simulador, banco_compatible, generar_muestra, config_geometria, evaluable,
                              escala_distancia, mapa_distancia_espejo)
 
 
@@ -57,7 +57,8 @@ def _item(imagen, pos, idx, cfg_datos, cfg_sim, geometria=None):
 
 
 def _pos_en_fov(gt):
-    return gt.loc[gt.en_fov, ["x_px", "y_px", "z_nm"]].to_numpy(np.float32)
+    """Posiciones de los emisores objetivo: en el FOV y, con celula, en el rango axial de la red."""
+    return gt.loc[evaluable(gt), ["x_px", "y_px", "z_nm"]].to_numpy(np.float32)
 
 
 class DatasetSimulado(Dataset):
@@ -155,7 +156,7 @@ class DatasetDisco(Dataset):
         self.imagenes = np.load(carpeta / "imagenes.npy", mmap_mode="r")
         self.gt = pd.read_csv(carpeta / "ground_truth.csv")
         self.muestras = pd.read_csv(carpeta / "muestras.csv")
-        dentro = self.gt[self.gt.en_fov]
+        dentro = self.gt[evaluable(self.gt)]
         self._pos = {int(i): g[["x_px", "y_px", "z_nm"]].to_numpy(np.float32)
                      for i, g in dentro.groupby("video_id")}
 
