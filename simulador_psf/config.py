@@ -52,7 +52,12 @@ class Config:
     -(-60) - 90 = 330 coincide (la otra opcion, 150, apunta lejos de la muestra).
     Para espejo_punto_px: este simulador centra el pixel (fila i, columna j) en
     (x = j, y = i); ImageJ con coordenadas subpixel pone el pixel j en
-    [j, j + 1), asi que hay que restar 0.5 px a x e y (medir en px, no en um)."""
+    [j, j + 1), asi que hay que restar 0.5 px a x e y (medir en px, no en um).
+
+    Convencion de z (fija): +z HACIA el objetivo, z = 0 en el plano focal. Las
+    corridas y datasets anteriores al cambio usaban +z lejos del objetivo
+    (README, "Convencion de z"). De que lado del foco salen los anillos de la
+    PSF esferica es anillos_hacia_objetivo (optica.py)."""
 
     # --- optica ---
     NA: float = 1.1
@@ -81,10 +86,14 @@ class Config:
     K_psf: int = None               # recorte de la PSF [px]; None -> 48, o 128 para "esferica"
     z_paso_nm: float = 20.0         # resolucion del banco precalculado
     blur_extra_px: float = 0.6      # tamano finito del emisor + aberraciones
+    anillos_hacia_objetivo: bool = False  # lado del foco donde la PSF esferica gana anillos: False -> al
+                                          # alejarse el emisor del objetivo (-z), True -> al acercarse (+z).
+                                          # Pendiente: z-stack de beads (README). Equivale al signo_z viejo
+                                          # (+1 <-> False, -1 <-> True)
 
     # --- muestra (rangos: se muestrean por video / por particula) ---
     n_emisores_rango: tuple = (1, 12)
-    z_rango_nm: tuple = (-800.0, 800.0)
+    z_rango_nm: tuple = (-800.0, 800.0)     # +z hacia el objetivo
     fotones_rango: tuple = (1000.0, 30000.0)  # calibrado con muNS reales (microscopio de Alex): offset ~99 ADU,
                                               # ganancia asumida ~0.46 e-/ADU, fondo ~15 fotones/px, particula
                                               # tenue ~1000-2600 fotones, p_max experimental ~0.010-0.019
@@ -95,14 +104,13 @@ class Config:
 
     # --- espejo (vista reflejada; geometria y convencion de signos en espejo.py) ---
     usar_espejo: bool = False           # False: salidas identicas a las de antes del espejo
-    angulo_espejo_deg: float = 34.0     # alpha [grados] en (0, 180), dentro de la cuna de la muestra: medido
-                                        # desde el plano focal; si se mide desde el eje optico (beta = 56 en el
-                                        # montaje actual, valor medido redondeado al grado), alpha = 90 - beta
+    angulo_espejo_eje_deg: float = 45.0  # beta [grados]: angulo entre el espejo y el EJE OPTICO, en (-90, 90);
+                                         # > 0: espejo detras de la muestra vista desde el objetivo (montaje)
     orientacion_espejo_deg: float = 0.0  # (ver docstring: desde ImageJ) azimut [grados] de la direccion de la linea del espejo hacia la
                                          # muestra, de +x hacia +y; 0 -> muestra hacia +x, linea vertical en la imagen
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
     ratio_reflejo: float = 0.8          # fotones del reflejo / fotones del real, en (0, 1]
-    z_ref_espejo_nm: float = 0.0        # z [nm] del plano de referencia del espejo respecto del plano focal
+    z_ref_espejo_nm: float = 0.0        # z [nm] (+ hacia el objetivo) del plano de referencia del espejo respecto del plano focal
                                         # (z = 0): espejo_punto_px es un punto del espejo a esa altura. 0 -> la
                                         # linea es la interseccion del espejo con el plano focal. Sin
                                         # cubreobjetos: z_rango_nm solo delimita el volumen simulado
@@ -111,10 +119,6 @@ class Config:
                                         # None -> en todo el FOV ampliado, como siempre
     z_banco_nm: tuple = None            # rango z del banco de PSF [nm]; None -> z_rango_nm, ampliado
                                         # automaticamente con el espejo para cubrir las z de los reflejos
-    signo_z: int = +1                   # +1: +z se aleja del objetivo; -1: se acerca (pendiente: z-stack
-                                        # de una bead, README)
-    signo_inclinacion: int = +1         # +1: con alpha < 90 el espejo se inclina SOBRE la muestra (confirmado:
-                                        # espejo detras de la muestra, z' > z); -1: alejandose (= alpha -> 180 - alpha)
 
     seed: int = 0
 
@@ -123,17 +127,14 @@ class Config:
         if self.K_psf is None:
             self.K_psf = K_PSF_ESFERICA if self.mascara == "esferica" else K_PSF_OTRAS
         # validacion del espejo (solo lanza: no cambia ninguna salida)
-        if not 0.0 < self.angulo_espejo_deg < 180.0:
-            raise ValueError(f"angulo_espejo_deg debe estar en (0, 180): {self.angulo_espejo_deg}")
+        if not -90.0 < self.angulo_espejo_eje_deg < 90.0:
+            raise ValueError(f"angulo_espejo_eje_deg debe estar en (-90, 90): {self.angulo_espejo_eje_deg}")
         if not 0.0 < self.ratio_reflejo <= 1.0:
             raise ValueError(f"ratio_reflejo debe estar en (0, 1]: {self.ratio_reflejo}")
         if len(self.espejo_punto_px) != 2:
             raise ValueError(f"espejo_punto_px debe ser (x, y) en px: {self.espejo_punto_px}")
         if self.dist_max_espejo_um is not None and not self.dist_max_espejo_um > 0:
             raise ValueError(f"dist_max_espejo_um debe ser > 0 o None: {self.dist_max_espejo_um}")
-        for nombre in ("signo_z", "signo_inclinacion"):
-            if getattr(self, nombre) not in (1, -1):
-                raise ValueError(f"{nombre} debe ser +1 o -1: {getattr(self, nombre)}")
         if self.z_banco_nm is not None and not self.z_banco_nm[0] < self.z_banco_nm[1]:
             raise ValueError(f"z_banco_nm debe ser (z_min, z_max) con z_min < z_max: {self.z_banco_nm}")
 
@@ -141,6 +142,12 @@ class Config:
     def pixel_nm(self):
         """Tamano del pixel en la muestra [nm]: pixel de camara / magnificacion."""
         return self.pixel_camara_um * 1000.0 / self.magnificacion
+
+    @property
+    def signo_q(self):
+        """Signo entre z y la coordenada de desenfoque q del modelo de pupila
+        (optica.py): q = signo_q * z; -1 con anillos_hacia_objetivo False."""
+        return 1.0 if self.anillos_hacia_objetivo else -1.0
 
     @property
     def sigma0_nm(self):
@@ -165,13 +172,12 @@ class Config:
                 f"FOV              : {self.W*px/1000:.2f} x {self.H*px/1000:.2f} um\n"
                 f"paso rms max/eje : {paso_max:.0f} nm = {paso_max/px:.2f} px por frame")
         if self.usar_espejo:        # sin espejo el texto queda como antes (la regresion lo compara)
-            texto += (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
+            texto += (f"\nespejo           : {self.angulo_espejo_eje_deg:.1f} deg desde el eje optico, orientacion "
                       f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                       f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
                       f"plano de referencia z = {self.z_ref_espejo_nm:.0f} nm")
             if self.dist_max_espejo_um is not None:
                 texto += f"\n                   posiciones iniciales hasta {self.dist_max_espejo_um:.2f} um del plano del espejo"
-            if (self.signo_z, self.signo_inclinacion) != (1, 1):   # con los signos por defecto el texto no cambia
-                texto += (f"\n                   signo_z {self.signo_z:+d}, "
-                          f"signo_inclinacion {self.signo_inclinacion:+d}")
+        if self.anillos_hacia_objetivo:
+            texto += "\nPSF esferica     : anillos hacia el objetivo (+z)"
         return texto

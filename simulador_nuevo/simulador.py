@@ -6,10 +6,21 @@ tests/ y basada en sim_imagenesPSF.py (misma optica, camara y rangos).
 Montaje: NA 1.1, agua (n = 1.333), emision 530 nm, pixel de camara 6.5 um,
 magnificacion 66x  ->  98.48 nm/px en la muestra.
 
+Convencion de z (fija): +z HACIA el objetivo, z = 0 en el plano focal. Las
+corridas y datasets anteriores usaban +z lejos del objetivo: config.json
+lleva "convencion_z" y cargar_config rechaza los que no la tienen (README,
+"Convencion de z").
+
 PSF: modelo escalar de pupila (sin desajuste de indice, inmersion = muestra = agua):
 
-    PSF(x, y, z) = |IFFT{ circ(rho) * exp(i*(Phi(rho, phi) + k z cos(theta))) }|^2,
+    PSF(x, y, q) = |IFFT{ circ(rho) * exp(i*(Phi(rho, phi) + k q cos(theta))) }|^2,
     sin(theta) = NA * rho / n,  k = 2 pi n / lambda
+
+    con q = signo_q * z la coordenada de desenfoque del modelo: q = -z si
+    anillos_hacia_objetivo es False (por defecto), +z si es True. De que lado
+    del foco salen los anillos de la esferica no lo fija el modelo y se
+    decidira con un z-stack de beads; con q = -z las imagenes son bit a bit
+    las de la convencion anterior.
 
     y despues, en Fourier: blur gaussiano extra (tamano del emisor, aberraciones)
     e integracion sobre el area del pixel (OTF * sinc(fx px) * sinc(fy px)).
@@ -34,7 +45,8 @@ Cadena de formacion de imagen (el orden importa):
 Convencion de coordenadas: el centro del pixel (fila i, columna j) es
 (x = j, y = i). El FOV es [-0.5, W - 0.5) x [-0.5, H - 0.5).
 
-Espejo opcional (usar_espejo=True; mismo modelo que simulador_psf/espejo.py):
+Espejo opcional (usar_espejo=True; mismo modelo que simulador_psf/espejo.py;
+angulo_espejo_eje_deg desde el EJE OPTICO, 45 por defecto):
 un espejo plano junto a la muestra, y la camara ve cada emisor real y su
 imagen virtual. Solo se simulan las trayectorias reales; el reflejo de cada
 subposicion es p' = p - 2 [(p - p0) . n] n (en nm), asi que su desenfoque de
@@ -55,7 +67,7 @@ Salidas (generar_dataset):
     <carpeta>/ground_truth.csv  video_id, frame, particle_id, x_px, y_px, z_nm,
                                 photons, D_um2_s, en_fov
                                 (+ COLUMNAS_REFLEJO con espejo)
-    <carpeta>/config.json       Config usada + K_psf efectivo
+    <carpeta>/config.json       Config usada + K_psf efectivo + convencion_z
 """
 
 import json
@@ -86,8 +98,11 @@ COLUMNAS_GT_ESPEJO = COLUMNAS_GT + COLUMNAS_REFLEJO
 COMPONENTES_RNG = ("muestra", "trayectorias", "fotones", "fondo", "camara")
 # campos del espejo: con usar_espejo=False no se escriben en config.json (asi
 # el JSON queda como antes del espejo) y al leerlo toman su valor por defecto
-CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_deg", "orientacion_espejo_deg", "espejo_punto_px",
-                 "ratio_reflejo", "z_ref_espejo_nm", "dist_max_espejo_um", "signo_z", "signo_inclinacion")
+CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_eje_deg", "orientacion_espejo_deg", "espejo_punto_px",
+                 "ratio_reflejo", "z_ref_espejo_nm", "dist_max_espejo_um")
+# convencion de z de este codigo: +z hacia el objetivo y angulo del espejo desde
+# el eje optico. config.json la guarda; cargar_config rechaza los que no la tienen.
+CONVENCION_Z = "hacia_objetivo"
 TOL_BANCO_NM = 1e-6     # [nm] redondeo de z' en el borde del banco
 _RANGOS = {"n_emisores_rango": int, "z_rango_nm": float, "fotones_rango": float,
            "fondo_rango": float, "D_rango_um2_s": float}
@@ -128,10 +143,13 @@ class Config:
     z_paso_nm: float = 20.0         # resolucion maxima del banco precalculado
     blur_extra_px: float = 0.6      # tamano finito del emisor + aberraciones
     integrar_pixel: bool = True     # integra la intensidad sobre el area del pixel
+    anillos_hacia_objetivo: bool = False  # lado del foco donde la esferica gana anillos: False -> al alejarse
+                                          # del objetivo (-z), True -> al acercarse (+z); pendiente: z-stack de
+                                          # beads. Equivale al signo_z viejo (+1 <-> False, -1 <-> True)
 
     # --- muestra (rangos: se muestrean por video / por particula) ---
     n_emisores_rango: tuple = (1, 12)
-    z_rango_nm: tuple = (-800.0, 800.0)
+    z_rango_nm: tuple = (-800.0, 800.0)     # +z hacia el objetivo
     fotones_rango: tuple = (1000.0, 30000.0)
     muestreo_fotones: str = "log"   # "log" (log-uniforme en fotones_rango) o "uniforme"
     fondo_rango: tuple = (5.0, 40.0)
@@ -141,15 +159,13 @@ class Config:
 
     # --- espejo (geometria y convencion: simulador_psf/espejo.py y config.py) ---
     usar_espejo: bool = False       # False: salidas identicas a las de antes del espejo
-    angulo_espejo_deg: float = 34.0  # alpha en (0, 180): espejo-plano focal, dentro de la cuna de la muestra
-                                     # (= 90 - 56: el montaje esta a 56 grados del eje optico, medido y redondeado)
+    angulo_espejo_eje_deg: float = 45.0  # beta en (-90, 90): angulo espejo-EJE OPTICO; > 0: espejo detras de la
+                                         # muestra vista desde el objetivo (el montaje)
     orientacion_espejo_deg: float = 0.0   # phi: azimut de la direccion linea del espejo -> muestra, de +x hacia +y
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
     ratio_reflejo: float = 0.8      # fotones del reflejo / del real, en (0, 1]
-    z_ref_espejo_nm: float = 0.0    # z [nm] del plano de referencia del espejo (0: el plano focal)
+    z_ref_espejo_nm: float = 0.0    # z [nm] (+ hacia el objetivo) del plano de referencia del espejo (0: el plano focal)
     dist_max_espejo_um: float = None  # posiciones iniciales hasta esa distancia al PLANO del espejo; None -> todas
-    signo_z: int = 1                # +1: +z se aleja del objetivo (pendiente: z-stack de una bead)
-    signo_inclinacion: int = 1      # +1: con alpha < 90 el espejo se inclina sobre la muestra (confirmado)
     z_banco_nm: tuple = None        # rango que debe cubrir el banco de PSF [nm], ademas de z_rango_nm;
                                     # None -> z_rango_nm, ampliado solo con el espejo (rango_banco_nm)
 
@@ -202,19 +218,22 @@ class Config:
             exige(self.fotones_rango[0] >= 0, "fotones_rango debe ser >= 0")
         exige(min(self.W, self.H) + 2 * self.margen_px > 0, "margen_px deja una region inicial vacia")
         # espejo (solo lanza: no cambia ninguna salida)
-        exige(0.0 < self.angulo_espejo_deg < 180.0, "angulo_espejo_deg debe estar en (0, 180)")
+        exige(-90.0 < self.angulo_espejo_eje_deg < 90.0, "angulo_espejo_eje_deg debe estar en (-90, 90)")
         exige(0.0 < self.ratio_reflejo <= 1.0, "ratio_reflejo debe estar en (0, 1]")
         exige(len(self.espejo_punto_px) == 2, "espejo_punto_px debe ser (x, y) en px")
         exige(self.dist_max_espejo_um is None or self.dist_max_espejo_um > 0,
               "dist_max_espejo_um debe ser > 0 o None")
-        exige(self.signo_z in (1, -1) and self.signo_inclinacion in (1, -1),
-              "signo_z y signo_inclinacion deben ser +1 o -1")
         exige(self.z_banco_nm is None or (len(self.z_banco_nm) == 2 and self.z_banco_nm[0] < self.z_banco_nm[1]),
               "z_banco_nm debe ser (z_min, z_max) con z_min < z_max")
 
     @property
     def pixel_nm(self):
         return self.pixel_camara_um * 1000.0 / self.magnificacion
+
+    @property
+    def signo_q(self):
+        """q = signo_q * z (coordenada de desenfoque del modelo de pupila)."""
+        return 1.0 if self.anillos_hacia_objetivo else -1.0
 
     @property
     def sigma0_nm(self):
@@ -262,15 +281,16 @@ class Config:
                 f"paso rms max/eje : {paso_max:.0f} nm = {paso_max/px:.2f} px por frame\n"
                 f"exposicion       : {1000*self.t_exp:.0f} ms, {self.n_subpasos} subpaso(s) "
                 f"(desplazamiento rms max en la exposicion {desliz/px:.2f} px)"
-                + (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
+                + ("\nPSF esferica     : anillos hacia el objetivo (+z)" if self.anillos_hacia_objetivo else "")
+                + (f"\nespejo           : {self.angulo_espejo_eje_deg:.1f} deg desde el eje optico, orientacion "
                    f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                    f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
-                   f"z_ref {self.z_ref_espejo_nm:.0f} nm, signos ({self.signo_z:+d}, {self.signo_inclinacion:+d})"
+                   f"z_ref {self.z_ref_espejo_nm:.0f} nm"
                    if self.usar_espejo else ""))
 
 
 def guardar_config(cfg: Config, ruta, banco=None):
-    meta = {"config": cfg.a_dict()}
+    meta = {"convencion_z": CONVENCION_Z, "config": cfg.a_dict()}
     if banco is not None:
         meta["K_psf_usado"] = int(banco.K)
         meta["energia_recortada_max"] = float(banco.energia_recortada.max())
@@ -278,7 +298,14 @@ def guardar_config(cfg: Config, ruta, banco=None):
 
 
 def cargar_config(ruta):
-    return Config.desde_dict(json.loads(Path(ruta).read_text())["config"])
+    """Config de un config.json. Los escritos con la convencion anterior de z
+    (+z lejos del objetivo, angulo desde el plano focal, signo_z; sin el campo
+    convencion_z) se rechazan: no se convierten (README, "Convencion de z")."""
+    meta = json.loads(Path(ruta).read_text())
+    if meta.get("convencion_z") != CONVENCION_Z:
+        raise ValueError(f"{ruta}: config.json con la convencion anterior de z (+z lejos del objetivo); "
+                         "esos datos no se convierten: regenerarlos con este codigo (README, 'Convencion de z')")
+    return Config.desde_dict(meta["config"])
 
 
 # ----------------------------------------------------------------------------
@@ -300,15 +327,29 @@ def fase_esferica(rho, amp):
     return amp * z40 / np.sqrt(5.0)  # max |Z4^0| = sqrt(5) en rho = 0 y rho = 1
 
 
+def a_q(cfg: Config, rango):
+    """Rango (lo, hi) en z [nm] -> rango ordenado en q = signo_q * z."""
+    a, b = (cfg.signo_q * float(v) for v in rango)
+    return min(a, b), max(a, b)
+
+
 def rejilla_z(cfg: Config):
-    """Planos z del banco: incluye ambos extremos de z_rango_nm, paso uniforme
-    <= z_paso_nm. Si rango_banco_nm pide mas (espejo o z_banco_nm), se agregan
-    planos con el mismo paso por fuera, y los de z_rango_nm quedan identicos a
-    los del banco sin ampliar."""
-    zlo, zhi = cfg.z_rango_nm
+    """Planos del banco en z (+z hacia el objetivo), ascendentes: los de
+    _rejilla_q vistos en z."""
+    q = _rejilla_q(cfg)
+    return cfg.signo_q * (q[::-1] if cfg.signo_q < 0 else q)
+
+
+def _rejilla_q(cfg: Config):
+    """Planos del banco en q = signo_q * z: incluye ambos extremos de
+    z_rango_nm (en q), paso uniforme <= z_paso_nm. Si rango_banco_nm pide mas
+    (espejo o z_banco_nm), se agregan planos con el mismo paso por fuera, y los
+    de z_rango_nm quedan identicos a los del banco sin ampliar. Con q = -z y un
+    z_rango simetrico es la rejilla de la convencion anterior."""
+    zlo, zhi = a_q(cfg, cfg.z_rango_nm)
     n = int(np.ceil((zhi - zlo) / cfg.z_paso_nm - 1e-9)) + 1
     base = np.linspace(zlo, zhi, n)
-    lo, hi = rango_banco_nm(cfg)
+    lo, hi = a_q(cfg, rango_banco_nm(cfg))
     if lo >= zlo and hi <= zhi:
         return base
     h = (zhi - zlo) / (n - 1) if n > 1 else cfg.z_paso_nm
@@ -343,8 +384,9 @@ def _rejilla_pupila(cfg: Config, S=1):
                 filtro=filtro, S=S)
 
 
-def _psf_de_rejilla(cfg: Config, rej, z_nm, dx_px=0.0, dy_px=0.0):
-    P = rej["P0"] * np.exp(1j * rej["kcos"] * z_nm)
+def _psf_de_rejilla(cfg: Config, rej, q_nm, dx_px=0.0, dy_px=0.0):
+    """PSF con desenfoque del modelo q_nm (q = signo_q * z)."""
+    P = rej["P0"] * np.exp(1j * rej["kcos"] * q_nm)
     if dx_px or dy_px:                                           # desplaza el campo: exacto
         P = P * np.exp(-2j * np.pi * (rej["fx"] * dx_px + rej["fy"] * dy_px) * cfg.pixel_nm)
     psf = np.abs(np.fft.ifft2(P))**2
@@ -358,13 +400,14 @@ def _psf_de_rejilla(cfg: Config, rej, z_nm, dx_px=0.0, dy_px=0.0):
 
 
 def psf_directa(cfg: Config, z_nm, dx_px=0.0, dy_px=0.0, sobremuestreo=1):
-    """PSF completa (M_pupila x M_pupila, suma 1) con el emisor en el pixel
-    M_pupila // 2 + (dx, dy). Camino lento y exacto, usado para construir el
-    banco y como referencia en los tests. Con sobremuestreo = S > 1 (impar) la
-    integracion sobre el pixel se hace numericamente (ignora integrar_pixel)."""
+    """PSF completa (M_pupila x M_pupila, suma 1) con el emisor en z_nm (+z
+    hacia el objetivo) y en el pixel M_pupila // 2 + (dx, dy). Camino lento y
+    exacto, usado como referencia en los tests. Con sobremuestreo = S > 1
+    (impar) la integracion sobre el pixel se hace numericamente (ignora
+    integrar_pixel)."""
     if sobremuestreo < 1 or sobremuestreo % 2 == 0:
         raise ValueError("sobremuestreo debe ser un entero impar >= 1")
-    return _psf_de_rejilla(cfg, _rejilla_pupila(cfg, sobremuestreo), z_nm, dx_px, dy_px)
+    return _psf_de_rejilla(cfg, _rejilla_pupila(cfg, sobremuestreo), cfg.signo_q * z_nm, dx_px, dy_px)
 
 
 class BancoPSF:
@@ -372,10 +415,13 @@ class BancoPSF:
     (fase lineal en Fourier), sin interpolacion espacial."""
 
     def __init__(self, cfg: Config):
+        """Atributos publicos en z (+z hacia el objetivo), ascendentes: z_grid,
+        stack (nz, K, K), energia_recortada. Internamente se construye e
+        interpola en q = signo_q * z (q_grid, stack_q)."""
         self.cfg = cfg
-        self.z_grid = rejilla_z(cfg)
+        self.q_grid = _rejilla_q(cfg)
         rej = _rejilla_pupila(cfg)
-        completas = np.stack([_psf_de_rejilla(cfg, rej, z) for z in self.z_grid])
+        completas = np.stack([_psf_de_rejilla(cfg, rej, q) for q in self.q_grid])
         M = cfg.M_pupila
         c = M // 2
 
@@ -389,19 +435,23 @@ class BancoPSF:
             K = next((K for K in range(16, M + 1, 16)
                       if 1.0 - recorte(K).sum(axis=(1, 2)).min() <= cfg.energia_max_recortada), M)
         self.K = K
-        self.stack = recorte(K).copy()
+        self.stack_q = recorte(K).copy()
+        orden = slice(None, None, -1) if cfg.signo_q < 0 else slice(None)   # z ascendente
+        self.z_grid = cfg.signo_q * self.q_grid[orden]
+        self.stack = self.stack_q[orden]
         self.energia_recortada = 1.0 - self.stack.sum(axis=(1, 2))
 
         self.kx, self.ky = np.meshgrid(np.fft.rfftfreq(K), np.fft.fftfreq(K), indexing="xy")
 
     def psf_en_z(self, z_nm):
-        zg = self.z_grid
-        if len(zg) == 1:
-            return self.stack[0].copy()
-        z = float(np.clip(z_nm, zg[0], zg[-1]))
-        i = int(np.clip(np.searchsorted(zg, z) - 1, 0, len(zg) - 2))
-        w = (z - zg[i]) / (zg[i + 1] - zg[i])
-        return (1 - w) * self.stack[i] + w * self.stack[i + 1]
+        """PSF (K, K) en z_nm (+z hacia el objetivo), interpolada linealmente en q."""
+        qg = self.q_grid
+        if len(qg) == 1:
+            return self.stack_q[0].copy()
+        q = float(np.clip(self.cfg.signo_q * z_nm, qg[0], qg[-1]))
+        i = int(np.clip(np.searchsorted(qg, q) - 1, 0, len(qg) - 2))
+        w = (q - qg[i]) / (qg[i + 1] - qg[i])
+        return (1 - w) * self.stack_q[i] + w * self.stack_q[i + 1]
 
     def colocar(self, img, x, y, z_nm, N):
         """Suma N * PSF(z) centrada en (x, y) [px, continuo] sobre img (in place)."""
@@ -433,9 +483,8 @@ class Espejo(GeometriaEspejo):
     def __init__(self, cfg: Config):
         self.pixel_nm = px = cfg.pixel_nm
         x0, y0 = cfg.espejo_punto_px
-        super().__init__(cfg.angulo_espejo_deg, cfg.orientacion_espejo_deg,
-                         [x0 * px, y0 * px, float(cfg.z_ref_espejo_nm)],
-                         *cfg.z_rango_nm, cfg.signo_z, cfg.signo_inclinacion)
+        super().__init__(cfg.angulo_espejo_eje_deg, cfg.orientacion_espejo_deg,
+                         [x0 * px, y0 * px, float(cfg.z_ref_espejo_nm)], *cfg.z_rango_nm)
 
     def a_nm(self, pos):
         p = np.array(pos, dtype=float)
@@ -482,6 +531,15 @@ def rango_banco_nm(cfg: Config):
     return min(zlo, r1), max(zhi, r2)
 
 
+def _sortear_z(cfg: Config, n, rng):
+    """z uniforme en z_rango_nm (+z hacia el objetivo), sorteada como
+    profundidad u = -z y negada (exacto): con la misma semilla es bit a bit -z
+    de la convencion anterior (+z lejos del objetivo) con el rango espejado.
+    Consume lo mismo que rng.uniform(lo, hi, n)."""
+    lo, hi = cfg.z_rango_nm
+    return -rng.uniform(-hi, -lo, n)
+
+
 def _posiciones_iniciales_espejo(cfg: Config, n, rng):
     """Posiciones iniciales (n, 3) [px, px, nm] con espejo, con los mismos 3
     sorteos de n que sin espejo: sin dist_max_espejo_um, uniformes en la caja
@@ -491,11 +549,11 @@ def _posiciones_iniciales_espejo(cfg: Config, n, rng):
     (x0, x1), (y0, y1) = _region_inicial_px(cfg)
     if cfg.dist_max_espejo_um is None:
         pos0 = np.stack([rng.uniform(x0, x1, n), rng.uniform(y0, y1, n),
-                         rng.uniform(*cfg.z_rango_nm, n)], axis=1)
+                         _sortear_z(cfg, n, rng)], axis=1)
         return e.a_gt(e.plegar_nm(e.a_nm(pos0)))
     u_m = rng.uniform(0.0, 1.0, n)                               # sorteo de x
     u_t = rng.uniform(0.0, 1.0, n)                               # sorteo de y
-    z = rng.uniform(*cfg.z_rango_nm, n)                          # sorteo de z
+    z = _sortear_z(cfg, n, rng)                                  # sorteo de z
     esq = np.array([[x, y] for x in (x0, x1) for y in (y0, y1)]) * cfg.pixel_nm
     lat = e.lateral_cerca(u_m, u_t, z, esq, cfg.dist_max_espejo_um * 1000.0)
     return e.a_gt(np.column_stack([lat, z]))
@@ -512,6 +570,13 @@ def reflejar(z, lo, hi):
         return np.full_like(np.asarray(z, dtype=float), lo)
     u = np.mod(np.asarray(z) - lo, 2 * L)
     return lo + np.where(u > L, 2 * L - u, u)
+
+
+def reflejar_z(z, lo, hi):
+    """reflejar sobre z (+ hacia el objetivo), calculado sobre la profundidad
+    u = -z con las paredes espejadas: igual en exacto, y bit a bit la z
+    negada de la convencion anterior (_sortear_z)."""
+    return -reflejar(-z, -hi, -lo)
 
 
 def generar_trayectorias(cfg: Config, n, rng):
@@ -539,7 +604,7 @@ def generar_trayectorias(cfg: Config, n, rng):
     else:
         pos0 = np.stack([rng.uniform(-0.5 - m, cfg.W - 0.5 + m, n),
                          rng.uniform(-0.5 - m, cfg.H - 0.5 + m, n),
-                         rng.uniform(*cfg.z_rango_nm, n)], axis=1)   # (n, 3) en px, px, nm
+                         _sortear_z(cfg, n, rng)], axis=1)           # (n, 3) en px, px, nm
 
     dtau = np.full((T, S), h)
     dtau[:, 0] = cfg.dt_s - cfg.t_exp + h                        # del ultimo subpaso al primero del frame siguiente
@@ -550,6 +615,7 @@ def generar_trayectorias(cfg: Config, n, rng):
     if cfg.usar_espejo:
         e = Espejo(cfg)
         pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None]   # [nm], mismos sorteos
+        pasos[..., 2] *= -1.0                                    # sorteados como profundidad u = -z
         sub = np.empty((T * S, n, 3))
         actual = e.a_nm(pos0)
         for k in range(T * S):                                   # reflexion especular en espejo y paredes
@@ -558,9 +624,10 @@ def generar_trayectorias(cfg: Config, n, rng):
         sub = e.a_gt(sub).reshape(T, S, n, 3).transpose(2, 0, 1, 3)   # (n, T, S, 3)
         return sub.mean(axis=2), sub, D
     pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None] * escala
+    pasos[..., 2] *= -1.0                                        # sorteados como profundidad u = -z (_sortear_z)
     sub = pos0[None] + np.cumsum(pasos, axis=0)                  # (T*S, n, 3)
     sub = sub.reshape(T, S, n, 3).transpose(2, 0, 1, 3)          # (n, T, S, 3)
-    sub[..., 2] = reflejar(sub[..., 2], *cfg.z_rango_nm)
+    sub[..., 2] = reflejar_z(sub[..., 2], *cfg.z_rango_nm)
     return sub.mean(axis=2), sub, D
 
 

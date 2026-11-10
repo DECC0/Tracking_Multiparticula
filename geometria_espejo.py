@@ -7,14 +7,20 @@ aleatorios. Cada simulador la envuelve en su propia clase Espejo, que lee
 los parametros de su Config y agrega la conversion [px, px, nm] <-> nm. Todo
 aqui trabaja en nm en los tres ejes.
 
-Modelo (diagramas y convencion completa en el docstring de simulador_psf/espejo.py):
+Convencion (diagramas en el docstring de simulador_psf/espejo.py): objetivo
+arriba, +z HACIA el objetivo (fijo), y el angulo del espejo beta medido desde
+el EJE OPTICO, en (-90, 90). beta > 0: el espejo queda detras de la muestra
+vista desde el objetivo (el montaje; el reflejo siempre mas lejos del
+objetivo que el real); beta = 0: pared paralela al eje optico; beta < 0:
+inclinado hacia el otro lado. Los extremos +-90 (espejo paralelo al plano
+focal) quedan excluidos.
     m = (cos phi, sin phi, 0)          direccion lateral linea del espejo -> muestra
     t = (-sin phi, cos phi, 0)         direccion de la linea del espejo
-    arriba = signo_z * z_hat           direccion que se aleja del objetivo
-    n = sin(alpha) m - signo_inclinacion cos(alpha) arriba   normal hacia la muestra
+    n = cos(beta) m + sin(beta) z_hat  normal unitaria hacia la muestra
     d = (p - p0) . n                   distancia con signo (> 0: lado de la muestra)
     p' = p - 2 d n = p0 + R (p - p0),  R = I - 2 n n^T
-Los dos signos solo entran como su producto.
+    p' - p: lateral -2 d cos(beta) m, axial -2 d sin(beta) (z' < z con beta > 0)
+Internamente alpha = 90 - beta es el angulo con el plano focal (no se expone).
 """
 
 import numpy as np
@@ -31,20 +37,20 @@ def matriz_R(n):
 class GeometriaEspejo:
     """Plano del espejo y paredes en z de los emisores reales.
 
-    alpha_deg          angulo espejo-plano focal dentro de la cuna de la muestra, en (0, 180)
+    beta_deg           angulo espejo-eje optico [grados], en (-90, 90) (ver el docstring del modulo)
     phi_deg            azimut de m, de +x hacia +y
     p0_nm              (3,) punto del espejo en el plano de referencia [nm]; z_ref = p0[2]
-    z_lo, z_hi         paredes en z de los emisores reales [nm]
-    signo_z, signo_inclinacion   convencion de signos (+1 o -1)"""
+    z_lo, z_hi         paredes en z de los emisores reales [nm] (+z hacia el objetivo)"""
 
-    def __init__(self, alpha_deg, phi_deg, p0_nm, z_lo, z_hi, signo_z=1, signo_inclinacion=1):
-        self.alpha = a = np.radians(alpha_deg)                   # [rad]
+    def __init__(self, beta_deg, phi_deg, p0_nm, z_lo, z_hi):
+        if not -90.0 < beta_deg < 90.0:
+            raise ValueError(f"el angulo desde el eje optico debe estar en (-90, 90): {beta_deg}")
+        self.beta = b = np.radians(beta_deg)                     # [rad]
+        self.alpha = np.pi / 2 - b                               # angulo con el plano focal (interno)
         f = np.radians(phi_deg)
         self.m = np.array([np.cos(f), np.sin(f), 0.0])
         self.t = np.array([-np.sin(f), np.cos(f), 0.0])
-        self.signo_z, self.signo_inclinacion = int(signo_z), int(signo_inclinacion)
-        self.arriba = np.array([0.0, 0.0, float(self.signo_z)])
-        self.n = np.sin(a) * self.m - self.signo_inclinacion * np.cos(a) * self.arriba
+        self.n = np.cos(b) * self.m + np.sin(b) * np.array([0.0, 0.0, 1.0])
         self.R = matriz_R(self.n)
         self.z_lo, self.z_hi = z_lo, z_hi
         self.p0 = np.asarray(p0_nm, dtype=float)
@@ -56,10 +62,10 @@ class GeometriaEspejo:
 
     def punto_en_z_nm(self, z_nm):
         """Punto [nm] (3,) de la linea del espejo a la altura z_nm: p0 + s m en
-        el plano z = z_nm, con d = 0 -> s sin(alpha) = signo_inclinacion signo_z
-        (z_nm - z_ref) cos(alpha). punto_en_z_nm(0) es la interseccion del
-        espejo con el plano focal; la linea sigue en la direccion t."""
-        s = self.signo_inclinacion * self.signo_z * (z_nm - self.z_ref) / np.tan(self.alpha)
+        el plano z = z_nm, con d = 0 -> s cos(beta) = -(z_nm - z_ref) sin(beta).
+        punto_en_z_nm(0) es la interseccion del espejo con el plano focal; la
+        linea sigue en la direccion t."""
+        s = -(z_nm - self.z_ref) * np.tan(self.beta)
         return self.p0 + s * self.m + np.array([0.0, 0.0, z_nm - self.z_ref])
 
     def reflejar_nm(self, p_nm):
@@ -120,7 +126,7 @@ class GeometriaEspejo:
             s_t uniforme en la proyeccion sobre t de la region lateral (esquinas
                 esq_xy_nm (4, 2) en nm);
             s_m uniforme en la franja d en [0, dist_max] a esa z. A altura z,
-                d = s_m sin(alpha) - signo_inclinacion signo_z cos(alpha) (z - z_ref),
+                d = s_m cos(beta) + sin(beta) (z - z_ref),
                 asi que la franja es s_m en [s(0), s(dist_max)], recortada a la
                 proyeccion sobre m de la region. Si a esa z la franja no toca la
                 region se usa la franja entera (el punto queda fuera del FOV,
@@ -128,9 +134,9 @@ class GeometriaEspejo:
         esq = np.asarray(esq_xy_nm, dtype=float) - self.p0[:2]
         st, sm = esq @ self.t[:2], esq @ self.m[:2]              # region proyectada sobre t y m [nm]
         s_t = st.min() + u_t * (st.max() - st.min())
-        corr = self.signo_inclinacion * self.signo_z * np.cos(self.alpha) * (z - self.z_ref)   # [nm]
-        f0 = corr / np.sin(self.alpha)                           # s_m con d = 0 a esa z
-        f1 = (dist_max_nm + corr) / np.sin(self.alpha)           # s_m con d = dist_max
+        corr = -np.sin(self.beta) * (z - self.z_ref)             # [nm]
+        f0 = corr / np.cos(self.beta)                            # s_m con d = 0 a esa z
+        f1 = (dist_max_nm + corr) / np.cos(self.beta)            # s_m con d = dist_max
         lo, hi = np.maximum(f0, sm.min()), np.minimum(f1, sm.max())
         vacia = lo > hi                                          # la franja no toca la region
         lo, hi = np.where(vacia, f0, lo), np.where(vacia, f1, hi)

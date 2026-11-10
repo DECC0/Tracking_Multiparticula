@@ -2,7 +2,7 @@
 Movimiento browniano 3D de los emisores a lo largo de un video.
 
 Cada eje da pasos independientes dx = sqrt(2 D dt) * N(0, 1) por frame, con D
-propio de cada particula. z tiene paredes reflectantes en cfg.z_rango_nm
+propio de cada particula. z (+ hacia el objetivo) tiene paredes reflectantes en cfg.z_rango_nm
 (el banco de PSF solo esta definido ahi); x, y son libres, asi que las
 particulas pueden salir y entrar del FOV.
 
@@ -28,6 +28,13 @@ def reflejar(z, lo, hi):
     return lo + np.where(u > L, 2 * L - u, u)
 
 
+def reflejar_z(z, lo, hi):
+    """reflejar sobre z (+ hacia el objetivo), calculado sobre la profundidad
+    u = -z con las paredes espejadas: igual en exacto, y bit a bit la z
+    negada de la convencion anterior (posiciones.sortear_z)."""
+    return -reflejar(-z, -hi, -lo)
+
+
 def generar_trayectorias(cfg: Config, n, rng):
     """Trayectorias 3D de n particulas durante cfg.n_frames frames.
 
@@ -44,6 +51,7 @@ def generar_trayectorias(cfg: Config, n, rng):
     pos0 = posiciones_iniciales(cfg, n, rng)                     # (n, 3) en nm
 
     pasos = rng.normal(size=(n, T, 3)) * sigma_nm[:, None, None]
+    pasos[..., 2] *= -1.0                                        # sorteados como profundidad u = -z (sortear_z)
     pasos[:, 0] = 0.0                                            # frame 0 = pos0
     if cfg.usar_espejo:
         espejo = Espejo(cfg)
@@ -53,6 +61,6 @@ def generar_trayectorias(cfg: Config, n, rng):
             tray[:, t] = espejo.plegar_nm(tray[:, t - 1] + pasos[:, t])
     else:
         tray = pos0[:, None, :] + np.cumsum(pasos, axis=1)
-        tray[..., 2] = reflejar(tray[..., 2], *cfg.z_rango_nm)
+        tray[..., 2] = reflejar_z(tray[..., 2], *cfg.z_rango_nm)
     tray[..., :2] /= px                                          # x, y de nm a px
     return tray, D

@@ -19,9 +19,18 @@ def muestrear_n_emisores(cfg: Config, rng):
     return rng.integers(cfg.n_emisores_rango[0], cfg.n_emisores_rango[1] + 1)
 
 
+def sortear_z(cfg: Config, n, rng):
+    """z uniforme en cfg.z_rango_nm (+z hacia el objetivo), sorteada como
+    profundidad u = -z (+ lejos del objetivo) y negada: negar es exacto, asi
+    que con la misma semilla da bit a bit -z de la convencion anterior (+z lejos
+    del objetivo) con el rango espejado. Consume lo mismo que rng.uniform(lo, hi, n)."""
+    lo, hi = cfg.z_rango_nm
+    return -rng.uniform(-hi, -lo, n)
+
+
 def posiciones_iniciales(cfg: Config, n, rng):
     """Posiciones iniciales (n, 3) de los emisores, TODAS en nm: x, y uniformes
-    en el FOV ampliado MARGEN_PX px por lado, z uniforme en cfg.z_rango_nm.
+    en el FOV ampliado MARGEN_PX px por lado, z uniforme en cfg.z_rango_nm (sortear_z).
     x, y se pasan de px a nm porque los pasos brownianos se suman en nm.
 
     Con cfg.usar_espejo, los puntos que caen detras del espejo se llevan al
@@ -40,7 +49,7 @@ def posiciones_iniciales(cfg: Config, n, rng):
     else:
         pos = np.stack([rng.uniform(-MARGEN_PX, cfg.W + MARGEN_PX, n) * px,
                         rng.uniform(-MARGEN_PX, cfg.H + MARGEN_PX, n) * px,
-                        rng.uniform(*cfg.z_rango_nm, n)], axis=1)    # (n, 3) en nm
+                        sortear_z(cfg, n, rng)], axis=1)             # (n, 3) en nm
     if cfg.usar_espejo:
         pos = Espejo(cfg).plegar_nm(pos)
     return pos
@@ -55,12 +64,11 @@ def _cerca_del_espejo(cfg: Config, n, rng):
             lado (el sorteo de y, reescalado; con orientacion_espejo_deg = 0 es
             el mismo y de siempre);
         s_m uniforme en la franja d en [0, dist_max] a esa z (el sorteo de x,
-            reescalado). A altura z, d = s_m sin(alpha) - signo_inclinacion
-            signo_z cos(alpha) (z - z_ref), asi que la franja es
-                s_m en [s(0), s(dist_max)],  s(d) = (d + signo_inclinacion signo_z
-                                                     cos(alpha) (z - z_ref)) / sin(alpha),
+            reescalado). A altura z, d = s_m cos(beta) + sin(beta) (z - z_ref),
+            asi que la franja es
+                s_m en [s(0), s(dist_max)],  s(d) = (d - sin(beta) (z - z_ref)) / cos(beta),
             recortada a la proyeccion sobre m del FOV ampliado (el espejo
-            inclinado proyecta la franja a un ancho lateral dist_max / sin(alpha),
+            inclinado proyecta la franja a un ancho lateral dist_max / cos(beta),
             que puede pasar del FOV). Si a esa z la franja no toca el FOV
             ampliado, se usa la franja entera (el punto queda fuera del FOV con
             en_fov = False, pero respeta dist_max).
@@ -71,7 +79,7 @@ def _cerca_del_espejo(cfg: Config, n, rng):
     px = cfg.pixel_nm
     u_m = rng.uniform(0.0, 1.0, n)                               # sorteo de x
     u_t = rng.uniform(0.0, 1.0, n)                               # sorteo de y
-    z = rng.uniform(*cfg.z_rango_nm, n)                          # sorteo de z
+    z = sortear_z(cfg, n, rng)                                   # sorteo de z
     esq = np.array([[x, y] for x in (-MARGEN_PX, cfg.W + MARGEN_PX)
                     for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px   # FOV ampliado [nm]
     lat = e.lateral_cerca(u_m, u_t, z, esq, cfg.dist_max_espejo_um * 1000.0)   # geometria_espejo.py

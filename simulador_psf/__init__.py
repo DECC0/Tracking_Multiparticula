@@ -21,12 +21,12 @@ Todo lo publico se importa desde aqui: from simulador_psf import Config, BancoPS
 """
 
 from .config import Config
-from .posiciones import muestrear_n_emisores, posiciones_iniciales, muestrear_fotones
-from .browniano import reflejar, generar_trayectorias
+from .posiciones import muestrear_n_emisores, sortear_z, posiciones_iniciales, muestrear_fotones
+from .browniano import reflejar, reflejar_z, generar_trayectorias
 from .optica import fase_esferica, Pupila, fase_de_mascara, construir_pupila, psf_completa, BancoPSF
 from .fondo import generar_fondo
 from .ruido import aplicar_camara
 from .io_gt import COLUMNAS_GT, COLUMNAS_REFLEJO, COLUMNAS_GT_ESPEJO, nombre_video, guardar_video, guardar_gt
-from .espejo import Espejo, matriz_R, rango_z_reflejo, rango_banco_nm
+from .espejo import Espejo, matriz_R, rango_z_reflejo, a_q, rango_banco_q, rango_banco_nm
 from .diagnosticos import energia_encerrada, snr_pico, imprimir_snr_pico
 from .generacion import generar_video, generar_dataset

@@ -5,12 +5,15 @@ Compatibles con pytest, pero se corren solos (pytest no esta en el entorno):
     $PY tests/test_espejo.py                 # todos
     $PY tests/test_espejo.py involucion 45   # solo los que contienen alguna de esas subcadenas
 
-Cubren: involucion, punto medio sobre el plano y p' - p paralelo a n,
-distancias opuestas, casos analiticos (90 y 45 grados, y 34.0 y 53 contra
-la formula general), dist_max_espejo_um, z_ref_espejo_nm, dp' = R dp y MSD
-iguales, que ningun emisor real cruza el espejo, fotones del reflejo =
-ratio * fotones del real (en el GT y en la imagen de fotones esperados), que
-el espejo no consume el rng, y con el espejo apagado la regresion bit a bit.
+Convencion: +z hacia el objetivo y angulo del espejo desde el eje optico
+(angulo_espejo_eje_deg, beta). Cubren: involucion, punto medio sobre el plano
+y p' - p paralelo a n, distancias opuestas, casos analiticos (0 y 45 grados, y
+45, 56 y 37 contra la formula general), dist_max_espejo_um, z_ref_espejo_nm,
+dp' = R dp y MSD iguales, que ningun emisor real cruza el espejo, fotones del
+reflejo = ratio * fotones del real (en el GT y en la imagen de fotones
+esperados), que el espejo no consume el rng, la convencion fija (sin signos),
+beta -> -beta, que anillos_hacia_objetivo solo cambia la PSF, y con el espejo
+apagado la regresion bit a bit.
 Las configuraciones usan H != W para que un cambio x <-> y falle.
 """
 import functools
@@ -26,13 +29,13 @@ import pandas as pd  # noqa: E402
 
 import simulador_psf.generacion as generacion  # noqa: E402
 from simulador_psf import (Config, BancoPSF, Espejo, generar_video, generar_trayectorias,  # noqa: E402
-                           posiciones_iniciales, rango_z_reflejo, rango_banco_nm,
+                           posiciones_iniciales, rango_z_reflejo, rango_banco_nm, rango_banco_q, a_q,
                            COLUMNAS_GT, COLUMNAS_GT_ESPEJO)
 
 # configuracion pequena y barata (PSF "ninguna", recorte chico, paso de banco grueso)
 BASE = dict(H=40, W=56, n_frames=30, mascara="ninguna", K_psf=32, z_paso_nm=50.0,
             n_emisores_rango=(6, 10), D_rango_um2_s=(0.1, 1.0), espejo_punto_px=(12.0, 20.0))
-GEOMETRIAS = [(a, f, p) for a in (20.0, 34.0, 45.0, 53.0, 90.0, 135.0)
+GEOMETRIAS = [(b, f, p) for b in (70.0, 45.0, 56.0, 37.0, 0.0, -45.0)        # beta: angulo desde el eje optico
               for f, p in ((0.0, (12.0, 20.0)), (37.0, (30.0, 5.0)), (200.0, (40.0, 33.0)))]
 
 
@@ -51,30 +54,34 @@ def puntos(n=500, seed=0):
     return np.stack([r.uniform(-10, 70, n), r.uniform(-10, 50, n), r.uniform(-3000, 3000, n)], 1)
 
 
+def espejo(b, f, p, **kw):
+    return Espejo(cfg_espejo(angulo_espejo_eje_deg=b, orientacion_espejo_deg=f, espejo_punto_px=p, **kw))
+
+
 # --- geometria pura ---------------------------------------------------------------
 
 def test_base_ortonormal():
-    for a, f, p in GEOMETRIAS:
-        e = Espejo(cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p))
+    for b, f, p in GEOMETRIAS:
+        e = espejo(b, f, p)
         assert np.isclose(np.linalg.norm(e.n), 1.0)
         assert np.isclose(e.n @ e.t, 0.0)                         # la linea del espejo esta en el plano
         assert np.allclose(e.R @ e.R, np.eye(3)) and np.allclose(e.R, e.R.T)
         assert np.isclose(np.linalg.det(e.R), -1.0)              # reflexion, no rotacion
         assert np.isclose(e.distancia_nm(e.p0), 0.0)
-        # el angulo entre el espejo y el plano focal es alpha: normal vs vertical
-        assert np.isclose(np.degrees(np.arccos(abs(e.n @ e.arriba))), min(a, 180.0 - a))
+        # el angulo entre el espejo y el eje optico es |beta|: |n . z| = sin |beta|
+        assert np.isclose(np.degrees(np.arcsin(abs(e.n[2]))), abs(b))
 
 
 def test_involucion():
-    for a, f, p in GEOMETRIAS:
-        e = Espejo(cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p))
+    for b, f, p in GEOMETRIAS:
+        e = espejo(b, f, p)
         q = puntos()
         assert np.allclose(e.reflejar(e.reflejar(q)), q, rtol=0, atol=1e-9)
 
 
 def test_punto_medio_en_el_plano_y_paralelo_a_n():
-    for a, f, p in GEOMETRIAS:
-        e = Espejo(cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p))
+    for b, f, p in GEOMETRIAS:
+        e = espejo(b, f, p)
         q = e.a_nm(puntos())
         qr = e.reflejar_nm(q)
         assert np.allclose(e.distancia_nm((q + qr) / 2), 0.0, atol=1e-9)
@@ -83,15 +90,15 @@ def test_punto_medio_en_el_plano_y_paralelo_a_n():
 
 
 def test_distancias_opuestas():
-    for a, f, p in GEOMETRIAS:
-        e = Espejo(cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p))
+    for b, f, p in GEOMETRIAS:
+        e = espejo(b, f, p)
         q = e.a_nm(puntos())
         assert np.allclose(e.distancia_nm(e.reflejar_nm(q)), -e.distancia_nm(q), atol=1e-9)
 
 
-def test_analitico_90():
-    """Espejo vertical (phi = 0): x' = 2 x0 - x, y' = y, z' = z."""
-    cfg = cfg_espejo(angulo_espejo_deg=90.0)
+def test_analitico_0():
+    """Espejo paralelo al eje optico (beta = 0, phi = 0): x' = 2 x0 - x, y' = y, z' = z."""
+    cfg = cfg_espejo(angulo_espejo_eje_deg=0.0)
     e, x0 = Espejo(cfg), cfg.espejo_punto_px[0]
     q = puntos()
     qr = e.reflejar(q)
@@ -100,9 +107,9 @@ def test_analitico_90():
     assert np.allclose(qr[:, 2], q[:, 2], atol=1e-9)
 
 
-def test_analitico_90_orientacion_90():
+def test_analitico_0_orientacion_90():
     """Con phi = 90 la muestra queda hacia +y: el papel de x lo hace y."""
-    cfg = cfg_espejo(angulo_espejo_deg=90.0, orientacion_espejo_deg=90.0)
+    cfg = cfg_espejo(angulo_espejo_eje_deg=0.0, orientacion_espejo_deg=90.0)
     e, y0 = Espejo(cfg), cfg.espejo_punto_px[1]
     q = puntos()
     qr = e.reflejar(q)
@@ -111,58 +118,56 @@ def test_analitico_90_orientacion_90():
 
 
 def test_analitico_45():
-    """alpha = 45, phi = 0 (con la convencion por defecto de signos):
-    z' - z0 = x - x0 y x' - x0 = z - z0, en nm; y' = y."""
-    cfg = cfg_espejo(angulo_espejo_deg=45.0)
-    assert cfg.signo_z == 1 and cfg.signo_inclinacion == 1, "el caso analitico supone la convencion por defecto"
+    """beta = 45 (el montaje), phi = 0, +z hacia el objetivo:
+    z' - z0 = -(x - x0) y x' - x0 = -(z - z0), en nm; y' = y."""
+    cfg = cfg_espejo(angulo_espejo_eje_deg=45.0)
     e, px = Espejo(cfg), cfg.pixel_nm
     x0, z0 = cfg.espejo_punto_px[0], cfg.z_ref_espejo_nm
     q = puntos()
     qr = e.reflejar(q)
-    assert np.allclose(qr[:, 2] - z0, (q[:, 0] - x0) * px, atol=1e-6)
-    assert np.allclose((qr[:, 0] - x0) * px, q[:, 2] - z0, atol=1e-6)
+    assert np.allclose(qr[:, 2] - z0, -(q[:, 0] - x0) * px, atol=1e-6)
+    assert np.allclose((qr[:, 0] - x0) * px, -(q[:, 2] - z0), atol=1e-6)
     assert np.allclose(qr[:, 1], q[:, 1], atol=1e-9)
 
 
 def test_analitico_contra_formula_general():
-    """alpha = 34.0 (el montaje: 56 grados desde el eje optico, medido y redondeado) y 53, con phi,
-    punto y z_ref arbitrarios, contra una construccion independiente: en la
-    base local (m, t, arriba) el espejo es la recta de angulo alpha en el plano
-    (m, arriba), y reflejar es aplicar [[cos 2a, sin 2a], [sin 2a, -cos 2a]] a
-    (u, w); t no cambia. Ademas tan(alpha) = separacion lateral / dif. de z."""
-    assert Config().signo_z == 1 and Config().signo_inclinacion == 1, "la construccion supone la convencion por defecto"
-    assert Config().angulo_espejo_deg == 34.0 == 90.0 - 56.0
-    for a, f, p, zr in ((34.0, 0.0, (20.0, 32.0), 0.0), (34.0, 37.0, (30.0, 5.0), -700.0),
-                        (34.0, 200.0, (40.0, 33.0), 450.0), (53.0, 37.0, (30.0, 5.0), 0.0)):
-        cfg = cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
+    """beta = 45 (el montaje, desde el eje optico), 56 y 37, con phi, punto y
+    z_ref arbitrarios, contra una construccion independiente: en la base local
+    (m, t, z) la normal es (cos b, 0, sin b), y reflejar es aplicar
+    [[-cos 2b, -sin 2b], [-sin 2b, cos 2b]] a (u, w); t no cambia. Ademas
+    tan(beta) = -dif. de z / separacion lateral (el reflejo, mas lejos del objetivo)."""
+    assert Config().angulo_espejo_eje_deg == 45.0
+    for bb, f, p, zr in ((45.0, 0.0, (20.0, 32.0), 0.0), (45.0, 37.0, (30.0, 5.0), -700.0),
+                         (56.0, 200.0, (40.0, 33.0), 450.0), (37.0, 37.0, (30.0, 5.0), 0.0)):
+        cfg = cfg_espejo(angulo_espejo_eje_deg=bb, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
         e = Espejo(cfg)
-        al, fr = np.radians(a), np.radians(f)
+        be, fr = np.radians(bb), np.radians(f)
         m = np.array([np.cos(fr), np.sin(fr), 0.0]); t = np.array([-np.sin(fr), np.cos(fr), 0.0])
         up = np.array([0.0, 0.0, 1.0])
         p0 = np.array([p[0] * cfg.pixel_nm, p[1] * cfg.pixel_nm, zr])
         q = e.a_nm(puntos())
         rel = q - p0
         u, s, w = rel @ m, rel @ t, rel @ up
-        u2 = np.cos(2 * al) * u + np.sin(2 * al) * w
-        w2 = np.sin(2 * al) * u - np.cos(2 * al) * w
+        u2 = -np.cos(2 * be) * u - np.sin(2 * be) * w
+        w2 = -np.sin(2 * be) * u + np.cos(2 * be) * w
         esperado = p0 + np.outer(u2, m) + np.outer(s, t) + np.outer(w2, up)
-        assert np.allclose(e.reflejar_nm(q), esperado, atol=1e-6), a
-        # separacion lateral 2 d sin(alpha) y diferencia de z 2 d cos(alpha) > 0 con d > 0
+        assert np.allclose(e.reflejar_nm(q), esperado, atol=1e-6), bb
+        # separacion lateral 2 d cos(beta) y diferencia de z -2 d sin(beta) < 0 con d > 0
         lado = e.distancia_nm(q) > 0
         d, dif = e.distancia_nm(q)[lado], (e.reflejar_nm(q) - q)[lado]
-        assert np.allclose(np.hypot(dif[:, 0], dif[:, 1]), 2 * d * np.sin(al), atol=1e-6)
-        assert np.allclose(dif[:, 2], 2 * d * np.cos(al), atol=1e-6) and (dif[:, 2] > 0).all()
-        assert np.allclose(np.hypot(dif[:, 0], dif[:, 1]) / dif[:, 2], np.tan(al))
-    # numeros del montaje: un emisor a d = 1 um -> dlat = 2 sin(34) = 1.118 um, dz = 2 cos(34) = 1.658 um
+        assert np.allclose(np.hypot(dif[:, 0], dif[:, 1]), 2 * d * np.cos(be), atol=1e-6)
+        assert np.allclose(dif[:, 2], -2 * d * np.sin(be), atol=1e-6) and (dif[:, 2] < 0).all()
+        assert np.allclose(-dif[:, 2] / np.hypot(dif[:, 0], dif[:, 1]), np.tan(be))
+    # numeros del montaje: un emisor a d = 1 um -> dlat = 2 cos(45) = 1.414 um, dz = -2 sin(45) = -1.414 um
     e = Espejo(cfg_espejo())
     q = e.punto_en_z_nm(0.0) + 1000.0 * e.n
     dif = e.reflejar_nm(q) - q
-    assert np.isclose(np.hypot(*dif[:2]), 1118.4, atol=0.1) and np.isclose(dif[2], 1658.1, atol=0.1)
+    assert np.isclose(np.hypot(*dif[:2]), 1414.2, atol=0.1) and np.isclose(dif[2], -1414.2, atol=0.1)
 
 
 def test_plegar_lleva_al_dominio_y_respeta_puntos_dentro():
-    for a, f, p in GEOMETRIAS:
-        e = Espejo(cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p))
+    for b, f, p in GEOMETRIAS:
+        e = espejo(b, f, p)
         q = e.a_nm(puntos(2000, seed=3))
         r = e.plegar_nm(q)
         assert (e.distancia_nm(r) >= -1e-9).all()
@@ -176,18 +181,17 @@ def test_z_ref_espejo():
     propio mueve p0 y el caso de 45 grados sigue valiendo con z0 = z_ref_espejo_nm.
     Sin cubreobjetos no hay restriccion: el plano de referencia puede quedar
     dentro o fuera de z_rango_nm, y los reales nunca cruzan el espejo."""
-    assert Config().signo_z == 1 and Config().signo_inclinacion == 1, "el test supone la convencion por defecto"
     assert Config().z_ref_espejo_nm == 0.0 and Espejo(cfg_espejo()).p0[2] == 0.0
     for zr in (0.0, -800.0, 300.0, -2500.0, 1500.0):
-        cfg = cfg_espejo(angulo_espejo_deg=45.0, z_ref_espejo_nm=zr)
+        cfg = cfg_espejo(angulo_espejo_eje_deg=45.0, z_ref_espejo_nm=zr)
         e, px, x0 = Espejo(cfg), cfg.pixel_nm, cfg.espejo_punto_px[0]
         assert e.p0[2] == zr == e.z_ref
         q = puntos()
         qr = e.reflejar(q)
-        assert np.allclose(qr[:, 2] - zr, (q[:, 0] - x0) * px, atol=1e-6)
-        assert np.allclose((qr[:, 0] - x0) * px, q[:, 2] - zr, atol=1e-6)
+        assert np.allclose(qr[:, 2] - zr, -(q[:, 0] - x0) * px, atol=1e-6)
+        assert np.allclose((qr[:, 0] - x0) * px, -(q[:, 2] - zr), atol=1e-6)
         lo, hi = rango_banco_nm(cfg)
-        assert lo <= cfg.z_rango_nm[0] and hi >= rango_z_reflejo(cfg)[1] - 1e-6
+        assert lo <= rango_z_reflejo(cfg)[0] + 1e-6 and hi >= cfg.z_rango_nm[1]
         tray, _ = generar_trayectorias(cfg_espejo(z_ref_espejo_nm=zr, n_frames=100), 100,
                                        np.random.default_rng(0))
         e = Espejo(cfg_espejo(z_ref_espejo_nm=zr))
@@ -197,9 +201,9 @@ def test_z_ref_espejo():
             q = e.punto_en_z_nm(z)
             assert np.isclose(e.distancia_nm(q), 0.0, atol=1e-9) and q[2] == z
         assert np.allclose(e.punto_en_z_nm(zr), e.p0)
-    # 45 grados: subir dz desplaza la linea dz hacia la muestra
-    e = Espejo(cfg_espejo(angulo_espejo_deg=45.0, z_ref_espejo_nm=-300.0))
-    assert np.allclose(e.punto_en_z_nm(700.0) - e.p0, [1000.0, 0.0, 1000.0])
+    # 45 grados: acercarse dz al objetivo desplaza la linea dz alejandose de la muestra
+    e = Espejo(cfg_espejo(angulo_espejo_eje_deg=45.0, z_ref_espejo_nm=-300.0))
+    assert np.allclose(e.punto_en_z_nm(700.0) - e.p0, [-1000.0, 0.0, 1000.0])
 
 
 def test_dist_max_espejo():
@@ -210,9 +214,9 @@ def test_dist_max_espejo():
     d en [0, dist_max] a esa z recortada al FOV ampliado proyectado sobre m."""
     from simulador_psf.config import MARGEN_PX
     n, dmax = 4000, 1.5
-    for a, f, p in GEOMETRIAS:
+    for b, f, p in GEOMETRIAS:
         for zr in (0.0, -500.0):
-            kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
+            kw = dict(angulo_espejo_eje_deg=b, orientacion_espejo_deg=f, espejo_punto_px=p, z_ref_espejo_nm=zr)
             cfg = cfg_espejo(dist_max_espejo_um=dmax, **kw)
             e, px = Espejo(cfg), cfg.pixel_nm
             r1, r2, r3 = (np.random.default_rng(7) for _ in range(3))
@@ -222,7 +226,7 @@ def test_dist_max_espejo():
             assert r1.bit_generator.state == r2.bit_generator.state == r3.bit_generator.state
             assert np.array_equal(pos[:, 2], crudo[:, 2])           # z: el mismo sorteo
             d = e.distancia_nm(pos)
-            assert (d >= -1e-6).all() and (d <= dmax * 1000 + 1e-6).all(), (a, f, d.min(), d.max())
+            assert (d >= -1e-6).all() and (d <= dmax * 1000 + 1e-6).all(), (b, f, d.min(), d.max())
             # construccion esperada desde los sorteos uniformes de la version sin espejo
             U1 = (crudo[:, 0] / px + MARGEN_PX) / (cfg.W + 2 * MARGEN_PX)
             U2 = (crudo[:, 1] / px + MARGEN_PX) / (cfg.H + 2 * MARGEN_PX)
@@ -243,7 +247,7 @@ def test_dist_max_espejo():
             # dentro del FOV ampliado salvo donde la franja no lo toca
             s_m = (pos[:, :2] - e.p0[:2]) @ e.m[:2]
             assert ((s_m >= sm.min() - 1e-6) & (s_m <= sm.max() + 1e-6))[~vacia].all()
-            if a == 34.0 and f == 0.0:                              # el caso del montaje: la franja siempre toca el FOV
+            if b == 45.0 and f == 0.0 and zr == 0.0:                # el caso del montaje: la franja siempre toca el FOV
                 assert not vacia.any()
     # con orientacion 0 el y es el de siempre
     cfg = cfg_espejo(dist_max_espejo_um=dmax)
@@ -253,7 +257,7 @@ def test_dist_max_espejo():
 
 
 def test_config_valida():
-    for kw in (dict(angulo_espejo_deg=0.0), dict(angulo_espejo_deg=180.0), dict(angulo_espejo_deg=-5.0),
+    for kw in (dict(angulo_espejo_eje_deg=90.0), dict(angulo_espejo_eje_deg=-90.0), dict(angulo_espejo_eje_deg=95.0),
                dict(ratio_reflejo=0.0), dict(ratio_reflejo=1.01), dict(espejo_punto_px=(1.0,)),
                dict(z_banco_nm=(100.0, -100.0)), dict(dist_max_espejo_um=0.0), dict(dist_max_espejo_um=-1.0)):
         try:
@@ -261,7 +265,8 @@ def test_config_valida():
         except ValueError:
             continue
         raise AssertionError(f"Config({kw}) no lanzo ValueError")
-    Config(ratio_reflejo=1.0, angulo_espejo_deg=179.9)           # bordes validos
+    Config(ratio_reflejo=1.0, angulo_espejo_eje_deg=89.9)        # bordes validos
+    Config(angulo_espejo_eje_deg=-89.9)
 
 
 # --- banco ---------------------------------------------------------------------------
@@ -269,15 +274,16 @@ def test_config_valida():
 def test_rango_banco():
     assert rango_banco_nm(Config()) == Config().z_rango_nm       # sin espejo: el de siempre
     assert rango_banco_nm(Config(z_banco_nm=(-1000.0, 2000.0))) == (-1000.0, 2000.0)
-    for a, f, p in GEOMETRIAS:
-        cfg = cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p)
+    for b, f, p in GEOMETRIAS:
+        cfg = cfg_espejo(angulo_espejo_eje_deg=b, orientacion_espejo_deg=f, espejo_punto_px=p)
         lo, hi = rango_banco_nm(cfg)
         r1, r2 = rango_z_reflejo(cfg)
         assert lo <= min(r1, cfg.z_rango_nm[0]) + 1e-6 and hi >= max(r2, cfg.z_rango_nm[1]) - 1e-6
         assert hi - lo <= (max(r2, cfg.z_rango_nm[1]) - min(r1, cfg.z_rango_nm[0])) + 2 * cfg.z_paso_nm
-        # rejilla alineada con la del banco sin espejo
-        assert np.isclose(np.mod(lo - cfg.z_rango_nm[0], cfg.z_paso_nm), 0.0) or \
-            np.isclose(np.mod(lo - cfg.z_rango_nm[0], cfg.z_paso_nm), cfg.z_paso_nm)
+        # rejilla (en q = -z) alineada con la del banco sin espejo
+        ql, qbase = rango_banco_q(cfg)[0], a_q(cfg, tuple(cfg.z_rango_nm))[0]
+        assert np.isclose(np.mod(ql - qbase, cfg.z_paso_nm), 0.0) or \
+            np.isclose(np.mod(ql - qbase, cfg.z_paso_nm), cfg.z_paso_nm)
         # los reflejos de las posiciones iniciales caen en ese rango
         e = Espejo(cfg)
         q0 = posiciones_iniciales(cfg, 3000, np.random.default_rng(1))
@@ -290,12 +296,12 @@ def test_rango_banco():
 def test_ningun_real_cruza_el_espejo():
     """Posiciones iniciales y todos los frames del lado de la muestra y dentro de
     las paredes en z, con D alto para forzar muchos choques."""
-    for a, f, p in GEOMETRIAS:
-        cfg = cfg_espejo(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p,
+    for b, f, p in GEOMETRIAS:
+        cfg = cfg_espejo(angulo_espejo_eje_deg=b, orientacion_espejo_deg=f, espejo_punto_px=p,
                          n_frames=200, D_rango_um2_s=(1.0, 3.0))
         e = Espejo(cfg)
-        tray, _ = generar_trayectorias(cfg, 200, np.random.default_rng(int(a) + int(f)))
-        assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all(), (a, f, p)
+        tray, _ = generar_trayectorias(cfg, 200, np.random.default_rng(int(b) + int(f) + 100))
+        assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all(), (b, f, p)
         assert (tray[..., 2] >= cfg.z_rango_nm[0] - 1e-9).all() and (tray[..., 2] <= cfg.z_rango_nm[1] + 1e-9).all()
 
 
@@ -308,7 +314,7 @@ def test_espejo_lejano_no_cambia_trayectorias():
     distribucion sea la misma."""
     lejos = dict(z_rango_nm=(-1e7, 1e7))
     cfg_off = Config(**{**BASE, **lejos})
-    cfg_on = cfg_espejo(angulo_espejo_deg=90.0, espejo_punto_px=(-1e5, 0.0), **lejos)
+    cfg_on = cfg_espejo(angulo_espejo_eje_deg=0.0, espejo_punto_px=(-1e5, 0.0), **lejos)
     t_off, D_off = generar_trayectorias(cfg_off, 20, np.random.default_rng(5))
     t_on, D_on = generar_trayectorias(cfg_on, 20, np.random.default_rng(5))
     assert np.array_equal(D_off, D_on)
@@ -334,8 +340,8 @@ def test_gt_columnas_y_banderas():
 
 def test_movimiento_ligado_y_msd():
     """dp' = R dp en todos los frames y MSD 3D (por retardo) igual en real y reflejo."""
-    for kw in (dict(), dict(angulo_espejo_deg=90.0), dict(angulo_espejo_deg=120.0, orientacion_espejo_deg=200.0,
-                                                          espejo_punto_px=(40.0, 33.0))):
+    for kw in (dict(), dict(angulo_espejo_eje_deg=0.0), dict(angulo_espejo_eje_deg=-30.0, orientacion_espejo_deg=200.0,
+                                                             espejo_punto_px=(40.0, 33.0))):
         cfg, _, gt = _video(**kw)
         e = Espejo(cfg)
         for _, g in gt.groupby("particle_id"):
@@ -412,7 +418,7 @@ def test_espejo_no_consume_rng():
 def test_espejo_apagado_ignora_sus_parametros():
     """Con usar_espejo=False los demas parametros del espejo no cambian nada."""
     cfg_a = Config(**BASE)
-    cfg_b = Config(**{**BASE, "angulo_espejo_deg": 120.0, "orientacion_espejo_deg": 33.0,
+    cfg_b = Config(**{**BASE, "angulo_espejo_eje_deg": -30.0, "orientacion_espejo_deg": 33.0,
                       "espejo_punto_px": (1.0, 2.0), "ratio_reflejo": 0.1, "z_ref_espejo_nm": -3000.0,
                       "dist_max_espejo_um": 2.0})
     va, fa = generar_video(cfg_a, BancoPSF(cfg_a), np.random.default_rng(4), 0)
@@ -422,80 +428,88 @@ def test_espejo_apagado_ignora_sus_parametros():
     assert cfg_a.resumen() == cfg_b.resumen() and "espejo" not in cfg_a.resumen()
 
 
-SIGNOS = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
+# --- convencion: sin signos, beta -> -beta, anillos -----------------------------------
 
-
-def test_signos_son_campos_de_config():
-    """signo_z y signo_inclinacion viven en Config (+1 por defecto) y se validan;
-    no quedan constantes de modulo que otro modulo pueda copiar al importarse."""
+def test_convencion_fija_sin_signos():
+    """+z hacia el objetivo y el angulo desde el eje optico son fijos: Config y
+    la geometria no tienen campos de signo de la convencion anterior, ni hay
+    constantes de modulo SIGNO*; la unica bandera es la de la PSF."""
+    import inspect
     import simulador_psf.espejo as m_espejo
     import simulador_psf.posiciones as m_pos
+    from geometria_espejo import GeometriaEspejo
     cfg = Config()
-    assert cfg.signo_z == 1 and cfg.signo_inclinacion == 1
+    viejos = ("signo" + "_z", "signo" + "_inclinacion", "angulo_espejo" + "_deg")
+    assert not any(hasattr(cfg, c) for c in viejos)
+    assert cfg.angulo_espejo_eje_deg == 45.0 and cfg.anillos_hacia_objetivo is False and cfg.signo_q == -1.0
+    assert list(inspect.signature(GeometriaEspejo).parameters) == ["beta_deg", "phi_deg", "p0_nm", "z_lo", "z_hi"]
     for mod in (m_espejo, m_pos, generacion):
         assert not any(k.startswith("SIGNO") for k in vars(mod)), mod.__name__
-    for nombre in ("signo_z", "signo_inclinacion"):
-        for malo in (0, 2, -2):
-            try:
-                cfg_espejo(**{nombre: malo})
-            except ValueError:
-                continue
-            raise AssertionError(f"{nombre}={malo} deberia lanzar ValueError")
-    e = Espejo(cfg_espejo(signo_z=-1, signo_inclinacion=1))
-    assert e.signo_z == -1 and e.signo_inclinacion == 1 and e.arriba[2] == -1.0
 
 
-def test_signos_consistentes_en_plegado_muestreo_y_reflejo():
-    """Con cada combinacion de signos en Config, el muestreo con dist_max (d en
-    [0, dist_max]), el plegado (d >= 0 sin dist_max), el browniano (ningun real
-    cruza) y el reflejo del GT (= Espejo(cfg).reflejar, con z' - z del signo de
-    signo_inclinacion * signo_z) usan todos el mismo espejo. Si alguno usara
-    otro signo, sus d saldrian negativas o mayores que dist_max."""
+def test_reflejo_del_lado_correcto_en_plegado_muestreo_y_gt():
+    """Con beta > 0 (el montaje) el reflejo queda siempre mas lejos del objetivo
+    (z' < z) y el banco se amplia hacia -z; con beta < 0, al reves. El muestreo
+    con dist_max (d en [0, dist_max]), el plegado (d >= 0), el browniano
+    (ningun real cruza) y el reflejo del GT (= Espejo(cfg).reflejar) usan todos
+    el mismo espejo: si alguno usara otro, sus d saldrian negativas."""
     dmax = 2.0
-    for sz, si in SIGNOS:
-        for a, f, p in GEOMETRIAS[::4]:
-            kw = dict(angulo_espejo_deg=a, orientacion_espejo_deg=f, espejo_punto_px=p,
-                      signo_z=sz, signo_inclinacion=si)
-            e = Espejo(cfg_espejo(**kw))
-            assert np.isclose(e.n[2], -si * sz * np.cos(np.radians(a)))
-            # muestreo cerca del espejo
-            pos = posiciones_iniciales(cfg_espejo(dist_max_espejo_um=dmax, **kw), 400, np.random.default_rng(1))
-            d = e.distancia_nm(pos)
-            assert (d >= -1e-6).all() and (d <= dmax * 1000 + 1e-6).all(), (sz, si, a, f)
-            # plegado de las posiciones iniciales en todo el FOV
-            pos = posiciones_iniciales(cfg_espejo(**kw), 400, np.random.default_rng(2))
-            assert (e.distancia_nm(pos) >= -1e-6).all(), (sz, si, a, f)
-            # browniano con choques
-            cfg_b = cfg_espejo(n_frames=100, D_rango_um2_s=(1.0, 3.0), **kw)
-            tray, _ = generar_trayectorias(cfg_b, 100, np.random.default_rng(3))
-            assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all(), (sz, si, a, f)
-        # reflejo en el GT, con su banco (ampliado hacia el lado que toca)
-        kw = dict(signo_z=sz, signo_inclinacion=si, dist_max_espejo_um=dmax)
-        cfg, _, gt = _video(seed=4, **kw)
+    for b, f, p in GEOMETRIAS[::4]:
+        kw = dict(angulo_espejo_eje_deg=b, orientacion_espejo_deg=f, espejo_punto_px=p)
+        e = Espejo(cfg_espejo(**kw))
+        assert np.isclose(e.n[2], np.sin(np.radians(b)))
+        pos = posiciones_iniciales(cfg_espejo(dist_max_espejo_um=dmax, **kw), 400, np.random.default_rng(1))
+        d = e.distancia_nm(pos)
+        assert (d >= -1e-6).all() and (d <= dmax * 1000 + 1e-6).all(), (b, f)
+        pos = posiciones_iniciales(cfg_espejo(**kw), 400, np.random.default_rng(2))
+        assert (e.distancia_nm(pos) >= -1e-6).all(), (b, f)
+        tray, _ = generar_trayectorias(cfg_espejo(n_frames=100, D_rango_um2_s=(1.0, 3.0), **kw), 100,
+                                       np.random.default_rng(3))
+        assert (e.distancia_nm(e.a_nm(tray)) >= -1e-6).all(), (b, f)
+    for b in (45.0, -30.0):
+        cfg, _, gt = _video(seed=4, angulo_espejo_eje_deg=b, dist_max_espejo_um=dmax)
         e = Espejo(cfg)
         real = gt[["x_px", "y_px", "z_nm"]].to_numpy()
         refl = gt[["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]].to_numpy()
         assert np.allclose(refl, e.reflejar(real), rtol=0, atol=1e-9)
         dz = (gt.z_reflejo_nm - gt.z_nm).to_numpy()
-        assert (si * sz * dz >= -1e-6).all() and (np.abs(dz) > 1.0).any(), (sz, si)   # alpha = 34.0 < 90
+        assert (np.sign(b) * dz <= 1e-6).all() and (np.abs(dz) > 1.0).any(), b
         lo, hi = rango_banco_nm(cfg)
-        assert (lo < cfg.z_rango_nm[0]) == (si * sz < 0) and (hi > cfg.z_rango_nm[1]) == (si * sz > 0)
+        assert (lo < cfg.z_rango_nm[0]) == (b > 0) and (hi > cfg.z_rango_nm[1]) == (b < 0)
         assert gt[gt.frame == 0].reflejo_en_banco.all()
 
 
-def test_signos_solo_entran_como_producto():
-    """La geometria depende solo de signo_inclinacion * signo_z: (-1, +1),
-    (+1, -1) y (+1, +1) con alpha -> 180 - alpha dan el mismo video (GT de
-    reales y reflejos), y (-1, -1) el mismo que (+1, +1)."""
-    kw = dict(dist_max_espejo_um=3.0, orientacion_espejo_deg=37.0, espejo_punto_px=(30.0, 5.0))
-    ref = {+1: _video(seed=6, **kw)[2],
-           -1: _video(seed=6, angulo_espejo_deg=180.0 - Config().angulo_espejo_deg, **kw)[2]}
-    cols = ["x_px", "y_px", "z_nm", "x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]
-    for sz, si in SIGNOS:
-        gt = _video(seed=6, signo_z=sz, signo_inclinacion=si, **kw)[2]
-        esperado = ref[sz * si]
-        assert len(gt) == len(esperado) and np.array_equal(gt.photons, esperado.photons)
-        assert np.allclose(gt[cols], esperado[cols], rtol=0, atol=1e-6), (sz, si)
+def test_angulo_negativo_es_el_espejo_en_z():
+    """Espejar toda la configuracion en z respecto de z_ref (z -> 2 z_ref - z)
+    lleva el espejo de beta al de -beta: reflejar con -beta es S R_beta S."""
+    for b, f, p in GEOMETRIAS:
+        for zr in (0.0, -400.0):
+            e_mas, e_menos = espejo(b, f, p, z_ref_espejo_nm=zr), espejo(-b, f, p, z_ref_espejo_nm=zr)
+            q = e_mas.a_nm(puntos())
+
+            def S(r):
+                return np.column_stack([r[:, 0], r[:, 1], 2 * zr - r[:, 2]])
+            assert np.allclose(e_menos.reflejar_nm(q), S(e_mas.reflejar_nm(S(q))), atol=1e-6), (b, f)
+
+
+def test_anillos_solo_cambian_la_psf():
+    """anillos_hacia_objetivo no toca trayectorias, reflejos, fotones ni fondo
+    (mismo GT), solo que PSF se dibuja: la de True en z es la de False en -z.
+    Sin mascara la PSF escalar es simetrica en q y la bandera no cambia la
+    imagen; con la esferica si."""
+    for mascara, K in (("ninguna", 32), ("esferica", 64)):
+        cfg_f = cfg_espejo(mascara=mascara, K_psf=K)
+        cfg_t = cfg_espejo(mascara=mascara, K_psf=K, anillos_hacia_objetivo=True)
+        bf, bt = BancoPSF(cfg_f), BancoPSF(cfg_t)
+        assert cfg_t.signo_q == 1.0
+        for z in (-777.7, -517.0, 0.0, 123.4, 700.0):             # dentro de z_rango: los dos bancos tienen esos planos
+            assert np.array_equal(bt.psf_en_z(z), bf.psf_en_z(-z)), z
+        vf, ff = generar_video(cfg_f, bf, np.random.default_rng(3), 0)
+        vt, ft = generar_video(cfg_t, bt, np.random.default_rng(3), 0)
+        gf, gt_ = pd.DataFrame(ff), pd.DataFrame(ft)
+        assert gf.equals(gt_)
+        assert np.array_equal(vf, vt) == (mascara == "ninguna"), mascara
+        assert "anillos hacia el objetivo" in cfg_t.resumen() and "anillos" not in cfg_f.resumen()
 
 
 def test_regresion_bit_a_bit():
