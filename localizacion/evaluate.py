@@ -20,6 +20,11 @@ Escribe en --salida (por defecto <carpeta del checkpoint>/evaluacion_<primera en
     por_fotones.csv    recall, RMSE y sesgo en z por rango de fotones del emisor
     por_z.csv          ... por rango de z
     por_snr.csv        ... por rango de SNR (si el GT trae snr, como el de pregenerar.py)
+    con espejo (GT con columnas *_reflejo):
+    por_dist_espejo.csv          ... por rango de distancia del emisor al plano del espejo
+    por_dist_espejo_fotones.csv  recall y RMSE en z por (distancia al espejo, fotones)
+    resumen.yaml / espejo        falsos positivos sobre reflejos (lateral <= --r-xy de un
+                                 reflejo del mismo frame) y reflejos con algun FP encima
     metricas.png       las tablas por_*.csv y los histogramas de los errores
     predicciones.csv   detecciones + tp, fuera_fov (emparejada con un emisor fuera del FOV)
     gt_eval.csv        GT + detectado, conf, dx_nm, dy_nm, dz_nm (error de su deteccion)
@@ -36,7 +41,8 @@ import pandas as pd
 
 from config import MODOS_AMP, a_dict, guardar_yaml
 from infer import PIXELES_POR_BATCH, leer_entradas, camara_de, detecciones_de, graficar_detecciones
-from metricas import CLAVES, evaluar, resumen
+from metricas import (CLAVES, evaluar, resumen, tiene_reflejos, distancia_al_espejo_nm, fp_sobre_reflejos,
+                      resumen_espejo)
 from utils import elegir_dispositivo, cargar_modelo, con_postproc, resumen_tiempo
 
 N_RANGOS = 8
@@ -44,7 +50,9 @@ COLORES = {"lateral": "#2a78d6", "z": "#eb6834", "y": "#1baf7a", "recall": "#444
 # nombre -> (columna del GT, etiqueta del eje, escala de los rangos)
 VARIABLES = {"fotones": ("photons", "fotones del emisor", "log"),
              "z": ("z_nm", "z del emisor [nm]", "lineal"),
-             "snr": ("snr", "SNR del pixel pico", "log")}
+             "snr": ("snr", "SNR del pixel pico", "log"),
+             "dist_espejo": ("d_espejo_nm", "distancia al espejo [nm]", "lineal")}
+N_RANGOS_2D = 4                         # rangos de distancia al espejo y de fotones en la tabla 2D
 
 
 def ground_truth(entrada, ruta_gt=None, cache=None):
@@ -106,6 +114,23 @@ def tablas_por_rango(gt_eval, rejilla):
         b = np.linspace(rejilla.z_min, rejilla.z_max, N_RANGOS + 1) if col == "z_nm" else bordes(g[col], escala)
         tablas[nombre] = por_rangos(gt_eval, col, b)
     return tablas
+
+
+def tabla_dist_espejo_fotones(gt_eval, n=N_RANGOS_2D):
+    """Recall y RMSE en z por (rango de distancia al espejo, rango log de fotones)."""
+    g = gt_eval[gt_eval.en_fov]
+    bd, bf = bordes(g.d_espejo_nm, "lineal", n), bordes(g.photons, "log", n)
+    kd = np.digitize(g.d_espejo_nm.to_numpy(float), bd[1:-1])
+    kf = np.digitize(g.photons.to_numpy(float), bf[1:-1])
+    filas = []
+    for i in range(n):
+        for j in range(n):
+            s = g[(kd == i) & (kf == j)]
+            p = s[s.detectado]
+            filas.append(dict(d_desde_nm=bd[i], d_hasta_nm=bd[i + 1], fotones_desde=bf[j], fotones_hasta=bf[j + 1],
+                              n=len(s), recall=len(p) / len(s) if len(s) else float("nan"),
+                              rmse_z_nm=_rms(p.dz_nm), sesgo_z_nm=float(p.dz_nm.mean()) if len(p) else float("nan")))
+    return pd.DataFrame(filas)
 
 
 def graficar_metricas(tablas, gt_eval, r, r_xy, r_z, titulo, ruta):
@@ -199,7 +224,13 @@ def main(argv=None):
         t_e = time.time()
         cs = camara_de(e, cfg)
         det = detecciones_de(modelo, e, cfg, cs, dispositivo, args.amp, args.batch)
-        ge, pe = evaluar(det, ground_truth(e, args.gt, cache), cs.pixel_nm, args.r_xy, args.r_z)
+        g = ground_truth(e, args.gt, cache)
+        espejo = tiene_reflejos(g)
+        if espejo:
+            g = g.assign(d_espejo_nm=distancia_al_espejo_nm(g, cs.pixel_nm))
+        ge, pe = evaluar(det, g, cs.pixel_nm, args.r_xy, args.r_z)
+        if espejo:
+            pe, ge = fp_sobre_reflejos(pe, ge, cs.pixel_nm, args.r_xy)
         r = resumen(ge, pe)
         gts.append(ge)
         preds.append(pe)
@@ -221,6 +252,10 @@ def main(argv=None):
     pred_eval = pd.concat(preds, ignore_index=True)
     r = resumen(gt_eval, pred_eval)
     tablas = tablas_por_rango(gt_eval, rejilla)
+    con_espejo = "sobre_reflejo" in pred_eval and pred_eval.sobre_reflejo.notna().all()
+    r_espejo = resumen_espejo(pred_eval, gt_eval) if con_espejo else None
+    if con_espejo and len(gt_eval[gt_eval.en_fov]):
+        tabla_dist_espejo_fotones(gt_eval).to_csv(salida / "por_dist_espejo_fotones.csv", index=False)
     pred_eval.to_csv(salida / "predicciones.csv", index=False)
     gt_eval.to_csv(salida / "gt_eval.csv", index=False)
     pd.DataFrame(filas).to_csv(salida / "por_entrada.csv", index=False)
@@ -233,13 +268,19 @@ def main(argv=None):
     guardar_yaml({"checkpoint": str(ckpt), "entradas": [str(x) for x in args.entradas],
                   "ground_truth": [str(x) for x in cache], "postproc": a_dict(cfg.postproc),
                   "r_xy_nm": args.r_xy, "r_z_nm": args.r_z, "amp": args.amp,
-                  "n_imagenes": sum(len(e["imagenes"]) for e in entradas), "metricas": r}, salida / "resumen.yaml")
+                  "n_imagenes": sum(len(e["imagenes"]) for e in entradas), "metricas": r,
+                  **({"espejo": r_espejo} if r_espejo else {})}, salida / "resumen.yaml")
 
     print(f"\nJaccard {r['jaccard']:.3f}, recall {r['recall']:.3f}, precision {r['precision']:.3f}  "
           f"(TP {r['tp']}, FP {r['fp']}, FN {r['fn']})")
     print(f"RMSE lateral {r['rmse_lat_nm']:.1f} nm (x {r['rmse_x_nm']:.1f}, y {r['rmse_y_nm']:.1f}), "
           f"axial {r['rmse_z_nm']:.1f} nm; sesgo x {r['sesgo_x_nm']:+.1f}, y {r['sesgo_y_nm']:+.1f}, "
           f"z {r['sesgo_z_nm']:+.1f} nm")
+    if r_espejo:
+        print(f"espejo: {r_espejo['fp_sobre_reflejo']} de {r_espejo['fp']} FP sobre reflejos "
+              f"({r_espejo['fraccion_fp_sobre_reflejo']:.1%}); {r_espejo['reflejos_con_fp']} de "
+              f"{r_espejo['reflejos_en_fov']} reflejos en el FOV con algun FP encima "
+              f"({r_espejo['fraccion_reflejos_con_fp']:.1%})")
     for nombre, t in tablas.items():
         print(f"\npor {nombre}:\n" + t.to_string(index=False, float_format=lambda v: f"{v:.4g}"))
     print(f"\n-> {salida}/  ({resumen_tiempo(time.time() - t0)})")

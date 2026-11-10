@@ -98,3 +98,56 @@ def resumen(gt_eval, pred_eval):
                 precision=_cociente(tp, tp + fp),
                 rmse_lat_nm=rms(np.hypot(dx, dy)), rmse_x_nm=rms(dx), rmse_y_nm=rms(dy), rmse_z_nm=rms(dz),
                 sesgo_x_nm=media(dx), sesgo_y_nm=media(dy), sesgo_z_nm=media(dz))
+
+
+# ----------------------------------------------------------------------------
+# Espejo: distancia al espejo y falsos positivos sobre reflejos
+# ----------------------------------------------------------------------------
+
+COLUMNAS_REFLEJO_XYZ = ["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]
+
+
+def tiene_reflejos(gt):
+    return set(COLUMNAS_REFLEJO_XYZ) <= set(gt.columns)
+
+
+def distancia_al_espejo_nm(gt, px_nm):
+    """Distancia (perpendicular) de cada emisor real al plano del espejo [nm]:
+    p' - p = -2 d n, asi que d = |p' - p| / 2 (no hace falta la geometria)."""
+    d = np.c_[(gt.x_reflejo_px - gt.x_px) * px_nm, (gt.y_reflejo_px - gt.y_px) * px_nm, gt.z_reflejo_nm - gt.z_nm]
+    return 0.5 * np.linalg.norm(d.astype(float), axis=1)
+
+
+def fp_sobre_reflejos(pred_eval, gt, px_nm, r_xy_nm=150.0):
+    """Marca los falsos positivos (ni tp ni fuera_fov) que caen a distancia
+    lateral <= r_xy_nm de algun reflejo del mismo frame (la z del reflejo no se
+    usa: suele quedar fuera del z_rango de la red). Devuelve (pred_eval +
+    sobre_reflejo, gt + reflejo_con_fp: algun FP sobre ese reflejo)."""
+    pred_eval, gt = pred_eval.reset_index(drop=True), gt.reset_index(drop=True)
+    sobre = np.zeros(len(pred_eval), bool)
+    con_fp = np.zeros(len(gt), bool)
+    fp = (~pred_eval.tp & ~pred_eval.fuera_fov).to_numpy()
+    grupos_gt = gt.groupby(CLAVES).indices if len(gt) else {}
+    p_xy = pred_eval[["x_px", "y_px"]].to_numpy(float) * px_nm
+    r_xy = gt[COLUMNAS_REFLEJO_XYZ[:2]].to_numpy(float) * px_nm
+    for clave, ip in (pred_eval[fp].groupby(CLAVES).indices.items() if fp.any() else []):
+        ip = np.flatnonzero(fp)[ip]
+        ig = grupos_gt.get(clave)
+        if ig is None:
+            continue
+        d2 = ((p_xy[ip, None, :] - r_xy[None, ig, :]) ** 2).sum(-1)
+        cerca = d2 <= r_xy_nm ** 2
+        sobre[ip] = cerca.any(axis=1)
+        con_fp[ig] = cerca.any(axis=0)
+    return pred_eval.assign(sobre_reflejo=sobre), gt.assign(reflejo_con_fp=con_fp)
+
+
+def resumen_espejo(pred_eval, gt_eval):
+    """Conteos de fp_sobre_reflejos: FP sobre reflejos, su fraccion de los FP, y
+    fraccion de los reflejos dentro del FOV con algun FP encima."""
+    fp = ~pred_eval.tp & ~pred_eval.fuera_fov
+    n_fp, n_sobre = int(fp.sum()), int((fp & pred_eval.sobre_reflejo).sum())
+    refl = gt_eval[gt_eval.reflejo_en_fov] if "reflejo_en_fov" in gt_eval else gt_eval
+    return dict(fp=n_fp, fp_sobre_reflejo=n_sobre, fraccion_fp_sobre_reflejo=_cociente(n_sobre, n_fp),
+                reflejos_en_fov=len(refl), reflejos_con_fp=int(refl.reflejo_con_fp.sum()),
+                fraccion_reflejos_con_fp=_cociente(int(refl.reflejo_con_fp.sum()), len(refl)))
