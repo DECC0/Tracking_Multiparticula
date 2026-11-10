@@ -18,8 +18,8 @@ del real y la del reflejo.
 Escenarios de ruido:
     crlb   real y reflejo con su CRLB (crlb_3d, emisor solo: fotones, z, fondo
            medio del video), detectados siempre que esten en el FOV.
-    red    real con el RMSE lateral y z y el recall de la red con espejo de ese
-           signo (localizacion/corridas/hypatia_espejo_sz<s>), por rango de
+    red    real con el RMSE lateral y z y el recall de la red con espejo de esa
+           variante (localizacion/corridas/hypatia_espejo_b45_<variante>_*), por rango de
            fotones y de distancia al espejo; reflejo con su CRLB escalada por
            la ineficiencia de la red respecto de la CRLB del real a iguales
            fotones (kappa = RMSE red / CRLB por rango de fotones), detectado
@@ -40,10 +40,15 @@ Ademas: RMSE del suavizado en los frames con el real en el FOV pero no detectado
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
-    $PY figuras/temporal_espejo.py [--videos 500] [--signos 1 -1] [--seed 0]
-Escribe figuras/fig_temporal_espejo.png/.pdf, figuras/temporal_espejo_rmse.csv
-(RMSE e IC por rango, estimador, escenario y signo) y
-figuras/temporal_espejo_D.csv (D estimada por trayectoria).
+    $PY figuras/temporal_espejo.py [--videos 500] [--variantes lejos cerca] [--seed 0]
+Convencion: +z hacia el objetivo, espejo a 45 grados del eje optico; variantes
+de la PSF lejos / cerca (anillos_hacia_objetivo False / True). Sin la corrida
+y el test de una variante (hypatia_espejo_b45_<variante>, test_espejo_b45_<variante>)
+solo se corre el escenario crlb. Los resultados de resultados_temporal_espejo.md
+son de la convencion vieja (alpha = 34 desde el plano focal, signo_z).
+Escribe figuras/fig_temporal_espejo_b45.png/.pdf, figuras/temporal_espejo_b45_rmse.csv
+(RMSE e IC por rango, estimador, escenario y variante) y
+figuras/temporal_espejo_b45_D.csv (D estimada por trayectoria).
 """
 import argparse
 import sys
@@ -60,8 +65,13 @@ sys.path.insert(0, str(RAIZ / "figuras"))
 import simulador as sim  # noqa: E402
 import crlb_espejo as ce  # noqa: E402  (Fisher de un emisor: derivadas, var_parametros)
 
-CORRIDAS = {+1: RAIZ / "localizacion/corridas/hypatia_espejo_sz+1_20261109-234610",
-            -1: RAIZ / "localizacion/corridas/hypatia_espejo_sz-1_20261109-234650"}
+VARIANTES = {"lejos": False, "cerca": True}      # -> anillos_hacia_objetivo
+
+
+def evaluacion_red(variante):
+    """Carpeta de evaluacion de la corrida con espejo mas reciente de la variante, o None."""
+    c = sorted((RAIZ / "localizacion/corridas").glob(f"hypatia_espejo_b45_{variante}_*/evaluacion_test_espejo_b45_{variante}"))
+    return c[-1] if c else None
 Z_TABLA = np.arange(-8000.0, 8000.1, 100.0)
 N_TABLA = np.geomspace(300.0, 30000.0, 15)
 B_TABLA = np.geomspace(4.0, 80.0, 7)
@@ -81,11 +91,11 @@ METODOS = ["frame_solo", "frame_conj", "suav_solo", "suav_conj",
 # Trayectorias (las del GT de generar_video, sin renderizar imagenes)
 # ----------------------------------------------------------------------------
 
-def config(signo_z, n_videos, seed):
+def config(variante, n_videos, seed):
     # linea del espejo en el borde izquierdo del FOV (como espejo_linea_rango_fov al entrenar) y W = 96 px,
     # para que haya reales en el FOV a todas las distancias de 0 a 4 um
     return sim.Config(usar_espejo=True, n_frames=50, n_videos=n_videos, dist_max_espejo_um=4.0,
-                      H=64, W=96, espejo_punto_px=(-0.5, 32.0), signo_z=signo_z, seed=seed)
+                      H=64, W=96, espejo_punto_px=(-0.5, 32.0), anillos_hacia_objetivo=VARIANTES[variante], seed=seed)
 
 
 def trayectorias(cfg, videos):
@@ -158,12 +168,12 @@ def indice(valores, bordes):
     return np.clip(np.digitize(valores, bordes[1:-1]), 0, len(bordes) - 2)
 
 
-def tabla_red(signo, crlb):
+def tabla_red(variante, crlb):
     """De la evaluacion de la red con espejo sobre su test: RMSE lateral (por
     eje) y z y recall por (fotones, distancia), y kappa_lat, kappa_z por
     fotones (RMSE de la red / RMS de la CRLB de los mismos emisores)."""
-    g = pd.read_csv(CORRIDAS[signo] / f"evaluacion_test_espejo_sz{signo:+d}" / "gt_eval.csv")
-    m = pd.read_csv(RAIZ / f"localizacion/datos/test_espejo_sz{signo:+d}/muestras.csv")[["video_id", "fondo_medio"]]
+    g = pd.read_csv(evaluacion_red(variante) / "gt_eval.csv")
+    m = pd.read_csv(RAIZ / f"localizacion/datos/test_espejo_b45_{variante}/muestras.csv")[["video_id", "fondo_medio"]]
     g = g[g.en_fov].merge(m, on="video_id", how="left")
     i_n, i_d = indice(g.photons, BORDES_RED_N), indice(g.d_espejo_nm, BORDES_RED_D)
     nn, nd = len(BORDES_RED_N) - 1, len(BORDES_RED_D) - 1
@@ -330,7 +340,7 @@ def rmse_ic(e2, mascara, rango, n_rangos, tray, W):
     return est, lo, hi, C.sum(0)
 
 
-def evaluar(t, med, est, W, signo, escenario):
+def evaluar(t, med, est, W, variante, escenario):
     n, T = t["d"].shape
     tray = np.repeat(np.arange(n)[:, None], T, 1)
     rangos = {"D": np.repeat(indice(t["D"], BORDES["D"])[:, None], T, 1),
@@ -351,7 +361,7 @@ def evaluar(t, med, est, W, signo, escenario):
                 el = rmse_ic(np.nan_to_num(e_lat2), m, r, nr, tray, W)
                 for k in range(nr):
                     lo_b, hi_b = (BORDES[var][k], BORDES[var][k + 1]) if var != "global" else (np.nan, np.nan)
-                    filas.append(dict(signo_z=signo, escenario=escenario, metodo=metodo, frames=conj, variable=var,
+                    filas.append(dict(variante=variante, escenario=escenario, metodo=metodo, frames=conj, variable=var,
                                       desde=lo_b, hasta=hi_b, n=int(ez[3][k]),
                                       cobertura=float(ez[3][k] / max(1, (masc & (r == k)).sum())),
                                       rmse_z=ez[0][k], rmse_z_lo=ez[1][k], rmse_z_hi=ez[2][k],
@@ -386,10 +396,10 @@ def figura(res, Dtab, ruta, escenario="red"):
     fig, axs = plt.subplots(3, 3, figsize=(13.5, 11))
     r = res[(res.escenario == escenario) & (res.frames == "detectados")]
 
-    def curvas(ax, signo, var, col, metodos=ESTILOS):
+    def curvas(ax, variante, var, col, metodos=ESTILOS):
         for k, mt in enumerate(metodos):
             c, mk, ls, lab = ESTILOS[mt]
-            s = r[(r.signo_z == signo) & (r.metodo == mt) & (r.variable == var)]
+            s = r[(r.variante == variante) & (r.metodo == mt) & (r.variable == var)]
             xc = x_rango(var)
             x = xc * np.exp((k - 1.5) * 0.04) if var == "fotones" else xc + (k - 1.5) * 0.012 * xc[-1]   # desfase para que no se tapen
             ax.errorbar(x, s[col], yerr=[s[col] - s[col + "_lo"], s[col + "_hi"] - s[col]], color=c, marker=mk, ls=ls,
@@ -407,20 +417,20 @@ def figura(res, Dtab, ruta, escenario="red"):
         ax.grid(True, color="#e6e5e0", lw=0.6)
 
     for j, var in enumerate(("D", "fotones", "dist")):
-        curvas(axs[0, j], +1, var, "rmse_z")
-        curvas(axs[1, j], +1, var, "rmse_lat")
-        axs[0, j].set_title(f"RMSE z, signo_z = +1, por {ETIQ[var].split(' [')[0]}")
-        axs[1, j].set_title(f"RMSE lateral, signo_z = +1, por {ETIQ[var].split(' [')[0]}")
+        curvas(axs[0, j], "lejos", var, "rmse_z")
+        curvas(axs[1, j], "lejos", var, "rmse_lat")
+        axs[0, j].set_title(f"RMSE z, PSF lejos, por {ETIQ[var].split(' [')[0]}")
+        axs[1, j].set_title(f"RMSE lateral, PSF lejos, por {ETIQ[var].split(' [')[0]}")
     axs[0, 0].set_ylabel("RMSE z [nm]")
     axs[1, 0].set_ylabel("RMSE lateral [nm]")
     axs[0, 0].legend(frameon=False, fontsize=8)
-    curvas(axs[2, 0], -1, "dist", "rmse_z")
-    axs[2, 0].set_title("RMSE z, signo_z = −1, por distancia al espejo")
+    curvas(axs[2, 0], "cerca", "dist", "rmse_z")
+    axs[2, 0].set_title("RMSE z, PSF cerca, por distancia al espejo")
     axs[2, 0].set_ylabel("RMSE z [nm]")
 
     # estimacion de D
     ax = axs[2, 1]
-    d = Dtab[(Dtab.escenario == escenario) & (Dtab.signo_z == +1)]
+    d = Dtab[(Dtab.escenario == escenario) & (Dtab.variante == "lejos")]
     k = indice(d.D, BORDES["D"])
     xc = x_rango("D")
     for j, (col, c, lab) in enumerate((("ml_conj", "#1baf7a", "máx. verosimilitud, real + reflejo"),
@@ -431,7 +441,7 @@ def figura(res, Dtab, ruta, escenario="red"):
                     ms=5, capsize=2, lw=1.5, label=lab)
     ax.axhline(1, color="#52514e", lw=0.8)
     ax.set_xlabel(ETIQ["D"]); ax.set_ylabel("D estimada / D verdadera (mediana, IQR)")
-    ax.set_title("estimación de D por trayectoria (50 frames), signo_z = +1")
+    ax.set_title("estimación de D por trayectoria (50 frames), PSF lejos")
     ax.legend(frameon=False, fontsize=7.5)
     ax.grid(True, color="#e6e5e0", lw=0.6)
 
@@ -441,16 +451,18 @@ def figura(res, Dtab, ruta, escenario="red"):
                                  ("suav_conj_Dmsd", "suav_conj", "#1baf7a", "--", "real + reflejo, D por MSD"),
                                  ("suav_solo_Dml", "suav_solo", "#2a78d6", "-", "real, D máx. verosimilitud"),
                                  ("suav_solo_Dmsd", "suav_solo", "#2a78d6", "--", "real, D por MSD")):
-        a = r[(r.signo_z == +1) & (r.metodo == mt) & (r.variable == "D")].rmse_z.to_numpy()
-        b = r[(r.signo_z == +1) & (r.metodo == base) & (r.variable == "D")].rmse_z.to_numpy()
+        a = r[(r.variante == "lejos") & (r.metodo == mt) & (r.variable == "D")].rmse_z.to_numpy()
+        b = r[(r.variante == "lejos") & (r.metodo == base) & (r.variable == "D")].rmse_z.to_numpy()
         ax.plot(xc, a / b, color=c, ls=ls, marker="o", ms=5, lw=1.5, label=lab)
     ax.axhline(1, color="#52514e", lw=0.8)
     ax.set_xlabel(ETIQ["D"]); ax.set_ylabel("RMSE z con D estimada / con D verdadera")
-    ax.set_title("costo de no conocer D, signo_z = +1")
+    ax.set_title("costo de no conocer D, PSF lejos")
     ax.legend(frameon=False, fontsize=7.5)
     ax.grid(True, color="#e6e5e0", lw=0.6)
-    fig.suptitle("Combinar frames (Kalman/RTS) con y sin el reflejo: oráculo con trayectorias del GT y la precisión de la "
-                 "red con espejo (escenario 'red'); IC 95% por bootstrap de trayectorias", fontsize=10)
+    origen = ("la precision de la red con espejo (escenario 'red')" if escenario == "red"
+              else "la precision de la CRLB (escenario 'crlb')")
+    fig.suptitle(f"Combinar frames (Kalman/RTS) con y sin el reflejo, espejo a 45 grados del eje optico: oraculo con "
+                 f"trayectorias del GT y {origen}; IC 95% por bootstrap de trayectorias", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(ruta.with_suffix(".png"), dpi=170)
     fig.savefig(ruta.with_suffix(".pdf"))
@@ -461,50 +473,59 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("--videos", type=int, default=500)
-    p.add_argument("--signos", type=int, nargs="+", default=[1, -1], choices=(1, -1))
+    p.add_argument("--variantes", nargs="+", default=list(VARIANTES), choices=list(VARIANTES))
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=300)
     p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
     a = p.parse_args()
     salida = Path(a.salida)
     t0 = time.time()
-    crlb = tabla_crlb(sim.BancoPSF(sim.Config(z_banco_nm=(-8000.0, 8000.0))))
-    print(f"tabla de la CRLB: {time.time() - t0:.0f} s")
     filas, Dfilas = [], []
     rng = np.random.default_rng(a.seed)
-    for signo in a.signos:
-        cfg = config(signo, a.videos, a.seed)
+    for variante in a.variantes:
+        crlb = tabla_crlb(sim.BancoPSF(sim.Config(z_banco_nm=(-8000.0, 8000.0),
+                                                  anillos_hacia_objetivo=VARIANTES[variante])))
+        print(f"\n{variante}: tabla de la CRLB ({time.time() - t0:.0f} s)")
+        cfg = config(variante, a.videos, a.seed)
         t = trayectorias(cfg, range(a.videos))
-        if signo == a.signos[0]:
+        if variante == a.variantes[0]:
             verificar_trayectorias(cfg, t)
         n_tr = len(t["D"])
         W = rng.multinomial(n_tr, np.full(n_tr, 1.0 / n_tr), size=a.n_boot).astype(float)
-        red = tabla_red(signo, crlb)
-        print(f"\nsigno_z = {signo:+d}: {n_tr} trayectorias de {cfg.n_frames} frames; "
+        print(f"  {n_tr} trayectorias de {cfg.n_frames} frames; "
               f"real en el FOV {t['fov'].mean():.0%}, reflejo en el FOV {t['fovr'].mean():.0%} de los frames")
-        print("  kappa_lat (red / CRLB) por fotones:", np.round(red["k_lat"], 2))
-        print("  kappa_z   (red / CRLB) por fotones:", np.round(red["k_z"], 2))
-        for escenario in ("crlb", "red"):
+        escenarios = ["crlb"]
+        red = None
+        if evaluacion_red(variante) is not None and (RAIZ / f"localizacion/datos/test_espejo_b45_{variante}").exists():
+            red = tabla_red(variante, crlb)
+            escenarios.append("red")
+            print("  kappa_lat (red / CRLB) por fotones:", np.round(red["k_lat"], 2))
+            print("  kappa_z   (red / CRLB) por fotones:", np.round(red["k_z"], 2))
+        else:
+            print(f"  sin la corrida o el test de la variante {variante}: solo el escenario crlb")
+        for escenario in escenarios:
             t1 = time.time()
             sig = precisiones(t, escenario, crlb, red)
             med = medir(t, sig, rng)
             est, Dest = estimaciones(t, med)
-            filas += evaluar(t, med, est, W, signo, escenario)
-            Dfilas.append(pd.DataFrame(dict(signo_z=signo, escenario=escenario, video=t["video"], particle_id=t["pid"],
+            filas += evaluar(t, med, est, W, variante, escenario)
+            Dfilas.append(pd.DataFrame(dict(variante=variante, escenario=escenario, video=t["video"], particle_id=t["pid"],
                                             D=t["D"], fotones=t["N"], ml_solo=Dest["ml_solo"], ml_conj=Dest["ml_conj"],
                                             msd=Dest["msd"])))
             print(f"  escenario {escenario}: {time.time() - t1:.0f} s; detectados real {med['det'][t['fov']].mean():.0%}, "
                   f"reflejo {med['detr'][t['fovr']].mean():.0%}")
     res = pd.DataFrame(filas)
     Dtab = pd.concat(Dfilas, ignore_index=True)
-    res.to_csv(salida / "temporal_espejo_rmse.csv", index=False)
-    Dtab.to_csv(salida / "temporal_espejo_D.csv", index=False)
-    if set(a.signos) == {1, -1}:
-        figura(res, Dtab, salida / "fig_temporal_espejo")
+    res.to_csv(salida / "temporal_espejo_b45_rmse.csv", index=False)
+    Dtab.to_csv(salida / "temporal_espejo_b45_D.csv", index=False)
+    if set(a.variantes) == set(VARIANTES):
+        escenario = "red" if (res.escenario == "red").any() and set(res[res.escenario == "red"].variante) == set(VARIANTES) \
+            else "crlb"
+        figura(res, Dtab, salida / "fig_temporal_espejo_b45", escenario)
     g = res[(res.variable == "global") & (res.frames == "detectados")]
     print("\nRMSE global (frames con el real detectado) [nm]:")
-    print(g.pivot_table(index=["signo_z", "escenario"], columns="metodo", values="rmse_z")[METODOS].round(1).to_string())
-    print(g.pivot_table(index=["signo_z", "escenario"], columns="metodo", values="rmse_lat")[METODOS].round(1).to_string())
+    print(g.pivot_table(index=["variante", "escenario"], columns="metodo", values="rmse_z")[METODOS].round(1).to_string())
+    print(g.pivot_table(index=["variante", "escenario"], columns="metodo", values="rmse_lat")[METODOS].round(1).to_string())
     print(f"\ntotal {time.time() - t0:.0f} s -> {salida}")
 
 

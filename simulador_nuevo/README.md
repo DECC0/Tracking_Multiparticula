@@ -36,7 +36,7 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 | `test_fondo.py` | fondo uniforme / no uniforme acotado y suave |
 | `test_difusion.py` | paredes reflectantes, MSD = 2Dt por eje, incrementos gaussianos independientes, z uniforme, desenfoque de movimiento (MSD con correccion t_e(n^2-1)/(3n^2)) |
 | `test_video.py` | forma del video, columnas y filas del GT, en_fov, imagen limpia reconstruible desde el GT, residuo de ruido ~ N(0,1), semilla, componentes independientes, prefijo temporal, escritura a disco |
-| `test_espejo.py` | validacion y JSON de los campos del espejo, misma geometria que `simulador_psf`, banco ampliado con los planos de `z_rango_nm` intactos, ningun real cruza el espejo (tambien en los subpasos), `dist_max_espejo_um`, espejo lejano = sin espejo, GT del reflejo, desenfoque ligado, imagen limpia reconstruible (con subpasos y desde el GT), el espejo no cambia los otros flujos, regeneracion por video, convencion de signos, espejo apagado |
+| `test_espejo.py` | validacion y JSON de los campos del espejo, misma geometria que `simulador_psf`, banco ampliado con los planos de `z_rango_nm` intactos, ningun real cruza el espejo (tambien en los subpasos), `dist_max_espejo_um`, espejo lejano = sin espejo, GT del reflejo, desenfoque ligado, imagen limpia reconstruible (con subpasos y desde el GT), el espejo no cambia los otros flujos, regeneracion por video, convencion (reflejo del lado correcto, `anillos_hacia_objetivo` solo cambia la PSF, `config.json` de la convencion anterior rechazado), espejo apagado |
 | `test_regresion.py` | con el espejo apagado, salidas bit a bit iguales a las de antes del espejo (`referencia_regresion.json`; se salta si cambia la version de numpy; `--generar` la reescribe) |
 | `test_diagnosticos.py` | SNR del pixel pico vs simulacion, escalamiento de la CRLB; CRLB 3D (`crlb_3d`, z desconocido) vs la PSF exacta de `psf_directa`, vs la 2D y escalamiento con N |
 
@@ -51,11 +51,12 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 
 ## Espejo (`usar_espejo=True`)
 
-Mismo modelo que `simulador_psf` (README de la raiz, seccion Espejo), con la
-geometria de `geometria_espejo.py` y los mismos nombres de campos
-(`angulo_espejo_deg`, `orientacion_espejo_deg`, `espejo_punto_px`,
-`ratio_reflejo`, `z_ref_espejo_nm`, `dist_max_espejo_um`, `signo_z`,
-`signo_inclinacion`, `z_banco_nm`):
+Mismo modelo y convencion que `simulador_psf` (README de la raiz, secciones
+"Convencion de z" y Espejo: +z hacia el objetivo, angulo desde el eje
+optico), con la geometria de `geometria_espejo.py` y los mismos nombres de
+campos (`angulo_espejo_eje_deg`, `orientacion_espejo_deg`, `espejo_punto_px`,
+`ratio_reflejo`, `z_ref_espejo_nm`, `dist_max_espejo_um`, `z_banco_nm`; y
+`anillos_hacia_objetivo`, de la PSF):
 
 - Solo se simulan las trayectorias reales. Con espejo se integran subpaso a
   subpaso en nm, plegando en las paredes en z y en el espejo, con los mismos
@@ -70,10 +71,14 @@ geometria de `geometria_espejo.py` y los mismos nombres de campos
   con los mismos planos que sin espejo dentro de `z_rango_nm`; `z_banco_nm`
   fija a mano el rango a cubrir. Un reflejo fuera del banco no se dibuja
   (`reflejo_en_banco = False`). `K_psf=None` elige el recorte sobre todo el
-  banco: con la esferica, `signo_z = +1` (z' > 0) deja K = 128, pero
-  `signo_z = -1` (z' hasta -4.6 um, donde la PSF es mas ancha) sube a K = 208,
-  y cada muestra cuesta el doble (con K = 128 se perderia el 21% de la luz de
-  los reflejos mas lejanos).
+  banco: a 45 grados los reflejos quedan hasta z' = -4.6 um (mas lejos del
+  objetivo); con la esferica, `anillos_hacia_objetivo = False` deja K = 128,
+  pero con `True` ese lado es el de la PSF ancha y K sube a 208, y cada
+  muestra cuesta el doble.
 - No consume numeros aleatorios: n, D, fotones y fondo son los mismos con y
   sin espejo. Con el espejo apagado sus campos no se escriben en
-  `config.json`, y todo es identico bit a bit a antes (`test_regresion.py`).
+  `config.json` (`anillos_hacia_objetivo`, que es de la PSF, si).
+- `config.json` lleva `convencion_z`; `cargar_config` rechaza los de la
+  convencion anterior. Con el espejo apagado las imagenes son bit a bit las
+  de la convencion anterior y el GT solo cambia el signo de z
+  (`tests/test_convencion_z.py`, en la raiz).

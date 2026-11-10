@@ -1,7 +1,9 @@
 """
 Cuanto puede aportar el reflejo del espejo a la z de un emisor, y si las
-redes lo usan. Por cada signo_z (alpha = angulo_espejo_deg por defecto, 34.0 grados, ratio_reflejo = 0.8,
-camara y PSF por defecto de simulador_nuevo):
+redes lo usan. Convencion: +z hacia el objetivo, espejo a beta =
+angulo_espejo_eje_deg por defecto (45 grados desde el eje optico). Por cada
+variante de la PSF (lejos / cerca: anillos_hacia_objetivo False / True), con
+ratio_reflejo = 0.8 y la camara y la PSF por defecto de simulador_nuevo:
 
 1. CRLB en z de un emisor solo (el mismo calculo que crlb_3d de simulador_nuevo,
    verificado contra ella) y de emisor + reflejo con un modelo conjunto:
@@ -14,23 +16,28 @@ camara y PSF por defecto de simulador_nuevo):
    cada muestra (geometria_espejo.py): real + N(0, 14 nm), reflejo + N(0, su
    CRLB lateral para sus fotones, su z' y el fondo medio de la muestra). Solo
    emisores con el reflejo dentro del FOV.
-3. Una figura por signo: sqrt(CRLB_z) solo y con reflejo, RMSE de la
+3. Una figura por variante: sqrt(CRLB_z) solo y con reflejo, RMSE de la
    triangulacion y RMSE z de las redes evaluadas sobre ese test
    (por_dist_espejo_fotones.csv), por rango de distancia al espejo.
+Sin el test de la variante (localizacion/datos/test_espejo_b45_<variante>,
+generar_espejo.py) solo se calcula la CRLB, con rangos de d y de fotones y
+fondos por defecto (los del test anterior).
 
 Las CRLB se promedian como varianzas (RMS) sobre z en [-800, 800], sobre los
 quintiles del fondo medio del test y sobre las distancias de cada rango, que
 es lo comparable con un RMSE. No modela el recorte de pupila del reflejo
-(espejo a 56 grados del eje optico, ~ arcsin(NA/n) = 55.6), ni el FOV, ni otros
-emisores, ni el prior z en [-800, 800] que la red si aprende.
+(a 45 grados parte del cono de coleccion del reflejo no llega por el espejo), ni
+el FOV, ni otros emisores, ni el prior z en [-800, 800] que la red si aprende.
+Los resultados anteriores (resultados_crlb_espejo.md, fig_crlb_espejo_sz+-1)
+son de la convencion vieja: alpha = 34 desde el plano focal y signo_z.
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
-    $PY figuras/crlb_espejo.py              # redes: corridas/*/evaluacion_test_espejo_sz<signo>/ (salvo humo_*)
-    $PY figuras/crlb_espejo.py --red espejo localizacion/corridas/<corrida>/evaluacion_test_espejo_sz+1 [--red ...]
-    $PY figuras/crlb_espejo.py --signos -1 --sufijo _x
-Escribe en figuras/: fig_crlb_espejo_sz<+1|-1>.png/.pdf y crlb_espejo_sz<+1|-1>.csv
-(rejilla completa de la CRLB) y crlb_espejo_rangos_sz<+1|-1>.csv (por rango, con las redes).
+    $PY figuras/crlb_espejo.py              # redes: corridas/*/evaluacion_test_espejo_b45_<variante>/ (salvo humo_*)
+    $PY figuras/crlb_espejo.py --red espejo localizacion/corridas/<corrida>/evaluacion_test_espejo_b45_lejos [--red ...]
+    $PY figuras/crlb_espejo.py --variantes cerca --sufijo _x
+Escribe en figuras/: fig_crlb_espejo_b45_<variante>.png/.pdf, crlb_espejo_b45_<variante>.csv
+(rejilla completa de la CRLB) y crlb_espejo_rangos_b45_<variante>.csv (por rango, con las redes).
 """
 import argparse
 import json
@@ -50,11 +57,15 @@ sys.path.insert(0, str(RAIZ / "simulador_nuevo"))
 import simulador as sim  # noqa: E402
 from geometria_espejo import GeometriaEspejo  # noqa: E402  (raiz al final del sys.path, via simulador)
 
-ALFA_DEG = sim.Config().angulo_espejo_deg       # 34.0 = 90 - 56 (montaje, medido y redondeado)
+BETA_DEG = sim.Config().angulo_espejo_eje_deg   # 45: desde el eje optico (el montaje)
+VARIANTES = {"lejos": False, "cerca": True}      # -> anillos_hacia_objetivo
+FONDOS_POR_DEFECTO = np.array([16.0, 27.0, 35.0, 43.0, 54.0])   # quintiles del fondo medio del test anterior
+BORDES_D_POR_DEFECTO = np.linspace(0.0, 4000.0, 5)
+BORDES_N_POR_DEFECTO = np.geomspace(1000.0, 30000.0, 5)
 RATIO = 0.8
 SIGMA_REAL_NM = 14.0                    # precision lateral de los reales en la triangulacion
 MARGEN_PX = 40                          # ROI: caja de real y reflejo + 40 px (>= 81 px alrededor de cada uno)
-Z_BANCO_NM = (-8000.0, 8000.0)          # cubre z' de los dos signos con d <= 4 um y alpha >= 29.4
+Z_BANCO_NM = (-8000.0, 8000.0)          # cubre z' con d <= 4 um y cualquier beta (y z en [-800, 800])
 D_NM = np.r_[0, 25, 50, 100, 150, 200, 300:4001:100].astype(float)
 Z_NM = np.linspace(-800.0, 800.0, 9)
 N_FOT = np.geomspace(1000.0, 30000.0, 13)
@@ -107,14 +118,13 @@ def transformacion_px(geo, px):
     return np.linalg.inv(S) @ geo.R @ S
 
 
-def geometria_canonica(signo_z):
-    return GeometriaEspejo(ALFA_DEG, 0.0, [0.0, 0.0, 0.0], -800.0, 800.0, signo_z, 1)
+def geometria_canonica():
+    return GeometriaEspejo(BETA_DEG, 0.0, [0.0, 0.0, 0.0], -800.0, 800.0)
 
 
 def real_y_reflejo(geo, d, z):
     """Real a distancia d [nm] del plano y altura z [nm] (sobre la recta p0 + s m), y su reflejo, en nm."""
-    s = geo.signo_inclinacion * geo.signo_z
-    s_m = (d + s * np.cos(geo.alpha) * z) / np.sin(geo.alpha)
+    s_m = (d - np.sin(geo.beta) * z) / np.cos(geo.beta)
     p = s_m * geo.m + np.array([0.0, 0.0, z])
     assert abs(geo.distancia_nm(p) - d) < 1e-6
     return p, geo.reflejar_nm(p)
@@ -129,11 +139,11 @@ def roi_conjunta(p, pr, px):
     return (y1 - y0 + 1, x1 - x0 + 1), (cx, cy), (cx + dx, cy + dy)
 
 
-def crlb_rejilla(banco, signo_z, fondos):
+def crlb_rejilla(banco, variante, fondos):
     """DataFrame con sqrt(CRLB) en z [nm] solo y con reflejo para cada (d, z, N, b)."""
     cfg, px = banco.cfg, banco.cfg.pixel_nm
     v = sim._var_lectura_e2(cfg)
-    geo = geometria_canonica(signo_z)
+    geo = geometria_canonica()
     T = transformacion_px(geo, px)
     filas = []
     for d in D_NM:
@@ -148,7 +158,7 @@ def crlb_rejilla(banco, signo_z, fondos):
                 for b in fondos:
                     v_solo = var_parametros(g1, G1, N, b, v)
                     v_conj = var_parametros(s_conj, Ju_conj, N, b, v)
-                    filas.append(dict(signo_z=signo_z, d_nm=d, z_nm=z, z_reflejo_nm=pr[2],
+                    filas.append(dict(variante=variante, d_nm=d, z_nm=z, z_reflejo_nm=pr[2],
                                       separacion_px=np.hypot(rx - cx, ry - cy), fotones=N, fondo=b,
                                       crlb_z_solo_nm=np.sqrt(v_solo[2]), crlb_z_conjunto_nm=np.sqrt(v_conj[2]),
                                       crlb_x_solo_nm=np.sqrt(v_solo[0]) * px,
@@ -182,8 +192,8 @@ def verificar(banco):
         ref = sim.crlb_3d(banco, 3000.0, 30.0, z, tam_roi=15)
         mio = np.sqrt(var_parametros(g, G, 3000.0, 30.0, v))
         assert np.allclose(mio, [ref[k] for k in ("x", "y", "z", "N", "b")], rtol=1e-9), (mio, ref)
-    for signo_z in (1, -1):
-        geo = geometria_canonica(signo_z)
+    for beta in (BETA_DEG, -30.0):
+        geo = GeometriaEspejo(beta, 0.0, [0.0, 0.0, 0.0], -800.0, 800.0)
         T = transformacion_px(geo, px)
         p, pr = real_y_reflejo(geo, 800.0, 300.0)
         forma, (cx, cy), (rx, ry) = roi_conjunta(p, pr, px)
@@ -222,14 +232,20 @@ def bordes(valores, escala, n=N_RANGOS):
 
 
 def cargar_test(carpeta):
-    """GT del test con la geometria de cada muestra y d al espejo (como metricas.distancia_al_espejo_nm)."""
+    """GT del test con la geometria de cada muestra y d al espejo (como
+    metricas.distancia_al_espejo_nm). Devuelve (cfg, gt, muestras): cfg es la
+    simulador.Config del test si es de la convencion actual de z, o None si es
+    de la anterior (sin convencion_z en config_simulador.json): entonces solo
+    sirven su GT, d y sus rangos (z en la convencion vieja), no la geometria."""
     carpeta = Path(carpeta)
-    cfg = sim.cargar_config(carpeta / "config_simulador.json")
+    meta = json.loads((carpeta / "config_simulador.json").read_text())
+    cfg = sim.cargar_config(carpeta / "config_simulador.json") if meta.get("convencion_z") == sim.CONVENCION_Z else None
     gt = pd.read_csv(carpeta / "ground_truth.csv")
     m = pd.read_csv(carpeta / "muestras.csv")
-    gt = gt.merge(m[["video_id", "fondo_medio", "espejo_angulo_deg", "espejo_orientacion_deg",
-                     "espejo_punto_x_px", "espejo_punto_y_px"]], on="video_id", how="left")
-    px = cfg.pixel_nm
+    cols = [c for c in ("fondo_medio", "espejo_angulo_eje_deg", "espejo_angulo_deg", "espejo_orientacion_deg",
+                        "espejo_punto_x_px", "espejo_punto_y_px") if c in m]
+    gt = gt.merge(m[["video_id"] + cols], on="video_id", how="left")
+    px = meta["config"].get("pixel_camara_um", 6.5) * 1000.0 / meta["config"].get("magnificacion", 66.0)
     dif = np.c_[(gt.x_reflejo_px - gt.x_px) * px, (gt.y_reflejo_px - gt.y_px) * px, gt.z_reflejo_nm - gt.z_nm]
     gt["d_espejo_nm"] = 0.5 * np.linalg.norm(dif, axis=1)
     return cfg, gt, m
@@ -240,10 +256,9 @@ def matrices_geometria(cfg, gt):
     px = cfg.pixel_nm
     R = np.empty((len(gt), 3, 3))
     p0 = np.empty((len(gt), 3))
-    claves = ["espejo_angulo_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
-    for (a, f, x0, y0), idx in gt.groupby(claves).indices.items():
-        geo = GeometriaEspejo(a, f, [x0 * px, y0 * px, cfg.z_ref_espejo_nm], *cfg.z_rango_nm,
-                              cfg.signo_z, cfg.signo_inclinacion)
+    claves = ["espejo_angulo_eje_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
+    for (b, f, x0, y0), idx in gt.groupby(claves).indices.items():
+        geo = GeometriaEspejo(b, f, [x0 * px, y0 * px, cfg.z_ref_espejo_nm], *cfg.z_rango_nm)
         R[idx], p0[idx] = geo.R, geo.p0
     return R, p0
 
@@ -286,8 +301,8 @@ def triangulacion(cfg, gt, interp, rng):
     return g, err
 
 
-def redes_por_defecto(signo_z):
-    etiq = f"evaluacion_test_espejo_sz{signo_z:+d}"
+def redes_por_defecto(variante):
+    etiq = f"evaluacion_test_espejo_b45_{variante}"
     return [(None, c) for c in sorted((RAIZ / "localizacion" / "corridas").glob(f"*/{etiq}"))
             if not c.parent.name.startswith("humo")]
 
@@ -306,11 +321,12 @@ def etiqueta_red(carpeta):
     return nombre + (" (sin espejo)" if con_espejo(carpeta) is False else "")
 
 
-def signo_de_evaluacion(carpeta):
+def variante_de_evaluacion(carpeta):
     r = yaml.safe_load(open(Path(carpeta) / "resumen.yaml"))
     entrada = Path(r["entradas"][0])
     entrada = entrada if entrada.is_absolute() else RAIZ / entrada
-    return int(json.load(open(entrada / "config_simulador.json"))["config"]["signo_z"])
+    an = json.load(open(entrada / "config_simulador.json"))["config"].get("anillos_hacia_objetivo")
+    return {False: "lejos", True: "cerca"}.get(an)
 
 
 # ----------------------------------------------------------------------------
@@ -431,7 +447,7 @@ def formato_log(ax):
         eje.set_minor_formatter(NullFormatter())
 
 
-def figura(signo_z, crlb, tabla, redes, bd, bf, fondos, ruta):
+def figura(variante, crlb, tabla, redes, bd, bf, fondos, ruta):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -450,8 +466,9 @@ def figura(signo_z, crlb, tabla, redes, bd, bf, fondos, ruta):
         ax.plot(cc.index, cc.values, "-", color=COLOR["conjunto"], lw=2, label="CRLB, emisor + reflejo")
         t = tabla[np.isclose(tabla.d_desde_nm, d0)]
         xc = np.sqrt(t.fotones_desde * t.fotones_hasta).to_numpy()
-        ax.plot(xc, t.rmse_z_triangulacion_nm, "s--", color=COLOR["tri"], lw=1.5, ms=7,
-                mec="white", mew=1, label="triangulacion oraculo")
+        if t.rmse_z_triangulacion_nm.notna().any():
+            ax.plot(xc, t.rmse_z_triangulacion_nm, "s--", color=COLOR["tri"], lw=1.5, ms=7,
+                    mec="white", mew=1, label="triangulacion oraculo")
         desfase = np.linspace(-1, 1, len(redes)) * 0.07 if len(redes) > 1 else [0.0]
         for k, etiq in enumerate(redes):
             col = f"rmse_z_red[{etiq}]"
@@ -470,8 +487,9 @@ def figura(signo_z, crlb, tabla, redes, bd, bf, fondos, ruta):
             ax.set_ylabel("error en z [nm]")
     h, l = fig.axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper center", ncol=len(l), frameon=False, bbox_to_anchor=(0.5, 0.975), fontsize=8.5)
-    fig.suptitle(f"Informacion del reflejo sobre z, signo_z = {signo_z:+d} (alpha = {ALFA_DEG} grados, "
-                 f"ratio_reflejo = {RATIO})", y=0.998, fontsize=11)
+    fig.suptitle(f"Informacion del reflejo sobre z: espejo a {BETA_DEG:g} grados del eje optico, PSF '{variante}' "
+                 f"(anillos_hacia_objetivo = {VARIANTES[variante]}), ratio_reflejo = {RATIO}, +z hacia el objetivo",
+                 y=0.998, fontsize=11)
 
     # abajo: razon de ganancia vs d, CRLB vs z, z' vs d
     ax = fig.add_subplot(gs[1, 0:2])
@@ -523,15 +541,15 @@ def figura(signo_z, crlb, tabla, redes, bd, bf, fondos, ruta):
             f"({', '.join(f'{b:.0f}' for b in fondos)} fotones/px), RMS sobre z en [-800, 800] nm y sobre d y N de cada rango; "
             f"ROI = caja real-reflejo + {MARGEN_PX} px (sin recorte por el FOV ni otros emisores; la red ademas aprende el "
             "prior z en [-800, 800], que la CRLB no incluye).",
-            f"Triangulacion oraculo: GT del test (geometria de cada muestra, alpha 29.4-39.4), real + {SIGMA_REAL_NM:g} nm, "
+            f"Triangulacion oraculo (si hay test): GT del test (geometria de cada muestra), real + {SIGMA_REAL_NM:g} nm, "
             "reflejo + su CRLB lateral (fotones, z', fondo medio); solo reales con el reflejo en el FOV, sin superposicion de "
             "PSF (por eso puede quedar bajo la CRLB conjunta, en la que la precision lateral del real a pocos fotones es "
             "peor que 14 nm). Redes: RMSE z de los detectados (sesgo de supervivencia a pocos fotones), IC 95% por "
             "bootstrap de imagenes del test.",
-            "Limitaciones: el reflejo es una fuente puntual vista con la pupila completa. El espejo esta a 56 grados del "
-            "eje optico (medido, redondeado; ~ arcsin(NA/n) = 55.6): parte del cono de coleccion del reflejo no pasa por el espejo (recorte de pupila, no "
-            "modelado), lo que le quita fotones, vuelve asimetrica su PSF y desplaza su centroide con z' (sesgo de la "
-            "triangulacion si no se modela). Espejo plano ideal e infinito, ratio_reflejo constante."]
+            f"Limitaciones: el reflejo es una fuente puntual vista con la pupila completa. A {BETA_DEG:g} grados del eje "
+            "optico parte del cono de coleccion del reflejo no llega por el espejo (recorte de pupila, no modelado; ~6% de su "
+            "luz segun el asesor), lo que le quita fotones, puede volver asimetrica su PSF y desplazar su centroide con z' "
+            "(sesgo de la triangulacion si no se modela). Espejo plano ideal e infinito, ratio_reflejo constante."]
     nota = "\n".join(textwrap.fill(t, 225) for t in nota)
     fig.text(0.06, 0.012, nota, fontsize=7.2, color="#52514e", va="bottom", ha="left")
     fig.savefig(ruta.with_suffix(".png"), dpi=200)
@@ -542,38 +560,47 @@ def figura(signo_z, crlb, tabla, redes, bd, bf, fondos, ruta):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("--signos", type=int, nargs="+", default=[1, -1], choices=(1, -1))
+    p.add_argument("--variantes", nargs="+", default=list(VARIANTES), choices=list(VARIANTES))
     p.add_argument("--red", nargs=2, action="append", metavar=("ETIQUETA", "CARPETA_EVALUACION"),
-                   help="carpeta evaluacion_test_espejo_sz<s> de evaluate.py; sin --red se buscan en corridas/")
+                   help="carpeta evaluacion_test_espejo_b45_<variante> de evaluate.py; sin --red se buscan en corridas/")
     p.add_argument("--datos", default=str(RAIZ / "localizacion" / "datos"),
-                   help="carpeta con test_espejo_sz+1 y test_espejo_sz-1")
+                   help="carpeta con test_espejo_b45_lejos y test_espejo_b45_cerca (generar_espejo.py)")
     p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
     p.add_argument("--sufijo", default="")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=2000, help="remuestreos de imagenes para los IC de las redes")
     a = p.parse_args()
 
-    t0 = time.time()
-    banco = sim.BancoPSF(sim.Config(z_banco_nm=Z_BANCO_NM))
-    print(f"banco: {len(banco.z_grid)} planos en [{banco.z_grid[0]:.0f}, {banco.z_grid[-1]:.0f}] nm, K = {banco.K}")
-    verificar(banco)
-    interp = tabla_lateral_reflejo(banco)
-    print(f"tabla de la CRLB lateral del reflejo: {time.time() - t0:.0f} s")
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
 
-    for signo_z in a.signos:
-        carpeta_test = Path(a.datos) / f"test_espejo_sz{signo_z:+d}"
-        cfg_t, gt, muestras = cargar_test(carpeta_test)
-        assert cfg_t.signo_z == signo_z and np.isclose(cfg_t.ratio_reflejo, RATIO)
-        fondos = np.quantile(muestras.fondo_medio, [0.1, 0.3, 0.5, 0.7, 0.9])
-        g_fov = gt[gt.en_fov]
-        bd, bf = bordes(g_fov.d_espejo_nm, "lineal"), bordes(g_fov.photons, "log")
+    for variante in a.variantes:
+        t0 = time.time()
+        banco = sim.BancoPSF(sim.Config(z_banco_nm=Z_BANCO_NM, anillos_hacia_objetivo=VARIANTES[variante]))
+        print(f"\n{variante}: banco de {len(banco.z_grid)} planos en [{banco.z_grid[0]:.0f}, {banco.z_grid[-1]:.0f}] nm, "
+              f"K = {banco.K}")
+        verificar(banco)
+        interp = tabla_lateral_reflejo(banco)
+        print(f"tabla de la CRLB lateral del reflejo: {time.time() - t0:.0f} s")
+        carpeta_test = Path(a.datos) / f"test_espejo_b45_{variante}"
+        cfg_t = None
+        if carpeta_test.exists():
+            cfg_t, gt, muestras = cargar_test(carpeta_test)
+            if cfg_t is None or cfg_t.anillos_hacia_objetivo != VARIANTES[variante]:
+                raise ValueError(f"{carpeta_test}: no es un test de la convencion actual con la PSF '{variante}'")
+            assert np.isclose(cfg_t.ratio_reflejo, RATIO)
+            fondos = np.quantile(muestras.fondo_medio, [0.1, 0.3, 0.5, 0.7, 0.9])
+            g_fov = gt[gt.en_fov]
+            bd, bf = bordes(g_fov.d_espejo_nm, "lineal"), bordes(g_fov.photons, "log")
+        else:
+            print(f"  sin {carpeta_test}: solo la CRLB, con rangos y fondos por defecto (sin triangulacion ni redes)")
+            gt = pd.DataFrame(columns=["en_fov", "d_espejo_nm", "photons"]).astype({"en_fov": bool})
+            fondos, bd, bf = FONDOS_POR_DEFECTO, BORDES_D_POR_DEFECTO, BORDES_N_POR_DEFECTO
 
-        entradas = [(e, Path(c)) for e, c in a.red] if a.red else redes_por_defecto(signo_z)
+        entradas = ([(e, Path(c)) for e, c in a.red] if a.red else redes_por_defecto(variante)) if cfg_t else []
         redes, tablas_eval = [], []                     # gt_eval de cada red, y su por_dist_espejo_fotones.csv
         for etiq, carpeta in entradas:
-            if a.red and signo_de_evaluacion(carpeta) != signo_z:
+            if a.red and variante_de_evaluacion(carpeta) != variante:
                 continue
             t = pd.read_csv(carpeta / "por_dist_espejo_fotones.csv")
             if not (np.allclose(np.unique(t.d_desde_nm), bd[:-1]) and np.allclose(np.unique(t.fotones_desde), bf[:-1])):
@@ -588,15 +615,20 @@ def main():
             assert np.allclose(boot[f"rmse_z_red[{etiq}]"], t.rmse_z_nm, equal_nan=True), etiq
 
         t1 = time.time()
-        crlb = crlb_rejilla(banco, signo_z, fondos)
-        g_tri, err = triangulacion(cfg_t, gt, interp, rng)
+        crlb = crlb_rejilla(banco, variante, fondos)
+        if cfg_t is not None:
+            g_tri, err = triangulacion(cfg_t, gt, interp, rng)
+        else:
+            g_tri = pd.DataFrame(columns=["d_espejo_nm", "photons", "sigma_lat_reflejo_nm"], dtype=float)
+            err = np.zeros((0, N_REPETICIONES))
         tabla = tabla_rangos(crlb, g_tri, err, gt, bd, bf, boot)
-        nombre = f"sz{signo_z:+d}{a.sufijo}"
+        nombre = f"b45_{variante}{a.sufijo}"
         crlb.to_csv(salida / f"crlb_espejo_{nombre}.csv", index=False)
         tabla.to_csv(salida / f"crlb_espejo_rangos_{nombre}.csv", index=False)
-        figura(signo_z, crlb, tabla, [r[0] for r in redes], bd, bf, fondos, salida / f"fig_crlb_espejo_{nombre}")
-        print(f"\nsigno_z = {signo_z:+d}  ({time.time() - t1:.0f} s; redes: {[r[0] for r in redes] or 'ninguna'})")
-        print(f"  reales en el FOV con el reflejo en el FOV: {len(g_tri)} de {len(g_fov)}")
+        figura(variante, crlb, tabla, [r[0] for r in redes], bd, bf, fondos, salida / f"fig_crlb_espejo_{nombre}")
+        print(f"\n{variante}  ({time.time() - t1:.0f} s; redes: {[r[0] for r in redes] or 'ninguna'})")
+        if cfg_t is not None:
+            print(f"  reales en el FOV con el reflejo en el FOV: {len(g_tri)} de {len(g_fov)}")
         cols = ["d_desde_nm", "d_hasta_nm", "fotones_desde", "fotones_hasta", "crlb_z_solo_nm", "crlb_z_conjunto_nm",
                 "rmse_z_triangulacion_nm", "sigma_lat_reflejo_mediana_nm"]
         with pd.option_context("display.width", 250, "display.max_columns", 20, "display.float_format", "{:.1f}".format):

@@ -5,16 +5,17 @@
                               unidos, y la trayectoria de un par real <-> reflejo
                               (desde la camara, vista lateral y z vs frame).
   fig_espejo_comparacion.png  para comparar con datos reales (particulas puntuales):
-                              - un emisor y su reflejo con el alpha por defecto (34.0 grados) a
+                              - un emisor y su reflejo con el angulo por defecto (45 grados desde el eje optico) a
                                 d = 0.5, 1, 2 y 3 um del espejo y a dos z respecto
                                 del plano focal, SNR alta (20000 fotones, fondo
                                 5 fot/px) y contraste fijo, con la separacion lateral
-                                2 d sin(alpha) y la diferencia de z 2 d cos(alpha);
-                              - una galeria de la PSF esferica sola en z = -2.0 ...
-                                +5.5 um (respecto del plano focal), mismo contraste,
-                                para estimar z de la particula y de su reflejo y de
-                                ahi alpha = atan(dlat / dz) y los signos de
-                                Config.signo_z / Config.signo_inclinacion;
+                                2 d cos(beta) y la diferencia de z -2 d sin(beta)
+                                (+z hacia el objetivo: el reflejo queda mas lejos);
+                              - una galeria de la PSF esferica sola en z = -5.0 ...
+                                +2.0 um (respecto del plano focal), mismo contraste,
+                                para estimar z de la particula y de su reflejo, de
+                                ahi beta = atan(-dz / dlat) y, con un z-stack de
+                                beads, Config.anillos_hacia_objetivo;
                               - opcional: un recorte real al lado, con el mismo
                                 tamano fisico en um.
 
@@ -23,7 +24,7 @@ Uso:
     $PY checks/check_espejo.py --real recorte.tif --pixel-nm 98.48 [--frame 0]
 
 Las aserciones de verdad estan en tests/test_espejo.py; aqui solo se
-comprueba que lo dibujado cumple dlat / dz = tan(alpha).
+comprueba que lo dibujado cumple -dz / dlat = tan(beta).
 """
 import sys
 import os
@@ -86,7 +87,8 @@ for k, zp in enumerate(cfg.z_rango_nm):
     linea_espejo(A, e, cfg, zp, color="yellow", lw=0.8, ls=":",
                  label="espejo en z = z_rango_nm (paredes de los reales)" if k == 0 else None)
 A.set_xlim(-0.5, cfg.W - 0.5); A.set_ylim(cfg.H - 0.5, -0.5)
-A.set_title(f"frame 0 (alpha {cfg.angulo_espejo_deg:.1f} deg, ratio {cfg.ratio_reflejo}), contraste fijo", fontsize=10)
+A.set_title(f"frame 0 (espejo a {cfg.angulo_espejo_eje_deg:.0f} deg del eje optico, ratio {cfg.ratio_reflejo}), "
+            "contraste fijo", fontsize=10)
 A.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.07), ncol=2)   # fuera de la imagen
 plt.colorbar(im, ax=A, fraction=0.046, label="ADU")
 
@@ -109,24 +111,24 @@ B.legend(fontsize=8)
 
 C = ax[2]
 q_foco = e.punto_en_z_nm(0.0)                                   # origen: espejo en el plano focal
-lat = lambda q: ((q - q_foco) @ e.m / 1000, q @ e.arriba / 1000)
+lat = lambda q: ((q - q_foco) @ e.m / 1000, q[..., 2] / 1000)    # (m, z) [um], +z hacia el objetivo
 pr = e.a_nm(g[["x_px", "y_px", "z_nm"]].to_numpy()); prr = e.a_nm(g[["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]].to_numpy())
 C.plot(*lat(pr), "-", color="tab:blue", lw=1, label="real")
 C.plot(*lat(prr), "-", color="tab:orange", lw=1, label="reflejo")
 zs = np.array([min(cfg.z_rango_nm[0], g.z_reflejo_nm.min()) - 500, max(cfg.z_rango_nm[1], g.z_reflejo_nm.max()) + 500])
 C.plot(*lat(np.array([e.punto_en_z_nm(z) for z in zs])), "k-", lw=2, label="espejo")
-C.axhspan(*sorted(e.signo_z * np.array(cfg.z_rango_nm) / 1000), color="tab:green", alpha=0.08,
+C.axhspan(*(np.array(cfg.z_rango_nm) / 1000), color="tab:green", alpha=0.08,
           label="paredes en z de los reales")
 C.axhline(0.0, color="tab:green", ls="-.", lw=0.8, label="plano focal")
 C.set_aspect("equal"); C.set_xlabel("distancia lateral a la linea del espejo en el plano focal, hacia la muestra [um]")
-C.set_ylabel("altura respecto del plano focal [um] (+: lejos del objetivo)")
+C.set_ylabel("z respecto del plano focal [um] (+: hacia el objetivo)")
 C.set_title("vista lateral (proyeccion sobre el plano m-z)", fontsize=10); C.legend(fontsize=7)
 
 D_ = ax[3]
 D_.plot(g.frame, g.z_nm, "-o", ms=3, color="tab:blue", label="z real")
 D_.plot(g.frame, g.z_reflejo_nm, "-s", ms=3, color="tab:orange", label="z reflejo")
 D_.axhspan(*cfg.z_rango_nm, color="tab:green", alpha=0.08)
-D_.set_xlabel("frame"); D_.set_ylabel("z [nm] (respecto del plano focal)")
+D_.set_xlabel("frame"); D_.set_ylabel("z [nm] (respecto del plano focal, + hacia el objetivo)")
 D_.set_title("z del par vs frame", fontsize=10); D_.legend(fontsize=8)
 fig.tight_layout()
 fig.savefig(os.path.join(OUT, "fig_espejo_frame.png"), dpi=120)
@@ -134,47 +136,46 @@ plt.close(fig)
 print("guardada fig_espejo_frame.png")
 
 # =============================== figura 2: comparacion con datos reales ===============================
-ALPHA = Config.angulo_espejo_deg
+BETA = Config.angulo_espejo_eje_deg          # desde el eje optico
 DS_UM = (0.5, 1.0, 2.0, 3.0)                 # distancia del emisor al plano del espejo
 ZS_UM = (-0.4, 0.4)                          # z del emisor respecto del plano focal
 N_FOT, FONDO, RATIO = 20000.0, 5.0, 0.8
-GALERIA_UM = tuple(np.arange(-2.0, 5.51, 0.5))   # hasta la z del reflejo mas alto (+0.4 + 2*3 cos 34.0 = 5.37 um)
+GALERIA_UM = tuple(np.arange(-5.0, 2.01, 0.5))   # hasta la z del reflejo mas lejano (-0.4 - 2*3 sin 45 = -4.64 um)
 S = 112                                      # lado de cada panel del par [px]
 SG = 64                                      # lado de cada panel de la galeria [px]
 
-base = Config(z_banco_nm=(-2100.0, 5600.0))
+base = Config(z_banco_nm=(-5100.0, 2100.0))
 bc = BancoPSF(base)
 px = base.pixel_nm
 rng = np.random.default_rng(0)
-al = np.radians(ALPHA)
+be = np.radians(BETA)
 
 paneles = []                                 # (imagen, textos, x real, x reflejo) por (altura, d)
 for zu in ZS_UM:
-    h = base.signo_z * zu                         # altura sobre el plano focal (= el de referencia del espejo)
+    h = zu * 1000                                # z del emisor [nm] (plano de referencia del espejo = foco)
     fila = []
     for dd in DS_UM:
-        # emisor a altura h y distancia dd del plano: p = p0 + L m + h arriba con L sin a - h cos a = dd
-        L = (dd * 1000 + base.signo_inclinacion * h * 1000 * np.cos(al)) / np.sin(al)
-        m_medio = L - dd * 1000 * np.sin(al)        # el punto medio real-reflejo, en m (queda en el centro)
+        # emisor a altura h y distancia dd del plano: p = p0 + L m + h z con L cos b + h sin b = dd
+        L = (dd * 1000 - h * np.sin(be)) / np.cos(be)
+        m_medio = L - dd * 1000 * np.cos(be)        # el punto medio real-reflejo, en m (queda en el centro)
         c = (S - 1) / 2
-        cfg_p = Config(usar_espejo=True, angulo_espejo_deg=ALPHA, espejo_punto_px=(c - m_medio / px, c),
-                       z_banco_nm=base.z_banco_nm, signo_z=base.signo_z,
-                       signo_inclinacion=base.signo_inclinacion)
+        cfg_p = Config(usar_espejo=True, angulo_espejo_eje_deg=BETA, espejo_punto_px=(c - m_medio / px, c),
+                       z_banco_nm=base.z_banco_nm, anillos_hacia_objetivo=base.anillos_hacia_objetivo)
         ep = Espejo(cfg_p)
-        p = ep.p0 + L * ep.m + h * 1000 * ep.arriba
+        p = ep.p0 + L * ep.m + np.array([0.0, 0.0, h])
         q = ep.reflejar_nm(p)
         assert np.isclose(ep.distancia_nm(p), dd * 1000)
         dlat, dz = np.hypot(*(q - p)[:2]), (q - p)[2]
-        assert np.isclose(dlat, 2 * dd * 1000 * np.sin(al)) and np.isclose(dz, 2 * dd * 1000 * np.cos(al))
-        assert np.isclose(np.degrees(np.arctan2(dlat, dz)), ALPHA)
+        assert np.isclose(dlat, 2 * dd * 1000 * np.cos(be)) and np.isclose(dz, -2 * dd * 1000 * np.sin(be))
+        assert np.isclose(np.degrees(np.arctan2(-dz, dlat)), BETA)
         assert bc.z_grid[0] <= q[2] <= bc.z_grid[-1] and bc.z_grid[0] <= p[2] <= bc.z_grid[-1]
         img = np.zeros((S, S))
         bc.colocar(img, p[0] / px, p[1] / px, p[2], N_FOT)
         bc.colocar(img, q[0] / px, q[1] / px, q[2], RATIO * N_FOT)
         adu = aplicar_camara(img + FONDO, base, rng)
         txt = (f"z = {zu:+.1f} um, d = {dd:.1f} um\n"
-               f"dlat = 2d sin a = {dlat/1000:.2f} um\n"
-               f"dz = 2d cos a = {dz/1000:+.2f} um\n"
+               f"dlat = 2d cos b = {dlat/1000:.2f} um\n"
+               f"dz = -2d sin b = {dz/1000:+.2f} um\n"
                f"z real {p[2]/1000:+.2f}, reflejo {q[2]/1000:+.2f} um")
         fila.append((adu, txt, (p[0] / px, p[1] / px), (q[0] / px, q[1] / px), ep.p0[0] / px))
     paneles.append(fila)
@@ -227,7 +228,8 @@ if args.real:
         A.imshow(real, cmap="gray", vmin=rmin, vmax=rmax, extent=(-hx, hx, hy, -hy))
         A.set_xlim(-medio_um, medio_um); A.set_ylim(medio_um, -medio_um)
         A.set_title(f"real: {os.path.basename(args.real)}\n{args.pixel_nm:.1f} nm/px, contraste propio", fontsize=8)
-sub_top.suptitle(f"emisor (cian) y reflejo (naranja), alpha = {ALPHA:.1f} deg, {N_FOT:.0f} fotones, "
+sub_top.suptitle(f"emisor (cian) y reflejo (naranja), espejo a {BETA:.0f} deg del eje optico (+z hacia el objetivo), "
+                 f"{N_FOT:.0f} fotones, "
                  f"reflejo x{RATIO}, fondo {FONDO:.0f} fot/px, contraste fijo",
                  fontsize=10)
 
@@ -236,10 +238,9 @@ for A, z, gimg in zip(axg, GALERIA_UM, galeria):
     A.imshow(gimg, cmap="gray", vmin=gmin, vmax=gmax, extent=ext(SG))
     A.set_title(f"{z:+.1f}", fontsize=8)
     A.set_xticks([]); A.set_yticks([])
-lado = "lejos del objetivo" if base.signo_z > 0 else "hacia el objetivo"
 sub_bot.suptitle(f"PSF esferica sola (mismo contraste, {N_FOT:.0f} fotones, panel de "
-                 f"{SG * px / 1000:.1f} um), z [um] respecto del plano focal:   "
-                 f"<-  -z  hacia el objetivo   |   +z  {lado}  ->", fontsize=10)
+                 f"{SG * px / 1000:.1f} um, anillos_hacia_objetivo = {base.anillos_hacia_objetivo}), z [um] respecto "
+                 f"del plano focal:   <-  -z  lejos del objetivo   |   +z  hacia el objetivo  ->", fontsize=10)
 fig.savefig(os.path.join(OUT, "fig_espejo_comparacion.png"), dpi=120)
 plt.close(fig)
 print("guardada fig_espejo_comparacion.png")
