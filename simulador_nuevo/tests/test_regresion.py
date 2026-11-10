@@ -1,7 +1,9 @@
 """Regresion bit a bit del simulador con el espejo apagado: hashes de videos,
 imagenes limpias, fondo, subposiciones, ground truth, resumen() y a_dict()
 de cuatro casos pequenos, contra referencia_regresion.json (escrito con el
-codigo de antes de agregar el espejo).
+codigo de antes de agregar el espejo y regenerado al cambiar la convencion de
+z, +z hacia el objetivo: videos e imagenes iguales y z negada, verificado por
+tests/test_convencion_z.py contra el codigo anterior).
 
 Los hashes dependen de la version de numpy (FFT y redondeos): con otra version
 el test se salta con un aviso en vez de fallar. Regenerar la referencia solo

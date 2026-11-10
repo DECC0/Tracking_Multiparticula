@@ -2,8 +2,11 @@
 Regresion bit a bit del simulador (paquete simulador_psf, antes sim_imagenesPSF.py).
 
 Con semillas fijas genera un conjunto pequeno de salidas y lo compara con la
-referencia guardada en tests/referencia/ (escrita con el codigo anterior a la
-reorganizacion en el paquete simulador_psf). Todo debe coincidir exactamente:
+referencia guardada en tests/referencia/. La referencia se escribio con el
+codigo anterior a la reorganizacion en el paquete simulador_psf y se regenero
+al cambiar la convencion de z (+z hacia el objetivo): los videos no cambiaron
+y el GT solo cambio de signo en z, lo que verifica tests/test_convencion_z.py
+contra el codigo anterior. Todo debe coincidir exactamente:
 
     - datasets pequenos (H != W): videos .tif y ground_truth.csv, byte a byte
     - banco de PSF (stack, z_grid, energia_recortada) e imagen sin ruido
