@@ -1,12 +1,16 @@
 # Igual a mezcla_renovar_largo.yaml, con el espejo (simulador_nuevo, usar_espejo):
 # cada emisor real tiene un reflejo (ratio_reflejo 0.8 de sus fotones) y solo
-# los reales son objetivo. La geometria del espejo se sortea por muestra (alpha
-# en espejo_angulo_rango_deg, phi en [0, 360), linea en el borde del FOV), y
-# la red recibe un segundo canal: la distancia con signo de cada pixel a la
-# interseccion del espejo con el plano focal (/ el FOV). Se agrega la
-# dilatacion 32 (campo receptivo 129 px) porque real y reflejo se separan hasta
-# 2 d sin(alpha) = 45 px con dist_max_espejo_um = 4 y alpha = 34. signo_z se cambia con
-# --set datos.simulador.signo_z=-1 (pendiente del z-stack de una bead).
+# los reales son objetivo. Convencion: +z hacia el objetivo y el angulo del
+# espejo desde el EJE OPTICO (beta; el montaje esta a 45 grados). La geometria
+# del espejo se sortea por muestra (beta en espejo_angulo_eje_rango_deg, phi en
+# [0, 360), linea en el borde del FOV), y la red recibe un segundo canal: la
+# distancia con signo de cada pixel a la interseccion del espejo con el plano
+# focal (/ el FOV). Se agrega la dilatacion 32 (campo receptivo 129 px) porque
+# real y reflejo se separan hasta 2 d cos(beta) = 62 px con dist_max_espejo_um
+# = 4 y beta = 40. El lado de los anillos de la PSF se cambia con
+# --set datos.simulador.anillos_hacia_objetivo=true (pendiente del z-stack de beads).
+# Las corridas anteriores (espejo_sz+-1) usaban la convencion vieja: no son
+# compatibles con esta config (README, "Convencion de z").
 #
 # Igual a mezcla_renovar.yaml, pero con 100 epocas: con 50 la mejor epoca fue
 # la 48 (la perdida de val seguia bajando).
@@ -35,11 +39,11 @@ datos:
     fotones_rango: [1000.0, 30000.0]
     fondo_rango: [5.0, 40.0]
     usar_espejo: true
-    angulo_espejo_deg: 34.0   # centro del rango sorteado (espejo_angulo_rango_deg); 90 - 56 del eje optico
+    angulo_espejo_eje_deg: 45.0   # beta desde el eje optico; centro del rango sorteado (espejo_angulo_eje_rango_deg)
     ratio_reflejo: 0.8
     dist_max_espejo_um: 4.0   # posiciones iniciales hasta 4 um del plano del espejo
-    signo_z: 1                # +1 / -1 (convencion pendiente; los dos pilotos difieren solo aqui)
-    signo_inclinacion: 1      # confirmado
+    anillos_hacia_objetivo: false   # lado del foco con anillos de la PSF esferica (pendiente; las corridas
+                                    # espejo_b45_lejos / espejo_b45_cerca difieren solo aqui)
   canales: 1
   fotones_dispersion: 5.0     # cada imagen usa un subrango de fotones con razon max/min 5
   prob_rango_completo: 0.5    # ... salvo la mitad, que usa todo fotones_rango
@@ -51,7 +55,7 @@ datos:
   seed_train: 1
   seed_val: 2
   renovar_por_epoca: true     # epoca e: muestras e n_train ... (e + 1) n_train - 1 de seed_train
-  espejo_angulo_rango_deg: [29.0, 39.0]   # alpha uniforme: 34.0 +- 5 grados (las corridas espejo_sz+-1 usaron [29.4, 39.4])
+  espejo_angulo_eje_rango_deg: [40.0, 50.0]   # beta uniforme: 45 +- 5 grados desde el eje optico
   espejo_orientacion_aleatoria: true      # phi uniforme en [0, 360)
   espejo_punto_aleatorio: true            # punto de la linea del espejo aleatorio ...
   espejo_linea_rango_fov: [0.333, 1.1]    # ... con la linea espejo-plano focal en el tercio exterior del FOV (hasta

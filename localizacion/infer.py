@@ -68,7 +68,7 @@ def _entrada_tif(ruta, por_defecto):
     if config_sim.exists():
         cs = sim.cargar_config(config_sim)
         if cs.usar_espejo:                                       # geometria fija en todo el dataset
-            geometria = pd.DataFrame([[cs.angulo_espejo_deg, cs.orientacion_espejo_deg, *cs.espejo_punto_px]] * T,
+            geometria = pd.DataFrame([[cs.angulo_espejo_eje_deg, cs.orientacion_espejo_deg, *cs.espejo_punto_px]] * T,
                                      columns=COLUMNAS_GEOMETRIA)
     return dict(nombre=ruta.name, imagenes=imagenes, video_id=np.full(T, vid), frame=np.arange(T),
                 config_sim=config_sim, geometria=geometria)

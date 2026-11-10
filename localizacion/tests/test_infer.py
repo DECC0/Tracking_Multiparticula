@@ -65,3 +65,27 @@ def test_normalizacion_del_checkpoint():
                 infer.normalizar(imagenes, replace(cfg.datos, normalizacion="robusta"), cs))[:, None])
         assert torch.allclose(obtenido, fija, atol=1e-5)
         assert not torch.allclose(obtenido, robusta, atol=1e-3)
+
+
+def test_rechaza_checkpoints_y_datos_de_la_convencion_anterior():
+    """Un checkpoint o un config.json sin convencion_z (escritos antes del cambio
+    a +z hacia el objetivo) se rechaza: la red predeciria z con el signo
+    cambiado. Uno nuevo lleva la convencion y carga."""
+    import json
+    from utils import cargar_checkpoint, ConvencionAnterior, CONVENCION_Z
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        ckpt, _ = checkpoint_smoke(tmp)
+        assert cargar_checkpoint(ckpt)["convencion_z"] == CONVENCION_Z == sim.CONVENCION_Z
+        viejo = torch.load(ckpt, weights_only=True)
+        del viejo["convencion_z"]
+        torch.save(viejo, tmp / "viejo.pt")
+        espera_error(ConvencionAnterior, cargar_checkpoint, tmp / "viejo.pt")
+        espera_error(ConvencionAnterior, cargar_modelo, tmp / "viejo.pt")
+        cs = sim.Config(mascara="esferica", H=20, W=28, n_frames=1, n_videos=1)
+        sim.generar_dataset(cs, tmp / "videos", banco("esferica"))
+        meta = json.loads((tmp / "videos" / "config.json").read_text())
+        del meta["convencion_z"]
+        (tmp / "videos" / "config.json").write_text(json.dumps(meta))
+        espera_error(ValueError, infer.main, [str(ckpt), str(tmp / "videos"), "--salida", str(tmp / "p.csv"),
+                                              "--dispositivo", "cpu"])

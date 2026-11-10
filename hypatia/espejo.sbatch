@@ -1,10 +1,10 @@
 #!/bin/bash
 # Entrenamiento con el espejo (localizacion/configs/espejo.yaml) en la particion gpu.
 # No se lanza directo: hypatia/lanzar_espejo.sh fija tiempo, memoria, CPUs y las
-# variables de abajo (SIGNO_Z, EPOCAS, ...) y llama a sbatch con este archivo.
+# variables de abajo (ANILLOS, EPOCAS, ...) y llama a sbatch con este archivo.
 #
 # Pasos del job (desde la raiz del repo):
-#   1. genera el test con espejo de este signo (localizacion/generar_espejo.py), si no existe
+#   1. genera el test con espejo de esta PSF (localizacion/generar_espejo.py), si no existe
 #   2. entrena con espejo.yaml (datos on-the-fly en los workers, train nuevo en cada epoca)
 #   3. evalua mejor.pt sobre ese test (evaluate.py)
 
@@ -25,7 +25,7 @@
 ########################################################################################
 
 # variables (las exporta lanzar_espejo.sh; aqui sus valores por defecto)
-SIGNO_Z=${SIGNO_Z:-1}
+ANILLOS=${ANILLOS:-lejos}                 # lejos | cerca (Config.anillos_hacia_objetivo false | true)
 EPOCAS=${EPOCAS:-3}
 CONFIG=${CONFIG:-localizacion/configs/espejo.yaml}
 VENV=${VENV:-$HOME/envs/tracking}
@@ -44,28 +44,28 @@ if [ ! -f localizacion/train.py ]; then
 fi
 set -e
 
-SZ=$(printf "%+d" "$SIGNO_Z")
-NOMBRE=hypatia_espejo_sz${SZ}
-TEST=$DATOS/test_espejo_sz${SZ}
+if [ "$ANILLOS" = "cerca" ]; then BANDERA=true; OPCION=--anillos-hacia-objetivo; else BANDERA=false; OPCION=; fi
+NOMBRE=hypatia_espejo_b45_${ANILLOS}
+TEST=$DATOS/test_espejo_b45_${ANILLOS}
 WORKERS=${SLURM_CPUS_PER_TASK:-4}
 
 echo "Corri en la maquina: $(/bin/hostname)  el: $(/bin/date)"
-echo "config $CONFIG, signo_z $SZ, $EPOCAS epocas, $WORKERS workers -> corrida $NOMBRE"
+echo "config $CONFIG, anillos $ANILLOS (anillos_hacia_objetivo $BANDERA), $EPOCAS epocas, $WORKERS workers -> corrida $NOMBRE"
 nvidia-smi
 
-# 1. test con espejo (mismo para las corridas de este signo; se genera una vez)
+# 1. test con espejo (mismo para las corridas de esta PSF; se genera una vez)
 if [ ! -f "$TEST/imagenes.npy" ]; then
-    python -u localizacion/generar_espejo.py --config "$CONFIG" --signo-z "$SIGNO_Z" --split test \
+    python -u localizacion/generar_espejo.py --config "$CONFIG" $OPCION --split test \
         --n "$N_TEST" --salida "$TEST"
 fi
 
 # 2. entrenamiento: la carpeta de la corrida es localizacion/corridas/<NOMBRE>_<fecha-hora>/
 python -u localizacion/train.py --config "$CONFIG" \
-    --set datos.simulador.signo_z=$SIGNO_Z entrenamiento.epocas=$EPOCAS \
+    --set datos.simulador.anillos_hacia_objetivo=$BANDERA entrenamiento.epocas=$EPOCAS \
           entrenamiento.workers=$WORKERS entrenamiento.nombre=$NOMBRE $EXTRA_SET
 CORRIDA=$(ls -td localizacion/corridas/${NOMBRE}_*/ | head -1)
 
-# 3. evaluacion de la mejor epoca sobre el test de este signo
+# 3. evaluacion de la mejor epoca sobre el test de esta PSF
 python -u localizacion/evaluate.py "$CORRIDA/mejor.pt" "$TEST" --figuras 6
 
 echo "Termino el: $(/bin/date)  -> $CORRIDA"

@@ -30,7 +30,7 @@ from data.dataset import DatasetSimulado
 from infer import predecir, dibujar_detecciones
 from metricas import evaluar, resumen
 from postproc import detectar
-from utils import rejilla_de, cargar_modelo, DIR_LOCALIZACION
+from utils import rejilla_de, cargar_modelo, cargar_checkpoint, ConvencionAnterior, DIR_LOCALIZACION
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 COLORES = ["#2a78d6", "#eb6834", "#1baf7a"]                      # paleta categorica (orden fijo)
@@ -82,9 +82,16 @@ if args:
     ckpt = Path(args[0])
 else:
     candidatos = sorted((DIR_LOCALIZACION / "corridas").glob("*/mejor.pt"), key=lambda p: p.stat().st_mtime)
-    ckpt = candidatos[-1] if candidatos else None
+    ckpt = None
+    for c in reversed(candidatos):                               # el mas reciente de la convencion actual de z
+        try:
+            cargar_checkpoint(c)
+        except ConvencionAnterior:
+            continue
+        ckpt = c
+        break
 if ckpt is None:
-    print("\nB. sin checkpoint en corridas/: se omite el barrido con la red")
+    print("\nB. sin checkpoint de la convencion actual de z en corridas/: se omite el barrido con la red")
     sys.exit(0)
 N = int(args[1]) if len(args) > 1 else 500
 modelo, cfg_r, rej_r = cargar_modelo(ckpt, dev)

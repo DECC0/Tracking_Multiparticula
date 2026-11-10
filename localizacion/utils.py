@@ -12,7 +12,9 @@ import pandas as pd
 import torch
 
 from config import a_dict, aplicar_overrides, desde_dict
-from data.simulacion import config_simulador
+from data.simulacion import config_simulador, sim
+
+CONVENCION_Z = sim.CONVENCION_Z               # la de simulador_nuevo: +z hacia el objetivo
 from data.target import RejillaVoxeles
 
 DIR_LOCALIZACION = Path(__file__).resolve().parent
@@ -71,15 +73,28 @@ def carpeta_nueva(cfg_ent):
 
 
 def guardar_checkpoint(ruta, cfg, modelo, **estado):
-    """Guarda pesos, config y el estado extra (optimizador, epoca...) de forma atomica."""
-    datos = {"modelo": modelo.state_dict(), "config": a_dict(cfg), **estado}
+    """Guarda pesos, config, la convencion de z y el estado extra (optimizador,
+    epoca...) de forma atomica."""
+    datos = {"modelo": modelo.state_dict(), "config": a_dict(cfg), "convencion_z": CONVENCION_Z, **estado}
     tmp = Path(f"{ruta}.tmp")
     torch.save(datos, tmp)
     os.replace(tmp, ruta)
 
 
+class ConvencionAnterior(ValueError):
+    """Checkpoint entrenado con la convencion anterior de z (+z lejos del objetivo)."""
+
+
 def cargar_checkpoint(ruta, dispositivo="cpu"):
-    return torch.load(ruta, map_location=dispositivo, weights_only=True)
+    """Checkpoint de train.py. Los de la convencion anterior de z (sin el campo
+    convencion_z: +z lejos del objetivo, angulo desde el plano focal) se
+    rechazan: predicen z con el signo cambiado. No se convierten: hay que
+    reentrenar (README, "Convencion de z")."""
+    ckpt = torch.load(ruta, map_location=dispositivo, weights_only=True)
+    if ckpt.get("convencion_z") != CONVENCION_Z:
+        raise ConvencionAnterior(f"{ruta}: checkpoint de la convencion anterior de z (+z lejos del objetivo); "
+                                 "no se convierte: reentrenar (README, 'Convencion de z')")
+    return ckpt
 
 
 def cargar_modelo(ruta, dispositivo="cpu"):

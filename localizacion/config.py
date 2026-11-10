@@ -43,9 +43,10 @@ class ConfigDatos:
     seed_val: int = 2
     renovar_por_epoca: bool = False     # True: muestras de train nuevas en cada epoca
 
-    # espejo (requiere datos.simulador.usar_espejo: true; signo_z y el resto de sus campos van en
+    # espejo (requiere datos.simulador.usar_espejo: true; sus campos y anillos_hacia_objetivo van en
     # datos.simulador). Geometria aleatoria por muestra, con su propio flujo aleatorio (data/simulacion.py)
-    espejo_angulo_rango_deg: tuple = None   # alpha uniforme en [min, max]; None -> el de datos.simulador
+    espejo_angulo_eje_rango_deg: tuple = None   # beta (angulo desde el EJE OPTICO) uniforme en [min, max];
+                                                # None -> angulo_espejo_eje_deg de datos.simulador
     espejo_orientacion_aleatoria: bool = False  # phi uniforme en [0, 360)
     espejo_punto_aleatorio: bool = False    # punto de la linea del espejo aleatorio: uniforme en el FOV o, con
                                             # espejo_linea_rango_fov, con la linea en el borde de la imagen
@@ -62,8 +63,8 @@ class ConfigDatos:
     def __post_init__(self):
         if self.read_noise_rango is not None:
             self.read_noise_rango = tuple(float(v) for v in self.read_noise_rango)
-        if self.espejo_angulo_rango_deg is not None:
-            self.espejo_angulo_rango_deg = tuple(float(v) for v in self.espejo_angulo_rango_deg)
+        if self.espejo_angulo_eje_rango_deg is not None:
+            self.espejo_angulo_eje_rango_deg = tuple(float(v) for v in self.espejo_angulo_eje_rango_deg)
         if self.espejo_linea_rango_fov is not None:
             self.espejo_linea_rango_fov = tuple(float(v) for v in self.espejo_linea_rango_fov)
         self.validar()
@@ -71,7 +72,7 @@ class ConfigDatos:
     @property
     def usa_espejo(self):
         """True si alguna opcion de espejo de esta seccion esta activa."""
-        return (self.espejo_angulo_rango_deg is not None or self.espejo_orientacion_aleatoria
+        return (self.espejo_angulo_eje_rango_deg is not None or self.espejo_orientacion_aleatoria
                 or self.espejo_punto_aleatorio or self.canal_distancia_espejo)
 
     @property
@@ -93,9 +94,9 @@ class ConfigDatos:
         _exige(self.escala_entrada > 0, "datos.escala_entrada debe ser positiva")
         _exige(self.n_train >= 1 and self.n_val >= 1, "datos.n_train y datos.n_val deben ser >= 1")
         _exige(self.seed_train != self.seed_val, "seed_train y seed_val deben ser distintas (si no, train y val se solapan)")
-        if self.espejo_angulo_rango_deg is not None:
-            lo, hi = self.espejo_angulo_rango_deg
-            _exige(0 < lo <= hi < 180, "datos.espejo_angulo_rango_deg: se requiere 0 < min <= max < 180")
+        if self.espejo_angulo_eje_rango_deg is not None:
+            lo, hi = self.espejo_angulo_eje_rango_deg
+            _exige(-90 < lo <= hi < 90, "datos.espejo_angulo_eje_rango_deg: se requiere -90 < min <= max < 90")
         if self.espejo_linea_rango_fov is not None:
             lo, hi = self.espejo_linea_rango_fov
             _exige(0 <= lo <= hi, "datos.espejo_linea_rango_fov: se requiere 0 <= min <= max")

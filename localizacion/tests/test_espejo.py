@@ -20,9 +20,9 @@ import metricas
 
 RAIZ = Path(__file__).resolve().parents[1]
 ESPEJO_SIM = dict(usar_espejo=True, dist_max_espejo_um=1.0, K_psf=32, z_paso_nm=100.0)
-GEO = dict(espejo_angulo_rango_deg=(29.0, 39.0), espejo_orientacion_aleatoria=True, espejo_punto_aleatorio=True)
+GEO = dict(espejo_angulo_eje_rango_deg=(40.0, 50.0), espejo_orientacion_aleatoria=True, espejo_punto_aleatorio=True)
 SMOKE_ESPEJO = ["datos.simulador.usar_espejo=true", "datos.simulador.dist_max_espejo_um=1.0",
-                "datos.espejo_angulo_rango_deg=[29.0, 39.0]", "datos.espejo_orientacion_aleatoria=true",
+                "datos.espejo_angulo_eje_rango_deg=[40.0, 50.0]", "datos.espejo_orientacion_aleatoria=true",
                 "datos.espejo_punto_aleatorio=true", "datos.canal_distancia_espejo=true",
                 "modelo.dilataciones=[1, 2, 4, 8, 16, 32]"]
 mudo = lambda *a, **k: None
@@ -33,14 +33,15 @@ def cfg_esp(sim_kw=None, **kw):
 
 
 @lru_cache(maxsize=None)
-def banco_esp(signo_z=1):
-    return sim.BancoPSF(config_simulador(cfg_esp(sim_kw=dict(signo_z=signo_z)), 0))
+def banco_esp(anillos=False):
+    return sim.BancoPSF(config_simulador(cfg_esp(sim_kw=dict(anillos_hacia_objetivo=anillos)), 0))
 
 
 def test_config_del_espejo():
     espera_error(ValueError, ConfigDatos, canal_distancia_espejo=True)            # sin usar_espejo
     espera_error(ValueError, ConfigDatos, espejo_orientacion_aleatoria=True)
-    espera_error(ValueError, cfg_esp, espejo_angulo_rango_deg=(40.0, 30.0))
+    espera_error(ValueError, cfg_esp, espejo_angulo_eje_rango_deg=(50.0, 40.0))
+    espera_error(ValueError, cfg_esp, espejo_angulo_eje_rango_deg=(-95.0, 0.0))
     espera_error(ValueError, cfg_esp, escala_distancia_px=0.0)
     assert cfg_esp().canales_entrada == 2 and cfg_esp(canal_distancia_espejo=False).canales_entrada == 1
     for nombre in ("base", "mezcla", "mezcla_renovar_largo", "smoke"):            # las configs de antes no cambian
@@ -49,8 +50,9 @@ def test_config_del_espejo():
         assert nombre == "smoke" or c.modelo.dilataciones == (1, 2, 4, 8, 16)
     e = cargar_config(RAIZ / "configs" / "espejo.yaml")
     assert e.datos.canales_entrada == 2 and e.modelo.dilataciones == (1, 2, 4, 8, 16, 32)
-    assert e.datos.simulador["signo_z"] == 1 and e.datos.simulador["ratio_reflejo"] == 0.8
-    assert e.datos.simulador["dist_max_espejo_um"] == 4.0 and e.datos.espejo_angulo_rango_deg == (29.0, 39.0)
+    assert e.datos.simulador["anillos_hacia_objetivo"] is False and e.datos.simulador["ratio_reflejo"] == 0.8
+    assert e.datos.simulador["angulo_espejo_eje_deg"] == 45.0 and e.datos.espejo_angulo_eje_rango_deg == (40.0, 50.0)
+    assert e.datos.simulador["dist_max_espejo_um"] == 4.0
 
 
 def test_geometria_por_muestra():
@@ -58,28 +60,28 @@ def test_geometria_por_muestra():
     cs = config_simulador(cd, 7)
     gs = [geometria_muestra(cd, cs, i) for i in range(200)]
     assert gs[3] == geometria_muestra(cd, cs, 3) and gs[3] != geometria_muestra(cd, cs, 3, intento=1)
-    a = np.array([g["angulo_espejo_deg"] for g in gs])
+    a = np.array([g["angulo_espejo_eje_deg"] for g in gs])
     f = np.array([g["orientacion_espejo_deg"] for g in gs])
     p = np.array([g["espejo_punto_px"] for g in gs])
-    assert (a >= 29.0).all() and (a <= 39.0).all() and a.std() > 2
+    assert (a >= 40.0).all() and (a <= 50.0).all() and a.std() > 2
     assert (f >= 0).all() and (f < 360).all() and f.std() > 80
     assert (p[:, 0] >= -0.5).all() and (p[:, 0] < cs.W - 0.5).all() and (p[:, 1] < cs.H - 0.5).all()
     # flujo propio: activar una opcion no cambia lo que sortean las otras
-    solo_f = cfg_esp(espejo_angulo_rango_deg=None, espejo_punto_aleatorio=False)
+    solo_f = cfg_esp(espejo_angulo_eje_rango_deg=None, espejo_punto_aleatorio=False)
     for i in (0, 5):
         g = geometria_muestra(solo_f, config_simulador(solo_f, 7), i)
         assert g["orientacion_espejo_deg"] == gs[i]["orientacion_espejo_deg"]
-        assert g["angulo_espejo_deg"] == cs.angulo_espejo_deg and g["espejo_punto_px"] == cs.espejo_punto_px
+        assert g["angulo_espejo_eje_deg"] == cs.angulo_espejo_eje_deg and g["espejo_punto_px"] == cs.espejo_punto_px
 
 
 def test_linea_del_espejo_en_el_borde_del_fov():
     """Con espejo_linea_rango_fov la interseccion del espejo con el plano focal
     queda a u h del centro (u en el rango, h el semiancho del FOV sobre m) y el
-    centro del lado de la muestra, tambien con z_ref != 0 y con los dos signos."""
+    centro del lado de la muestra, tambien con z_ref != 0 y con las dos PSF."""
     espera_error(ValueError, cfg_esp, espejo_punto_aleatorio=False, espejo_linea_rango_fov=(0.3, 1.0))
     espera_error(ValueError, cfg_esp, espejo_linea_rango_fov=(1.0, 0.5))
-    for sz, zr in ((1, 0.0), (-1, -300.0), (1, 450.0)):
-        cd = cfg_esp(sim_kw=dict(signo_z=sz, z_ref_espejo_nm=zr), espejo_linea_rango_fov=(1 / 3, 1.1))
+    for an, zr in ((False, 0.0), (True, -300.0), (False, 450.0)):
+        cd = cfg_esp(sim_kw=dict(anillos_hacia_objetivo=an, z_ref_espejo_nm=zr), espejo_linea_rango_fov=(1 / 3, 1.1))
         cs = config_simulador(cd, 5)
         c = np.array([(cs.W - 1) / 2, (cs.H - 1) / 2])
         us = []
@@ -91,7 +93,7 @@ def test_linea_del_espejo_en_el_borde_del_fov():
             mapa = mapa_distancia_espejo(config_muestra(cd, cs, i), cs.H, cs.W, 1.0)
             assert mapa[cs.H // 2, cs.W // 2] > 0                              # el centro, del lado de la muestra
         us = np.array(us)
-        assert (us >= 1 / 3 - 1e-9).all() and (us <= 1.1 + 1e-9).all() and us.std() > 0.15, (sz, zr)
+        assert (us >= 1 / 3 - 1e-9).all() and (us <= 1.1 + 1e-9).all() and us.std() > 0.15, (an, zr)
 
 
 def test_la_geometria_no_cambia_los_otros_flujos():
@@ -108,24 +110,25 @@ def test_la_geometria_no_cambia_los_otros_flujos():
 
 
 def test_banco_cubre_cualquier_geometria():
-    """Ningun reflejo queda sin dibujar ni hace falta regenerar, con los dos
-    signos, y el banco es el de z_banco_espejo."""
-    for sz in (1, -1):
-        cd = cfg_esp(sim_kw=dict(signo_z=sz))
+    """Ningun reflejo queda sin dibujar ni hace falta regenerar, con las dos
+    PSF, y el banco es el de z_banco_espejo: ampliado hacia -z (con beta > 0 el
+    reflejo queda mas lejos del objetivo), en z fisica con cualquier bandera."""
+    for an in (False, True):
+        cd = cfg_esp(sim_kw=dict(anillos_hacia_objetivo=an))
         cs = config_simulador(cd, 9)
-        b = banco_esp(sz)
+        b = banco_esp(an)
         lo, hi = z_banco_espejo(cd, cs)
         assert b.z_grid[0] <= lo + 1e-6 and b.z_grid[-1] >= hi - 1e-6
-        assert (lo < cs.z_rango_nm[0]) == (sz < 0) and (hi > cs.z_rango_nm[1]) == (sz > 0)
+        assert lo < cs.z_rango_nm[0] and hi == cs.z_rango_nm[1]
         for i in range(150):
             _, gt = sim.generar_video(config_muestra(cd, cs, i), b, i)    # primer intento, sin regenerar
-            assert gt.reflejo_en_banco.all(), (sz, i)
+            assert gt.reflejo_en_banco.all(), (an, i)
 
 
 def test_regenera_las_muestras_con_reflejos_sin_dibujar():
     """Con un banco demasiado corto la muestra se regenera (otro video_id y otra
     geometria) hasta que todos los reflejos se dibujan; se cuenta en meta."""
-    cd = cfg_esp(sim_kw=dict(z_banco_nm=(-800.0, 1100.0)))
+    cd = cfg_esp(sim_kw=dict(z_banco_nm=(-1100.0, 800.0)))
     cs = config_simulador(cd, 3)
     b = sim.BancoPSF(cs)
     reint = []
@@ -138,7 +141,7 @@ def test_regenera_las_muestras_con_reflejos_sin_dibujar():
     v1, g1, m1 = generar_muestra(cd, cs, b, i)
     v2, g2, m2 = generar_muestra(cd, cs, b, i)
     assert np.array_equal(v1, v2) and g1.equals(g2) and m1 == m2              # regenerable sola
-    sin_reintentos = cfg_esp(sim_kw=dict(z_banco_nm=(-800.0, 1100.0)), max_reintentos_espejo=0)
+    sin_reintentos = cfg_esp(sim_kw=dict(z_banco_nm=(-1100.0, 800.0)), max_reintentos_espejo=0)
     espera_error(RuntimeError, generar_muestra, sin_reintentos, config_simulador(sin_reintentos, 3), b, i)
 
 
@@ -146,15 +149,16 @@ def test_mapa_de_distancia_analitico():
     cs = config_simulador(cfg_esp(), 0)
     H, W, px = cs.H, cs.W, cs.pixel_nm
     yy, xx = np.mgrid[0:H, 0:W]
-    fila = dict(espejo_angulo_deg=90.0, espejo_orientacion_deg=0.0, espejo_punto_x_px=10.3, espejo_punto_y_px=5.0)
+    fila = dict(espejo_angulo_eje_deg=0.0, espejo_orientacion_deg=0.0, espejo_punto_x_px=10.3, espejo_punto_y_px=5.0)
     assert np.allclose(mapa_distancia_espejo(config_geometria(cs, fila), H, W, 40.0), (xx - 10.3) / 40.0, atol=1e-6)
     fila.update(espejo_orientacion_deg=90.0)                                    # muestra hacia +y
     assert np.allclose(mapa_distancia_espejo(config_geometria(cs, fila), H, W, 40.0), (yy - 5.0) / 40.0, atol=1e-6)
-    # alpha = 45 con el plano de referencia 500 nm bajo el foco: en z = 0 la linea se corre 500 nm hacia la muestra
-    fila.update(espejo_angulo_deg=45.0, espejo_orientacion_deg=0.0)
+    # beta = 45 con el plano de referencia 500 nm mas lejos del objetivo que el foco (z_ref = -500): en
+    # z = 0 la linea se corre 500 nm alejandose de la muestra
+    fila.update(espejo_angulo_eje_deg=45.0, espejo_orientacion_deg=0.0)
     from dataclasses import replace
     m = mapa_distancia_espejo(replace(config_geometria(cs, fila), z_ref_espejo_nm=-500.0), H, W, 1.0)
-    assert np.allclose(m, xx - 10.3 - 500.0 / px, atol=1e-5)
+    assert np.allclose(m, xx - 10.3 + 500.0 / px, atol=1e-5)
 
 
 def test_disco_igual_a_simulado_con_el_canal():

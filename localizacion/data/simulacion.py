@@ -15,8 +15,11 @@ simulador (numero de emisores, fotones por emisor, fondo):
 Usa su propio flujo aleatorio, asi que no cambia las posiciones de los
 emisores (las trayectorias tienen su propio flujo en el simulador).
 
+Convencion de z: la de simulador_nuevo (+z hacia el objetivo; el angulo del
+espejo desde el eje optico).
+
 Espejo (datos.simulador.usar_espejo): la geometria se puede sortear por
-muestra (alpha en datos.espejo_angulo_rango_deg, phi en [0, 360), punto de la
+muestra (beta en datos.espejo_angulo_eje_rango_deg, phi en [0, 360), punto de la
 linea del espejo en el FOV o, con espejo_linea_rango_fov, en el borde de la
 imagen y con la muestra hacia adentro) con otro flujo propio (spawn_key (idx,
 1001, intento)), que siempre sortea 4 numeros. El banco de PSF cubre entonces las
@@ -44,8 +47,8 @@ COLUMNAS_GT = sim.COLUMNAS_GT + ["snr"]
 # campos de simulador.Config que definen el banco de PSF
 CAMPOS_PSF = ("NA", "n_medio", "lambda_nm", "pixel_camara_um", "magnificacion", "mascara",
               "anillos_corkscrew", "amp_esferica", "M_pupila", "K_psf", "energia_max_recortada",
-              "z_paso_nm", "blur_extra_px", "integrar_pixel", "z_rango_nm")
-COLUMNAS_GEOMETRIA = ["espejo_angulo_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
+              "z_paso_nm", "blur_extra_px", "integrar_pixel", "z_rango_nm", "anillos_hacia_objetivo")
+COLUMNAS_GEOMETRIA = ["espejo_angulo_eje_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
 
 
 def config_simulador(cfg_datos, seed):
@@ -62,20 +65,20 @@ def config_simulador(cfg_datos, seed):
 
 
 def geometria_aleatoria(cfg_datos):
-    return (cfg_datos.espejo_angulo_rango_deg is not None or cfg_datos.espejo_orientacion_aleatoria
+    return (cfg_datos.espejo_angulo_eje_rango_deg is not None or cfg_datos.espejo_orientacion_aleatoria
             or cfg_datos.espejo_punto_aleatorio)
 
 
 def z_banco_espejo(cfg_datos, cfg_sim):
     """Rango z [nm] que cubre los reflejos de cualquier geometria sorteable.
-    Para un real a distancia d >= 0 del espejo, z' - z = 2 d s cos(alpha), con
-    s = signo_inclinacion * signo_z; cos es monotono en (0, 180), asi que basta
-    con los extremos del rango de alpha. d <= dist_max_espejo_um, o (sin el)
-    la diagonal de la caja de posiciones iniciales. Con un frame por muestra no
-    hay browniano que saque a un emisor de ahi."""
-    lo_a, hi_a = cfg_datos.espejo_angulo_rango_deg or (cfg_sim.angulo_espejo_deg,) * 2
-    s = cfg_sim.signo_inclinacion * cfg_sim.signo_z
-    c = s * np.cos(np.radians([lo_a, hi_a]))
+    Para un real a distancia d >= 0 del espejo, z' - z = -2 d sin(beta) (+z
+    hacia el objetivo; con beta > 0 el reflejo queda mas lejos); sin es
+    monotono en (-90, 90), asi que basta con los extremos del rango de beta.
+    d <= dist_max_espejo_um, o (sin el) la diagonal de la caja de posiciones
+    iniciales. Con un frame por muestra no hay browniano que saque a un emisor
+    de ahi."""
+    lo_a, hi_a = cfg_datos.espejo_angulo_eje_rango_deg or (cfg_sim.angulo_espejo_eje_deg,) * 2
+    c = -np.sin(np.radians([lo_a, hi_a]))                       # (z' - z) / (2 d) en los extremos
     zlo, zhi = cfg_sim.z_rango_nm
     if cfg_sim.dist_max_espejo_um is not None:
         dmax = cfg_sim.dist_max_espejo_um * 1000.0
@@ -121,11 +124,11 @@ def geometria_muestra(cfg_datos, cfg_sim, idx, intento=0):
     referencia z_ref_espejo_nm, corrido en m segun Espejo.punto_en_z_nm."""
     rng = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG_ESPEJO, intento)))
     u_a, u_f, (u_x, u_y) = rng.uniform(), rng.uniform(), rng.uniform(size=2)
-    g = dict(angulo_espejo_deg=cfg_sim.angulo_espejo_deg, orientacion_espejo_deg=cfg_sim.orientacion_espejo_deg,
+    g = dict(angulo_espejo_eje_deg=cfg_sim.angulo_espejo_eje_deg, orientacion_espejo_deg=cfg_sim.orientacion_espejo_deg,
              espejo_punto_px=cfg_sim.espejo_punto_px)
-    if cfg_datos.espejo_angulo_rango_deg is not None:
-        lo, hi = cfg_datos.espejo_angulo_rango_deg
-        g["angulo_espejo_deg"] = float(lo + u_a * (hi - lo))
+    if cfg_datos.espejo_angulo_eje_rango_deg is not None:
+        lo, hi = cfg_datos.espejo_angulo_eje_rango_deg
+        g["angulo_espejo_eje_deg"] = float(lo + u_a * (hi - lo))
     if cfg_datos.espejo_orientacion_aleatoria:
         g["orientacion_espejo_deg"] = float(360.0 * u_f)
     if cfg_datos.espejo_punto_aleatorio and cfg_datos.espejo_linea_rango_fov is None:
@@ -137,15 +140,15 @@ def geometria_muestra(cfg_datos, cfg_sim, idx, intento=0):
         c = np.array([(cfg_sim.W - 1) / 2, (cfg_sim.H - 1) / 2])
         h = cfg_sim.W / 2 * abs(m[0]) + cfg_sim.H / 2 * abs(m[1])
         q = c - (lo + u_x * (hi - lo)) * h * m                    # punto de la recta en el plano focal [px]
-        s = (cfg_sim.signo_inclinacion * cfg_sim.signo_z * (0.0 - cfg_sim.z_ref_espejo_nm)
-             / np.tan(np.radians(g["angulo_espejo_deg"])) / cfg_sim.pixel_nm)   # corrimiento en m de z_ref a z = 0
+        s = (-(0.0 - cfg_sim.z_ref_espejo_nm) * np.tan(np.radians(g["angulo_espejo_eje_deg"]))
+             / cfg_sim.pixel_nm)                                 # corrimiento en m de z_ref a z = 0 (punto_en_z_nm)
         g["espejo_punto_px"] = tuple(float(v) for v in q - s * m)
     return g
 
 
 def config_geometria(cfg_sim, fila):
     """cfg_sim con la geometria del espejo de una fila de meta / muestras.csv (COLUMNAS_GEOMETRIA)."""
-    return replace(cfg_sim, angulo_espejo_deg=float(fila["espejo_angulo_deg"]),
+    return replace(cfg_sim, angulo_espejo_eje_deg=float(fila["espejo_angulo_eje_deg"]),
                    orientacion_espejo_deg=float(fila["espejo_orientacion_deg"]),
                    espejo_punto_px=(float(fila["espejo_punto_x_px"]), float(fila["espejo_punto_y_px"])))
 
@@ -226,7 +229,7 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
                 fondo_medio=float(extra["fondo"].mean()), fondo_no_uniforme=cfg_m.fondo_no_uniforme,
                 read_noise=cfg_m.read_noise)
     if cfg_sim.usar_espejo:
-        meta.update(espejo_angulo_deg=cfg_m.angulo_espejo_deg, espejo_orientacion_deg=cfg_m.orientacion_espejo_deg,
+        meta.update(espejo_angulo_eje_deg=cfg_m.angulo_espejo_eje_deg, espejo_orientacion_deg=cfg_m.orientacion_espejo_deg,
                     espejo_punto_x_px=cfg_m.espejo_punto_px[0], espejo_punto_y_px=cfg_m.espejo_punto_px[1],
                     reintentos=intento, n_reflejos_en_fov=int(gt.reflejo_en_fov.sum()))
     return video, gt, meta                                       # video (T = 1, H, W) = (C = 1, H, W)

@@ -52,12 +52,14 @@ Todos los comandos se corren desde la raiz del repo en Hypatia, salvo el paso 6.
 
 ## Entrenamiento con espejo (`configs/espejo.yaml`)
 
-`hypatia/lanzar_espejo.sh` fija al inicio el tiempo, la memoria, las CPUs (= workers), el venv y las rutas, y lanza `hypatia/espejo.sbatch`. El job genera en el cluster el test con espejo de ese signo (`localizacion/generar_espejo.py`, una sola vez por signo, en `localizacion/datos/test_espejo_sz<signo>`), entrena con `espejo.yaml` (datos on-the-fly) y evalua `mejor.pt` sobre ese test. La corrida se llama `hypatia_espejo_sz<signo>`. Desde la raiz del repo:
+Convencion: +z hacia el objetivo y el espejo a 45 grados del eje optico (`angulo_espejo_eje_deg`, sorteado en [40, 50] por muestra). La unica incognita fisica es de que lado del foco salen los anillos de la PSF esferica (`anillos_hacia_objetivo`), asi que se entrenan dos variantes: `lejos` (false, el valor por defecto) y `cerca` (true). Las corridas `hypatia_espejo_sz+-1` de antes usaban la convencion vieja (+z lejos del objetivo, angulo desde el plano focal, `signo_z`) y no se pueden reanudar ni evaluar con este codigo: `cargar_checkpoint` las rechaza.
+
+`hypatia/lanzar_espejo.sh` fija al inicio el tiempo, la memoria, las CPUs (= workers), el venv y las rutas, y lanza `hypatia/espejo.sbatch`. El job genera en el cluster el test con espejo de esa variante (`localizacion/generar_espejo.py`, una sola vez por variante, en `localizacion/datos/test_espejo_b45_<lejos|cerca>`), entrena con `espejo.yaml` (datos on-the-fly) y evalua `mejor.pt` sobre ese test. La corrida se llama `hypatia_espejo_b45_<lejos|cerca>`. Desde la raiz del repo:
 
 ```bash
-bash hypatia/lanzar_espejo.sh 1                                   # piloto signo_z = +1 (3 epocas)
-bash hypatia/lanzar_espejo.sh -1                                  # piloto signo_z = -1
-EPOCAS=100 TIEMPO=0-09:00:00 bash hypatia/lanzar_espejo.sh 1      # corrida completa
+bash hypatia/lanzar_espejo.sh lejos                                   # piloto, anillos lejos del objetivo (3 epocas)
+bash hypatia/lanzar_espejo.sh cerca                                   # piloto, anillos hacia el objetivo
+EPOCAS=100 TIEMPO=0-09:00:00 bash hypatia/lanzar_espejo.sh lejos      # corrida completa
 ```
 
-Con `signo_z = -1` los reflejos quedan en z' negativas (hasta -7.8 um), donde la PSF esferica es ancha: el banco usa K = 256 y cada muestra cuesta ~26 ms (38 por segundo por worker, frente a 121 con +1), asi que conviene `CPUS=8`.
+A 45 grados los reflejos quedan hasta z' = -6.9 um (mas lejos del objetivo). Con `cerca` ese lado es el de la PSF ancha: el banco usa K = 256 y cada muestra cuesta ~16 ms localmente, frente a K = 144 y ~7 ms con `lejos`, asi que con `cerca` conviene `CPUS=8`.
