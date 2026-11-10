@@ -57,6 +57,10 @@ comportamiento: con la misma semilla las salidas son identicas bit a bit.
 
 ### Espejo (vista reflejada, `simulador_psf/espejo.py`)
 
+La geometria (normal, reflexion, plegado, rango de z', franja de `dist_max_espejo_um`)
+esta en `geometria_espejo.py`, en la raiz, compartida con `simulador_nuevo`;
+`simulador_psf/espejo.py` solo la lee de `Config` y agrega las unidades del GT.
+
 Con `Config(usar_espejo=True)` hay un espejo plano junto a la muestra y la
 camara ve cada emisor real y su imagen virtual. Solo se simulan las
 trayectorias reales; en cada frame el reflejo es

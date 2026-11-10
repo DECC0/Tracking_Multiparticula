@@ -34,6 +34,17 @@ Cadena de formacion de imagen (el orden importa):
 Convencion de coordenadas: el centro del pixel (fila i, columna j) es
 (x = j, y = i). El FOV es [-0.5, W - 0.5) x [-0.5, H - 0.5).
 
+Espejo opcional (usar_espejo=True; mismo modelo que simulador_psf/espejo.py):
+un espejo plano junto a la muestra, y la camara ve cada emisor real y su
+imagen virtual. Solo se simulan las trayectorias reales; el reflejo de cada
+subposicion es p' = p - 2 [(p - p0) . n] n (en nm), asi que su desenfoque de
+movimiento queda ligado al del real. El espejo es una pared reflectante mas
+para el browniano, el reflejo se dibuja con ratio_reflejo * fotones, y el
+banco de PSF se amplia para cubrir las z' (rango_banco_nm). No consume numeros
+aleatorios; con el espejo apagado todo es identico bit a bit a antes.
+La geometria vive en geometria_espejo.py, en la raiz del repo, compartida con
+simulador_psf: es la UNICA importacion de fuera de esta carpeta (ver abajo).
+
 Aleatoriedad: cada video tiene flujos independientes por componente (muestra,
 trayectorias, fotones, fondo, camara) derivados de (seed, video_id). Asi un
 video se puede regenerar solo, y cambiar el ruido, el fondo o los fotones no
@@ -43,10 +54,12 @@ Salidas (generar_dataset):
     <carpeta>/video_XXX.tif     (T, H, W) uint16, un archivo por video
     <carpeta>/ground_truth.csv  video_id, frame, particle_id, x_px, y_px, z_nm,
                                 photons, D_um2_s, en_fov
+                                (+ COLUMNAS_REFLEJO con espejo)
     <carpeta>/config.json       Config usada + K_psf efectivo
 """
 
 import json
+import sys
 from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 
@@ -54,11 +67,28 @@ import numpy as np
 import pandas as pd
 import tifffile
 
+# geometria_espejo.py esta en la raiz del repo (compartida con simulador_psf).
+# Es la unica excepcion a "no importa nada de fuera de esta carpeta"; se agrega
+# la raiz AL FINAL de sys.path para que no tape ningun modulo de quien importa
+# este simulador (p. ej. localizacion/config.py).
+RAIZ_REPO = Path(__file__).resolve().parents[1]
+if str(RAIZ_REPO) not in sys.path:
+    sys.path.append(str(RAIZ_REPO))
+from geometria_espejo import GeometriaEspejo  # noqa: E402
+
 
 MASCARAS = ("corkscrew", "esferica", "ninguna")
 COLUMNAS_GT = ["video_id", "frame", "particle_id", "x_px", "y_px", "z_nm",
                "photons", "D_um2_s", "en_fov"]
+COLUMNAS_REFLEJO = ["x_reflejo_px", "y_reflejo_px", "z_reflejo_nm", "photons_reflejo",
+                    "reflejo_en_fov", "reflejo_en_banco"]
+COLUMNAS_GT_ESPEJO = COLUMNAS_GT + COLUMNAS_REFLEJO
 COMPONENTES_RNG = ("muestra", "trayectorias", "fotones", "fondo", "camara")
+# campos del espejo: con usar_espejo=False no se escriben en config.json (asi
+# el JSON queda como antes del espejo) y al leerlo toman su valor por defecto
+CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_deg", "orientacion_espejo_deg", "espejo_punto_px",
+                 "ratio_reflejo", "z_ref_espejo_nm", "dist_max_espejo_um", "signo_z", "signo_inclinacion")
+TOL_BANCO_NM = 1e-6     # [nm] redondeo de z' en el borde del banco
 _RANGOS = {"n_emisores_rango": int, "z_rango_nm": float, "fotones_rango": float,
            "fondo_rango": float, "D_rango_um2_s": float}
 
@@ -109,12 +139,28 @@ class Config:
     D_rango_um2_s: tuple = (0.01, 0.3)
     margen_px: float = 3.0          # las posiciones iniciales pueden caer hasta margen_px fuera del FOV
 
+    # --- espejo (geometria y convencion: simulador_psf/espejo.py y config.py) ---
+    usar_espejo: bool = False       # False: salidas identicas a las de antes del espejo
+    angulo_espejo_deg: float = 34.4  # alpha en (0, 180): espejo-plano focal, dentro de la cuna de la muestra
+    orientacion_espejo_deg: float = 0.0   # phi: azimut de la direccion linea del espejo -> muestra, de +x hacia +y
+    espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
+    ratio_reflejo: float = 0.8      # fotones del reflejo / del real, en (0, 1]
+    z_ref_espejo_nm: float = 0.0    # z [nm] del plano de referencia del espejo (0: el plano focal)
+    dist_max_espejo_um: float = None  # posiciones iniciales hasta esa distancia al PLANO del espejo; None -> todas
+    signo_z: int = 1                # +1: +z se aleja del objetivo (pendiente: z-stack de una bead)
+    signo_inclinacion: int = 1      # +1: con alpha < 90 el espejo se inclina sobre la muestra (confirmado)
+    z_banco_nm: tuple = None        # rango que debe cubrir el banco de PSF [nm], ademas de z_rango_nm;
+                                    # None -> z_rango_nm, ampliado solo con el espejo (rango_banco_nm)
+
     seed: int = 0
 
     def __post_init__(self):
         # desde JSON los rangos llegan como listas
         for campo, tipo in _RANGOS.items():
             setattr(self, campo, tuple(tipo(v) for v in getattr(self, campo)))
+        self.espejo_punto_px = tuple(float(v) for v in self.espejo_punto_px)
+        if self.z_banco_nm is not None:
+            self.z_banco_nm = tuple(float(v) for v in self.z_banco_nm)
         self.validar()
 
     def validar(self):
@@ -154,6 +200,16 @@ class Config:
         else:
             exige(self.fotones_rango[0] >= 0, "fotones_rango debe ser >= 0")
         exige(min(self.W, self.H) + 2 * self.margen_px > 0, "margen_px deja una region inicial vacia")
+        # espejo (solo lanza: no cambia ninguna salida)
+        exige(0.0 < self.angulo_espejo_deg < 180.0, "angulo_espejo_deg debe estar en (0, 180)")
+        exige(0.0 < self.ratio_reflejo <= 1.0, "ratio_reflejo debe estar en (0, 1]")
+        exige(len(self.espejo_punto_px) == 2, "espejo_punto_px debe ser (x, y) en px")
+        exige(self.dist_max_espejo_um is None or self.dist_max_espejo_um > 0,
+              "dist_max_espejo_um debe ser > 0 o None")
+        exige(self.signo_z in (1, -1) and self.signo_inclinacion in (1, -1),
+              "signo_z y signo_inclinacion deben ser +1 o -1")
+        exige(self.z_banco_nm is None or (len(self.z_banco_nm) == 2 and self.z_banco_nm[0] < self.z_banco_nm[1]),
+              "z_banco_nm debe ser (z_min, z_max) con z_min < z_max")
 
     @property
     def pixel_nm(self):
@@ -177,7 +233,16 @@ class Config:
         return self.dt_s if self.t_exp_s is None else self.t_exp_s
 
     def a_dict(self):
-        return asdict(self)
+        """Dict para JSON. Sin espejo se omiten sus campos (y z_banco_nm si es
+        None), asi el config.json es el de antes del espejo; desde_dict les
+        devuelve su valor por defecto."""
+        d = asdict(self)
+        if not self.usar_espejo:
+            for c in CAMPOS_ESPEJO:
+                d.pop(c)
+        if self.z_banco_nm is None:
+            d.pop("z_banco_nm")
+        return d
 
     @classmethod
     def desde_dict(cls, d):
@@ -195,7 +260,12 @@ class Config:
                 f"FOV              : {self.W*px/1000:.2f} x {self.H*px/1000:.2f} um\n"
                 f"paso rms max/eje : {paso_max:.0f} nm = {paso_max/px:.2f} px por frame\n"
                 f"exposicion       : {1000*self.t_exp:.0f} ms, {self.n_subpasos} subpaso(s) "
-                f"(desplazamiento rms max en la exposicion {desliz/px:.2f} px)")
+                f"(desplazamiento rms max en la exposicion {desliz/px:.2f} px)"
+                + (f"\nespejo           : alpha {self.angulo_espejo_deg:.1f} deg, orientacion "
+                   f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
+                   f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
+                   f"z_ref {self.z_ref_espejo_nm:.0f} nm, signos ({self.signo_z:+d}, {self.signo_inclinacion:+d})"
+                   if self.usar_espejo else ""))
 
 
 def guardar_config(cfg: Config, ruta, banco=None):
@@ -230,10 +300,20 @@ def fase_esferica(rho, amp):
 
 
 def rejilla_z(cfg: Config):
-    """Planos z del banco: incluye ambos extremos, paso uniforme <= z_paso_nm."""
+    """Planos z del banco: incluye ambos extremos de z_rango_nm, paso uniforme
+    <= z_paso_nm. Si rango_banco_nm pide mas (espejo o z_banco_nm), se agregan
+    planos con el mismo paso por fuera, y los de z_rango_nm quedan identicos a
+    los del banco sin ampliar."""
     zlo, zhi = cfg.z_rango_nm
     n = int(np.ceil((zhi - zlo) / cfg.z_paso_nm - 1e-9)) + 1
-    return np.linspace(zlo, zhi, n)
+    base = np.linspace(zlo, zhi, n)
+    lo, hi = rango_banco_nm(cfg)
+    if lo >= zlo and hi <= zhi:
+        return base
+    h = (zhi - zlo) / (n - 1) if n > 1 else cfg.z_paso_nm
+    kb = int(np.ceil((zlo - lo) / h - 1e-6)) if lo < zlo else 0   # 1e-6: el redondeo de z' no agrega un plano
+    ka = int(np.ceil((hi - zhi) / h - 1e-6)) if hi > zhi else 0
+    return np.concatenate([zlo - h * np.arange(kb, 0, -1), base, zhi + h * np.arange(1, ka + 1)])
 
 
 def _rejilla_pupila(cfg: Config, S=1):
@@ -342,6 +422,85 @@ class BancoPSF:
 
 
 # ----------------------------------------------------------------------------
+# Espejo
+# ----------------------------------------------------------------------------
+
+class Espejo(GeometriaEspejo):
+    """Geometria del espejo de cfg (geometria_espejo.py) con la conversion
+    [x_px, y_px, z_nm] <-> nm. Paredes en z de los reales: cfg.z_rango_nm."""
+
+    def __init__(self, cfg: Config):
+        self.pixel_nm = px = cfg.pixel_nm
+        x0, y0 = cfg.espejo_punto_px
+        super().__init__(cfg.angulo_espejo_deg, cfg.orientacion_espejo_deg,
+                         [x0 * px, y0 * px, float(cfg.z_ref_espejo_nm)],
+                         *cfg.z_rango_nm, cfg.signo_z, cfg.signo_inclinacion)
+
+    def a_nm(self, pos):
+        p = np.array(pos, dtype=float)
+        p[..., :2] *= self.pixel_nm
+        return p
+
+    def a_gt(self, p_nm):
+        p = np.array(p_nm, dtype=float)
+        p[..., :2] /= self.pixel_nm
+        return p
+
+    def reflejar(self, pos):
+        """Reflejo de posiciones [x_px, y_px, z_nm] (..., 3), en las mismas unidades."""
+        return self.a_gt(self.reflejar_nm(self.a_nm(pos)))
+
+
+def _region_inicial_px(cfg: Config):
+    """Region lateral de las posiciones iniciales [px]: el FOV ampliado margen_px."""
+    m = cfg.margen_px
+    return (-0.5 - m, cfg.W - 0.5 + m), (-0.5 - m, cfg.H - 0.5 + m)
+
+
+def rango_z_reflejo(cfg: Config, espejo=None):
+    """Rango (z_min, z_max) [nm] de z' de los reflejos de la caja de posiciones
+    iniciales (region inicial x z_rango_nm) del lado de la muestra."""
+    e = espejo or Espejo(cfg)
+    (x0, x1), (y0, y1) = _region_inicial_px(cfg)
+    px = cfg.pixel_nm
+    return e.rango_z_reflejo_caja(np.array([x0 * px, y0 * px, cfg.z_rango_nm[0]]),
+                                  np.array([x1 * px, y1 * px, cfg.z_rango_nm[1]]))
+
+
+def rango_banco_nm(cfg: Config):
+    """Rango (z_min, z_max) [nm] que debe cubrir el banco (rejilla_z siempre
+    incluye ademas z_rango_nm): z_banco_nm si se da; si no, z_rango_nm sin
+    espejo, o ampliado a rango_z_reflejo con espejo. Los reflejos de emisores
+    que salen de la caja inicial pueden quedar fuera: reflejo_en_banco = False."""
+    if cfg.z_banco_nm is not None:
+        return cfg.z_banco_nm
+    zlo, zhi = cfg.z_rango_nm
+    if not cfg.usar_espejo:
+        return zlo, zhi
+    r1, r2 = rango_z_reflejo(cfg)
+    return min(zlo, r1), max(zhi, r2)
+
+
+def _posiciones_iniciales_espejo(cfg: Config, n, rng):
+    """Posiciones iniciales (n, 3) [px, px, nm] con espejo, con los mismos 3
+    sorteos de n que sin espejo: sin dist_max_espejo_um, uniformes en la caja
+    y plegadas al lado de la muestra; con dist_max_espejo_um, los sorteos de x
+    e y se reescalan a la franja d en [0, dist_max] (GeometriaEspejo.lateral_cerca)."""
+    e = Espejo(cfg)
+    (x0, x1), (y0, y1) = _region_inicial_px(cfg)
+    if cfg.dist_max_espejo_um is None:
+        pos0 = np.stack([rng.uniform(x0, x1, n), rng.uniform(y0, y1, n),
+                         rng.uniform(*cfg.z_rango_nm, n)], axis=1)
+        return e.a_gt(e.plegar_nm(e.a_nm(pos0)))
+    u_m = rng.uniform(0.0, 1.0, n)                               # sorteo de x
+    u_t = rng.uniform(0.0, 1.0, n)                               # sorteo de y
+    z = rng.uniform(*cfg.z_rango_nm, n)                          # sorteo de z
+    esq = np.array([[x, y] for x in (x0, x1) for y in (y0, y1)]) * cfg.pixel_nm
+    lat = e.lateral_cerca(u_m, u_t, z, esq, cfg.dist_max_espejo_um * 1000.0)
+    return e.a_gt(np.column_stack([lat, z]))
+
+
+# ----------------------------------------------------------------------------
 # Movimiento browniano
 # ----------------------------------------------------------------------------
 
@@ -364,15 +523,22 @@ def generar_trayectorias(cfg: Config, n, rng):
 
     El subpaso k del frame t ocurre en t*dt + (k + 1/2) * t_exp / S. Los pasos
     se sortean en orden temporal, asi que alargar el video no cambia los
-    primeros frames."""
+    primeros frames.
+
+    Con cfg.usar_espejo el espejo es una pared mas: las posiciones iniciales
+    se pliegan (o se sortean cerca del espejo) y se integra subpaso a subpaso
+    en nm, plegando al dominio en cada uno; mismos sorteos del rng."""
     T, S, px = cfg.n_frames, cfg.n_subpasos, cfg.pixel_nm
     h = cfg.t_exp / S
     m = cfg.margen_px
 
     D = rng.uniform(*cfg.D_rango_um2_s, n)
-    pos0 = np.stack([rng.uniform(-0.5 - m, cfg.W - 0.5 + m, n),
-                     rng.uniform(-0.5 - m, cfg.H - 0.5 + m, n),
-                     rng.uniform(*cfg.z_rango_nm, n)], axis=1)   # (n, 3) en px, px, nm
+    if cfg.usar_espejo:
+        pos0 = _posiciones_iniciales_espejo(cfg, n, rng)         # (n, 3) en px, px, nm
+    else:
+        pos0 = np.stack([rng.uniform(-0.5 - m, cfg.W - 0.5 + m, n),
+                         rng.uniform(-0.5 - m, cfg.H - 0.5 + m, n),
+                         rng.uniform(*cfg.z_rango_nm, n)], axis=1)   # (n, 3) en px, px, nm
 
     dtau = np.full((T, S), h)
     dtau[:, 0] = cfg.dt_s - cfg.t_exp + h                        # del ultimo subpaso al primero del frame siguiente
@@ -380,6 +546,16 @@ def generar_trayectorias(cfg: Config, n, rng):
     sigma_nm = np.sqrt(2 * D[None, :] * dtau.reshape(-1, 1)) * 1000.0   # (T*S, n)
     escala = np.array([1 / px, 1 / px, 1.0])                     # nm -> px en x, y
 
+    if cfg.usar_espejo:
+        e = Espejo(cfg)
+        pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None]   # [nm], mismos sorteos
+        sub = np.empty((T * S, n, 3))
+        actual = e.a_nm(pos0)
+        for k in range(T * S):                                   # reflexion especular en espejo y paredes
+            actual = e.plegar_nm(actual + pasos[k])
+            sub[k] = actual
+        sub = e.a_gt(sub).reshape(T, S, n, 3).transpose(2, 0, 1, 3)   # (n, T, S, 3)
+        return sub.mean(axis=2), sub, D
     pasos = rng.normal(size=(T * S, n, 3)) * sigma_nm[..., None] * escala
     sub = pos0[None] + np.cumsum(pasos, axis=0)                  # (T*S, n, 3)
     sub = sub.reshape(T, S, n, 3).transpose(2, 0, 1, 3)          # (n, T, S, 3)
@@ -438,11 +614,20 @@ def en_fov(cfg: Config, x, y):
     return (x >= -0.5) & (x < cfg.W - 0.5) & (y >= -0.5) & (y < cfg.H - 0.5)
 
 
-def _tabla_gt(cfg: Config, video_id, tray, Ns, D):
+def _tabla_gt(cfg: Config, video_id, tray, Ns, D, reflejo=None):
+    """reflejo (con espejo): dict con tray (n, T, 3), Ns (n,) y en_banco (n, T)."""
     n, T = tray.shape[:2]
     pid = np.tile(np.arange(n), T)                               # orden: frame, luego particula
     pos = tray.transpose(1, 0, 2).reshape(-1, 3)
     x, y = pos[:, 0], pos[:, 1]
+    if reflejo is not None:
+        pr = reflejo["tray"].transpose(1, 0, 2).reshape(-1, 3)
+        gt = _tabla_gt(cfg, video_id, tray, Ns, D)
+        gt["x_reflejo_px"], gt["y_reflejo_px"], gt["z_reflejo_nm"] = pr[:, 0], pr[:, 1], pr[:, 2]
+        gt["photons_reflejo"] = reflejo["Ns"][pid]
+        gt["reflejo_en_fov"] = en_fov(cfg, pr[:, 0], pr[:, 1])
+        gt["reflejo_en_banco"] = reflejo["en_banco"].T.reshape(-1)
+        return gt
     return pd.DataFrame({
         "video_id": np.full(n * T, video_id, dtype=np.int64),
         "frame": np.repeat(np.arange(T, dtype=np.int64), n),
@@ -456,7 +641,14 @@ def _tabla_gt(cfg: Config, video_id, tray, Ns, D):
 def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     """Un video (T, H, W) uint16 y su ground truth (DataFrame).
     Con extra=True devuelve ademas {"limpio": fotones esperados por pixel
-    (T, H, W), "fondo": (H, W), "sub": subposiciones (n, T, S, 3)}."""
+    (T, H, W), "fondo": (H, W), "sub": subposiciones (n, T, S, 3)}, y con
+    espejo "sub_reflejo" (n, T, S, 3).
+
+    Con cfg.usar_espejo cada subposicion del reflejo (el reflejo de la del
+    real) se dibuja con ratio_reflejo * fotones / S en la misma imagen de
+    fotones esperados, si su z' esta en el banco; el GT del reflejo es la
+    media de sus subposiciones (= el reflejo de la del real: R es afin) y
+    reflejo_en_banco es True si todas sus subposiciones se dibujaron."""
     zg = banco.z_grid
     if cfg.z_rango_nm[0] < zg[0] or cfg.z_rango_nm[1] > zg[-1]:
         raise ValueError(f"z_rango_nm {cfg.z_rango_nm} se sale del banco de PSF [{zg[0]}, {zg[-1]}]")
@@ -469,6 +661,10 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     fondo = generar_fondo(cfg, r["fondo"])                       # fijo en el video
 
     T, S = cfg.n_frames, cfg.n_subpasos
+    if cfg.usar_espejo:
+        sub_r = Espejo(cfg).reflejar(sub)                        # (n, T, S, 3), sin rng
+        dibujar_r = (sub_r[..., 2] >= zg[0] - TOL_BANCO_NM) & (sub_r[..., 2] <= zg[-1] + TOL_BANCO_NM)
+        Ns_r = cfg.ratio_reflejo * Ns
     video = np.empty((T, cfg.H, cfg.W), dtype=np.uint16)
     limpio = np.empty((T, cfg.H, cfg.W)) if extra else None
     for t in range(T):
@@ -477,14 +673,23 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
             for k in range(S):
                 x, y, z = sub[p, t, k]
                 banco.colocar(img, x, y, z, Ns[p] / S)
+                if cfg.usar_espejo and dibujar_r[p, t, k]:       # fuera del banco psf_en_z recortaria z
+                    xr, yr, zr = sub_r[p, t, k]
+                    banco.colocar(img, xr, yr, zr, Ns_r[p] / S)
         img += fondo
         video[t] = aplicar_camara(img, cfg, r["camara"])          # ruido nuevo por frame
         if extra:
             limpio[t] = img
 
-    gt = _tabla_gt(cfg, video_id, tray, Ns, D)
+    reflejo = None
+    if cfg.usar_espejo:
+        reflejo = dict(tray=sub_r.mean(axis=2), Ns=Ns_r, en_banco=dibujar_r.all(axis=2))
+    gt = _tabla_gt(cfg, video_id, tray, Ns, D, reflejo)
     if extra:
-        return video, gt, dict(limpio=limpio, fondo=fondo, sub=sub)
+        ex = dict(limpio=limpio, fondo=fondo, sub=sub)
+        if cfg.usar_espejo:
+            ex["sub_reflejo"] = sub_r
+        return video, gt, ex
     return video, gt
 
 

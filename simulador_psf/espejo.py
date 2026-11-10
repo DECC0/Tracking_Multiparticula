@@ -104,27 +104,23 @@ Supuestos (no se modelan):
 
 import numpy as np
 
+from geometria_espejo import GeometriaEspejo, matriz_R, MAX_PLIEGUES  # noqa: F401 (reexportados)
+
 from .config import Config, MARGEN_PX
 
 
-# La convencion de signos esta en Config.signo_z y Config.signo_inclinacion
-# (+1 por defecto). Espejo la lee de cfg y todo lo demas (posiciones.py,
-# rango_z_reflejo) la toma de una instancia de Espejo: no hay constantes de
-# modulo que se copien al importar.
-
-MAX_PLIEGUES = 1000     # reflexiones maximas por punto en plegar_nm (en la practica, unas pocas)
-
-
-def matriz_R(n):
-    """Matriz de reflexion (3, 3) R = I - 2 n n^T del plano de normal unitaria n."""
-    n = np.asarray(n, dtype=float)
-    return np.eye(3) - 2.0 * np.outer(n, n)
+# La geometria (normal, reflexion, plegado, rango de z', franja de dist_max)
+# esta en geometria_espejo.py, en la raiz del repo, compartida con
+# simulador_nuevo. Este modulo solo la lee de Config y agrega las unidades del
+# ground truth. La convencion de signos esta en Config.signo_z y
+# Config.signo_inclinacion (+1 por defecto); posiciones.py la toma de una
+# instancia de Espejo: no hay constantes de modulo que se copien al importar.
 
 
-class Espejo:
+class Espejo(GeometriaEspejo):
     """Geometria del espejo de cfg (ver el docstring del modulo).
 
-    Atributos (todos en nm salvo pixel_nm):
+    Atributos (todos en nm salvo pixel_nm), de GeometriaEspejo:
         m        direccion lateral desde la linea del espejo hacia la muestra
         t        direccion de la linea del espejo (horizontal)
         arriba   direccion que se aleja del objetivo (signo_z * z_hat)
@@ -138,18 +134,11 @@ class Espejo:
 
     def __init__(self, cfg: Config):
         self.pixel_nm = cfg.pixel_nm
-        self.alpha = a = np.radians(cfg.angulo_espejo_deg)          # [rad]
-        f = np.radians(cfg.orientacion_espejo_deg)
-        self.m = np.array([np.cos(f), np.sin(f), 0.0])
-        self.t = np.array([-np.sin(f), np.cos(f), 0.0])
-        self.signo_z, self.signo_inclinacion = int(cfg.signo_z), int(cfg.signo_inclinacion)
-        self.arriba = np.array([0.0, 0.0, float(self.signo_z)])
-        self.n = np.sin(a) * self.m - self.signo_inclinacion * np.cos(a) * self.arriba
-        self.R = matriz_R(self.n)
-        self.z_lo, self.z_hi = cfg.z_rango_nm
-        self.z_ref = float(cfg.z_ref_espejo_nm)
         x0, y0 = cfg.espejo_punto_px
-        self.p0 = np.array([x0 * self.pixel_nm, y0 * self.pixel_nm, self.z_ref])
+        z_lo, z_hi = cfg.z_rango_nm
+        super().__init__(cfg.angulo_espejo_deg, cfg.orientacion_espejo_deg,
+                         [x0 * self.pixel_nm, y0 * self.pixel_nm, float(cfg.z_ref_espejo_nm)],
+                         z_lo, z_hi, cfg.signo_z, cfg.signo_inclinacion)
 
     # --- conversion de unidades: [px, px, nm] <-> nm ---
     def a_nm(self, pos):
@@ -164,53 +153,10 @@ class Espejo:
         p[..., :2] /= self.pixel_nm
         return p
 
-    # --- geometria en nm ---
-    def distancia_nm(self, p_nm):
-        """Distancia con signo al plano [nm] (...,): > 0 del lado de la muestra."""
-        return (np.asarray(p_nm, dtype=float) - self.p0) @ self.n
-
-    def punto_en_z_nm(self, z_nm):
-        """Punto [nm] (3,) de la linea del espejo a la altura z_nm: p0 + s m en
-        el plano z = z_nm, con d = 0 -> s sin(alpha) = signo_inclinacion signo_z
-        (z_nm - z_ref) cos(alpha). punto_en_z_nm(0) es la interseccion del
-        espejo con el plano focal; la linea sigue en la direccion t."""
-        s = self.signo_inclinacion * self.signo_z * (z_nm - self.z_ref) / np.tan(self.alpha)
-        return self.p0 + s * self.m + np.array([0.0, 0.0, z_nm - self.z_ref])
-
-    def reflejar_nm(self, p_nm):
-        """p' = p - 2 [(p - p0) . n] n, todo en nm; p_nm (..., 3)."""
-        p = np.asarray(p_nm, dtype=float)
-        return p - 2.0 * self.distancia_nm(p)[..., None] * self.n
-
     def reflejar(self, pos):
         """Reflejo de posiciones [x_px, y_px, z_nm] (..., 3), en las mismas unidades.
         Es una involucion: reflejar(reflejar(p)) == p (salvo redondeo)."""
         return self.a_gt(self.reflejar_nm(self.a_nm(pos)))
-
-    def plegar_nm(self, p_nm):
-        """Lleva cada punto (..., 3) [nm] al dominio de los emisores reales:
-        z_lo <= z <= z_hi y d >= 0 (lado de la muestra), reflejando en la
-        pared o en el espejo que viola, hasta que no viole ninguna.
-
-        Es el mismo criterio que las paredes en z (reflexion especular) con el
-        espejo como pared extra. Termina: el dominio es convexo y reflejar un
-        punto en un semiespacio que viola acerca el punto a todo punto del
-        semiespacio, en particular a todo punto del dominio. No usa el rng."""
-        p = np.array(p_nm, dtype=float)
-        lo, hi = self.z_lo, self.z_hi
-        for _ in range(MAX_PLIEGUES):
-            z = p[..., 2]
-            mal_z = (z < lo) | (z > hi)
-            d = self.distancia_nm(p)
-            mal_e = d < 0
-            if not (mal_z.any() or mal_e.any()):
-                return p
-            # paredes en z: z -> 2 hi - z o 2 lo - z (una reflexion por vuelta)
-            p[..., 2] = np.where(z > hi, 2 * hi - z, np.where(z < lo, 2 * lo - z, z))
-            # espejo: p -> p - 2 d n solo donde d < 0 (d recalculado tras plegar z)
-            d = self.distancia_nm(p)
-            p -= 2.0 * np.minimum(d, 0.0)[..., None] * self.n
-        raise RuntimeError(f"plegar_nm no convergio en {MAX_PLIEGUES} reflexiones")
 
 
 def rango_z_reflejo(cfg: Config, espejo=None):
@@ -226,18 +172,7 @@ def rango_z_reflejo(cfg: Config, espejo=None):
     px = cfg.pixel_nm
     lo = np.array([-MARGEN_PX * px, -MARGEN_PX * px, cfg.z_rango_nm[0]])
     hi = np.array([(cfg.W + MARGEN_PX) * px, (cfg.H + MARGEN_PX) * px, cfg.z_rango_nm[1]])
-    esq = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
-    d = e.distancia_nm(esq)
-    vert = list(esq[d >= 0])
-    for i in range(8):
-        for j in range(i + 1, 8):
-            if np.count_nonzero(esq[i] != esq[j]) == 1 and d[i] * d[j] < 0:   # arista que cruza el plano
-                s = d[i] / (d[i] - d[j])
-                vert.append(esq[i] + s * (esq[j] - esq[i]))
-    if not vert:
-        raise ValueError("el espejo deja toda la caja de posiciones iniciales fuera del lado de la muestra")
-    zp = e.reflejar_nm(np.array(vert))[:, 2]
-    return float(zp.min()), float(zp.max())
+    return e.rango_z_reflejo_caja(lo, hi)
 
 
 def rango_banco_nm(cfg: Config):

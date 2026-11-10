@@ -73,17 +73,8 @@ def _cerca_del_espejo(cfg: Config, n, rng):
     u_t = rng.uniform(0.0, 1.0, n)                               # sorteo de y
     z = rng.uniform(*cfg.z_rango_nm, n)                          # sorteo de z
     esq = np.array([[x, y] for x in (-MARGEN_PX, cfg.W + MARGEN_PX)
-                    for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px - e.p0[:2]
-    st, sm = esq @ e.t[:2], esq @ e.m[:2]                        # FOV ampliado proyectado sobre t y m [nm]
-    s_t = st.min() + u_t * (st.max() - st.min())
-    corr = e.signo_inclinacion * e.signo_z * np.cos(e.alpha) * (z - e.z_ref)   # [nm], signos de cfg via Espejo
-    f0 = corr / np.sin(e.alpha)                                  # s_m con d = 0 a esa z
-    f1 = (cfg.dist_max_espejo_um * 1000.0 + corr) / np.sin(e.alpha)   # s_m con d = dist_max
-    lo, hi = np.maximum(f0, sm.min()), np.minimum(f1, sm.max())
-    vacia = lo > hi                                              # la franja no toca el FOV ampliado
-    lo, hi = np.where(vacia, f0, lo), np.where(vacia, f1, hi)
-    s_m = lo + u_m * (hi - lo)
-    lat = e.p0[:2] + s_m[:, None] * e.m[:2] + s_t[:, None] * e.t[:2]
+                    for y in (-MARGEN_PX, cfg.H + MARGEN_PX)]) * px   # FOV ampliado [nm]
+    lat = e.lateral_cerca(u_m, u_t, z, esq, cfg.dist_max_espejo_um * 1000.0)   # geometria_espejo.py
     return np.column_stack([lat, z])
 
 
