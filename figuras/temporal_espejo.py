@@ -41,6 +41,8 @@ Ademas: RMSE del suavizado en los frames con el real en el FOV pero no detectado
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     $PY figuras/temporal_espejo.py [--videos 500] [--variantes lejos cerca] [--seed 0]
+    $PY figuras/temporal_espejo.py --celula     # emisores en una celula de 5 um (geometria de configs/celula.yaml),
+                                                # confinados vs libres desde las mismas posiciones (escenario crlb)
 Convencion: +z hacia el objetivo, espejo a 45 grados del eje optico; variantes
 de la PSF lejos / cerca (anillos_hacia_objetivo False / True). Sin la corrida
 y el test de una variante (hypatia_espejo_b45_<variante>, test_espejo_b45_<variante>)
@@ -91,11 +93,42 @@ METODOS = ["frame_solo", "frame_conj", "suav_solo", "suav_conj",
 # Trayectorias (las del GT de generar_video, sin renderizar imagenes)
 # ----------------------------------------------------------------------------
 
-def config(variante, n_videos, seed):
+DIAMETRO_CELULA_UM = 5.0
+
+
+def config(variante, n_videos, seed, celula=False):
+    if celula:
+        # como configs/celula.yaml: 96 px, celula de 5 um con el centro en el foco y el contacto
+        # celula-espejo en el centro del FOV (beta = 45, phi = 0, z_ref = 0)
+        base = sim.Config()
+        b, R, px = np.radians(base.angulo_espejo_eje_deg), DIAMETRO_CELULA_UM * 500.0, base.pixel_nm
+        Q = np.array([47.5, 47.5]) * px
+        z_q = 0.0 - R * np.sin(b)                                       # altura del contacto
+        p0 = Q - (0.0 - z_q) * np.tan(b) * np.array([1.0, 0.0])
+        c = Q + R * np.cos(b) * np.array([1.0, 0.0])
+        return sim.Config(usar_espejo=True, usar_celula=True, n_frames=50, n_videos=n_videos, H=96, W=96,
+                          z_rango_nm=(-2500.0, 2500.0), diametro_celula_um=DIAMETRO_CELULA_UM,
+                          espejo_punto_px=tuple(p0 / px), celula_centro_px=tuple(c / px),
+                          anillos_hacia_objetivo=VARIANTES[variante], seed=seed)
     # linea del espejo en el borde izquierdo del FOV (como espejo_linea_rango_fov al entrenar) y W = 96 px,
     # para que haya reales en el FOV a todas las distancias de 0 a 4 um
     return sim.Config(usar_espejo=True, n_frames=50, n_videos=n_videos, dist_max_espejo_um=4.0,
                       H=64, W=96, espejo_punto_px=(-0.5, 32.0), anillos_hacia_objetivo=VARIANTES[variante], seed=seed)
+
+
+def trayectorias_libres(t, cfg, rng):
+    """Las mismas posiciones iniciales y D que t, con browniano libre (sin la
+    celula ni el espejo como paredes): la linea de base del confinamiento."""
+    e, px = sim.Espejo(cfg), cfg.pixel_nm
+    n, T = t["d"].shape
+    pasos = rng.normal(size=(n, T, 3)) * (np.sqrt(2 * t["D"] * cfg.dt_s) * 1000.0)[:, None, None]
+    pasos[:, 0] = 0.0
+    p = t["p"][:, :1] + np.cumsum(pasos, axis=1)
+    pr = e.reflejar_nm(p)
+    u = dict(t, p=p, pr=pr, d=e.distancia_nm(p))
+    u["fov"] = sim.en_fov(cfg, p[..., 0] / px, p[..., 1] / px)
+    u["fovr"] = sim.en_fov(cfg, pr[..., 0] / px, pr[..., 1] / px)
+    return u
 
 
 def trayectorias(cfg, videos):
@@ -477,8 +510,11 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=300)
     p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--celula", action="store_true", help="emisores en una celula (confinados vs libres)")
     a = p.parse_args()
     salida = Path(a.salida)
+    if a.celula:
+        return main_celula(a, salida)
     t0 = time.time()
     filas, Dfilas = [], []
     rng = np.random.default_rng(a.seed)
@@ -526,6 +562,97 @@ def main():
     print("\nRMSE global (frames con el real detectado) [nm]:")
     print(g.pivot_table(index=["variante", "escenario"], columns="metodo", values="rmse_z")[METODOS].round(1).to_string())
     print(g.pivot_table(index=["variante", "escenario"], columns="metodo", values="rmse_lat")[METODOS].round(1).to_string())
+    print(f"\ntotal {time.time() - t0:.0f} s -> {salida}")
+
+
+def figura_celula(res, Dtab, tray, R_um, ruta, variante="lejos"):
+    """Efecto del confinamiento: D estimada, RMSE z y MSD, confinado vs libre."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({"font.size": 9, "axes.spines.top": False, "axes.spines.right": False})
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4.4))
+    xc = x_rango("D")
+    col = {"confinado": "#2a78d6", "libre": "#52514e"}
+    ax = axs[0]
+    for mov in ("confinado", "libre"):
+        d = Dtab[Dtab.variante == f"{variante}_{mov}"]
+        k = indice(d.D, BORDES["D"])
+        for c, ls, lab in (("ml_conj", "-", "máx. verosimilitud"), ("msd", "--", "MSD")):
+            q = np.array([np.nanpercentile(d[c][k == i] / d.D[k == i], [25, 50, 75]) for i in range(len(xc))])
+            ax.errorbar(xc, q[:, 1], yerr=[q[:, 1] - q[:, 0], q[:, 2] - q[:, 1]], color=col[mov], ls=ls, marker="o",
+                        ms=4, capsize=2, label=f"{mov}, {lab}")
+    ax.axhline(1, color="#999999", lw=0.8)
+    ax.set_xlabel(ETIQ["D"]); ax.set_ylabel("D estimada / D (mediana, IQR)")
+    ax.set_title("estimación de D (50 frames)"); ax.legend(frameon=False, fontsize=7.5)
+    ax = axs[1]
+    r = res[(res.frames == "detectados") & (res.variable == "D")]
+    for mov in ("confinado", "libre"):
+        for mt, ls in (("frame_conj", ":"), ("suav_conj", "-"), ("suav_conj_Dml", "--")):
+            s = r[(r.variante == f"{variante}_{mov}") & (r.metodo == mt)]
+            ax.plot(xc, s.rmse_z, ls, marker="o", ms=4, color=col[mov], label=f"{mov}, {mt}")
+    ax.set_xlabel(ETIQ["D"]); ax.set_ylabel("RMSE z [nm]"); ax.set_ylim(bottom=0)
+    ax.set_title("real + reflejo: frame a frame y suavizado"); ax.legend(frameon=False, fontsize=7)
+    ax = axs[2]
+    p, D = tray
+    lags = np.arange(1, 50)
+    for (lo, hi), c in zip(((0.01, 0.05), (0.1, 0.2), (0.2, 0.3)), ("#9ec5f0", "#4a90d9", "#1b4f8f")):
+        sel = (D >= lo) & (D < hi)
+        msd = [np.mean(np.sum((p[sel][:, L:] - p[sel][:, :-L]) ** 2, -1)) / 1e6 / 3 for L in lags]
+        ax.plot(lags * 0.1, msd, color=c, lw=2, label=f"D {lo:g}–{hi:g}")
+        ax.plot(lags * 0.1, 2 * np.mean(D[sel]) * lags * 0.1, color=c, lw=0.8, ls=":")
+    ax.axhline(2 * R_um ** 2 / 5, color="#e34948", ls="--", lw=1, label="meseta 2R²/5 por eje")
+    ax.set_xlabel("retardo [s]"); ax.set_ylabel("MSD por eje [µm²]"); ax.set_title(f"MSD confinado (R = {R_um} µm)")
+    ax.legend(frameon=False, fontsize=7.5)
+    fig.suptitle(f"Difusión confinada en una célula de {2 * R_um:g} µm vs libre desde las mismas posiciones "
+                 f"(PSF {variante}, escenario crlb, espejo a 45°)", fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(ruta.with_suffix(".png"), dpi=170)
+    fig.savefig(ruta.with_suffix(".pdf"))
+    plt.close(fig)
+
+
+def main_celula(a, salida):
+    t0 = time.time()
+    filas, Dfilas = [], []
+    rng = np.random.default_rng(a.seed)
+    tray_msd = None
+    for variante in a.variantes:
+        crlb = tabla_crlb(sim.BancoPSF(sim.Config(z_banco_nm=(-8000.0, 8000.0),
+                                                  anillos_hacia_objetivo=VARIANTES[variante])))
+        cfg = config(variante, a.videos, a.seed, celula=True)
+        t = trayectorias(cfg, range(a.videos))
+        if variante == a.variantes[0]:
+            verificar_trayectorias(cfg, t)
+            cel = sim.Celula(cfg)
+            assert (cel.profundidad_nm(t["p"]) >= -1e-6).all() and (t["d"] >= -1e-6).all()
+            tray_msd = (t["p"], t["D"])
+        n_tr = len(t["D"])
+        W = rng.multinomial(n_tr, np.full(n_tr, 1.0 / n_tr), size=a.n_boot).astype(float)
+        for mov, tt in (("confinado", t), ("libre", trayectorias_libres(t, cfg, rng))):
+            sig = precisiones(tt, "crlb", crlb, None)
+            med = medir(tt, sig, rng)
+            est, Dest = estimaciones(tt, med)
+            etiq = f"{variante}_{mov}"
+            filas += evaluar(tt, med, est, W, etiq, "crlb")
+            Dfilas.append(pd.DataFrame(dict(variante=etiq, escenario="crlb", D=tt["D"], ml_solo=Dest["ml_solo"],
+                                            ml_conj=Dest["ml_conj"], msd=Dest["msd"])))
+            print(f"{etiq}: {n_tr} trayectorias, real en el FOV {tt['fov'].mean():.0%}, reflejo en el FOV "
+                  f"{tt['fovr'].mean():.0%} ({time.time() - t0:.0f} s)")
+    res = pd.DataFrame(filas)
+    Dtab = pd.concat(Dfilas, ignore_index=True)
+    res.to_csv(salida / "temporal_espejo_celula_rmse.csv", index=False)
+    Dtab.to_csv(salida / "temporal_espejo_celula_D.csv", index=False)
+    figura_celula(res, Dtab, tray_msd, DIAMETRO_CELULA_UM / 2, salida / "fig_temporal_espejo_celula", a.variantes[0])
+    g = res[(res.variable == "global") & (res.frames == "detectados")]
+    print("\nRMSE z global [nm]:")
+    print(g.pivot_table(index="variante", columns="metodo", values="rmse_z")[METODOS].round(1).to_string())
+    print("RMSE lateral global [nm]:")
+    print(g.pivot_table(index="variante", columns="metodo", values="rmse_lat")[METODOS].round(1).to_string())
+    print("\nD estimada / D, mediana por rango de D:")
+    k = indice(Dtab.D, BORDES["D"])
+    print(Dtab.assign(r=k).groupby(["variante", "r"])[["ml_conj", "msd"]].apply(
+        lambda x: (x.div(Dtab.loc[x.index, "D"], axis=0)).median()).round(3).unstack().to_string())
     print(f"\ntotal {time.time() - t0:.0f} s -> {salida}")
 
 

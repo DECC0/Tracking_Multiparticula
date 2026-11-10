@@ -137,3 +137,21 @@ Todo esto se puede hacer sin reentrenar la red.
    1. Videos de `simulador_nuevo` con espejo (50 frames), pasados por la red con espejo, el enlazado y el filtro, con solo el real. Comparar con la fila "suavizado, real" de este estudio y medir los errores de enlazado contra `particle_id`.
    2. El mismo pipeline con el ajuste del reflejo, con la geometría exacta y después con la autocalibrada.
    3. Datos reales, sin GT: medir la consistencia (la z del real y la triangulada en los frames donde hay ambas, la blancura de las innovaciones y la distribución de D).
+
+## Con célula: difusión confinada (convención nueva, β = 45°)
+
+Generado con `figuras/temporal_espejo.py --celula` (~100 s). Archivos: `figuras/fig_temporal_espejo_celula.png` (y `.pdf`), `figuras/temporal_espejo_celula_rmse.csv` y `figuras/temporal_espejo_celula_D.csv`.
+
+**Geometría:** la de `configs/celula.yaml`: 96 px, célula de 5 µm con el centro en el foco y el contacto célula–espejo en el centro del FOV, a 45°. Son 3381 trayectorias de 50 frames por variante de la PSF, en el escenario `crlb` (todavía no hay redes entrenadas con célula). Cada caso se compara con una línea de base **libre**: las mismas posiciones iniciales y las mismas D, con browniano sin frontera.
+
+| | D estimada / D, mediana (ML; MSD) | RMSE z global, frame real + reflejo → suavizado [nm] |
+|---|---|---|
+| lejos, confinado | 0.95–0.98; 0.92–0.95 | 45.8 → 37.6 |
+| lejos, libre | 0.99–1.00; 0.98–0.99 | 56.9 → 41.1 |
+| cerca, confinado | 0.95–0.98; 0.92–0.95 | 33.9 → 28.7 |
+| cerca, libre | 1.00–1.01; 0.97–1.00 | 36.4 → 30.4 |
+
+- **El confinamiento casi no se nota en 5 s.** Con R = 2.5 µm la meseta del MSD es 2R²/5 = 2.5 µm² por eje. A 5 s, aun con D = 0.2–0.3 µm²/s, el MSD llega a ~1.4 µm²: los emisores rápidos empiezan a sentir la pared y los lentos no.
+- **D sale baja por la pared:** −2 a −5% por máxima verosimilitud y −5 a −8% por MSD, creciendo con D. La línea de base libre no tiene sesgo. Como antes, el RMSE del suavizado con la D estimada es el mismo que con la verdadera.
+- **El suavizador con modelo de paseo aleatorio no empeora con el confinamiento.** El RMSE confinado es igual o menor que el libre. La comparación global favorece al confinado por otra razón: los emisores libres se van a |z| > 2.5 µm, donde la PSF es peor. A D bajo, donde las dos poblaciones ocupan el mismo volumen, el RMSE suavizado es el mismo (~30 nm con la PSF lejos).
+- **Recomendación:** por ahora no hace falta adaptar el filtro a la difusión confinada. Lo que sí podría ayudar es usar la célula como información a priori: ajustar una esfera a las localizaciones del video y acotar z a ±R, sobre todo para los emisores desenfocados. Conviene medirlo en el escenario `red` cuando haya redes entrenadas con célula.
