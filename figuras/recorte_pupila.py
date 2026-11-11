@@ -6,7 +6,7 @@ modelo (espejo plano infinito): el reflejo solo recibe los rayos con w . n > 0,
 n = cos(beta) m + sin(beta) z; la PSF recortada no se renormaliza.
 
 Partes (--partes, por defecto todas):
-  perdida      luz perdida vs beta: onda (fraccion de la pupila de PSFReflejo,
+  perdida      luz perdida vs beta: onda (fraccion de la pupila de PSFRecortada,
                = integral de la mascara por Parseval) frente a optica geometrica
                con pupila uniforme (la del simulador) y aplanatica (1 / cos(theta)).
   forma        por z' y variante (lejos / cerca = anillos_hacia_objetivo False /
@@ -22,12 +22,14 @@ Partes (--partes, por defecto todas):
                dz = -dm / sin(2 beta) (exacto: m y z' del reflejo dependen solo
                de d; ver resultados_calibracion_espejo.md); beta 40 / 45 / 50.
   crlb         CRLB conjunta de z (real + reflejo, figuras/crlb_espejo.py) con el
-               reflejo completo y recortado (modelo correcto), frente al emisor
-               solo, a beta = 45, por distancia al espejo.
+               reflejo completo y recortado y con real y reflejo recortados
+               (modelo correcto), frente al emisor solo, a beta = 45, por
+               distancia al espejo.
   calibracion  la fotometria de los datos reales (disco r = 1.5 um, fondo =
                mediana del anillo [r+3, r+10] px sin el otro punto, centros por
                centroide iterativo; copia de figuras/analisis_datos_reales.py)
-               sobre imagenes sin ruido con ratio_reflejo = 1, real a z en
+               sobre imagenes sin ruido con ratio_reflejo = 1 y real y reflejo
+               recortados (tambien sin recorte y solo el reflejo), real a z en
                [-1.5, 1.5] um y la separacion medida (4.5 um): Q1 = cociente
                medido por unidad de ratio. ratio = Q_medido / Q1.
   red          (con --red SIN CON, repetible) compara dos evaluaciones de
@@ -81,7 +83,8 @@ Q_MEDIDOS = {"der, cociente": (0.70, 0.63, 0.52, 0.43, 0.41, 0.43, 0.45),
              "izq, regresion": (0.89, 0.78, 0.50, 0.37, 0.29, 0.31, 0.38)}
 R_CENTROIDE = 10
 COLOR = {"lejos": "#2a78d6", "cerca": "#eb6834", "ninguna": "#52514e", "uniforme": "#1baf7a",
-         "aplanatica": "#eda100", "solo": "#52514e", "completo": "#2a78d6", "recortado": "#eb6834"}
+         "aplanatica": "#eda100", "solo": "#52514e", "completo": "#2a78d6", "recortado": "#eb6834",
+         "ambos": "#1baf7a"}
 ESTILO_BETA = {40.0: ":", 45.0: "-", 50.0: "--"}
 
 
@@ -148,7 +151,7 @@ def fraccion_geometrica(beta_deg, aplanatica, n=1500):
 def parte_perdida():
     filas = []
     for b in BETAS_PERDIDA:
-        f = sim.PSFReflejo(cfg_base("lejos", angulo_espejo_eje_deg=b), 32).fraccion
+        f = sim.PSFRecortada(cfg_base("lejos", angulo_espejo_eje_deg=b), 32).fraccion
         filas.append(dict(beta_deg=b, perdida_onda=1 - f, perdida_geo_uniforme=1 - fraccion_geometrica(b, False),
                           perdida_geo_aplanatica=1 - fraccion_geometrica(b, True)))
     t = pd.DataFrame(filas)
@@ -257,7 +260,7 @@ def parte_sesgo():
             L = 2 * roi + 1
             x0 = y0 = roi + 0.3
             c = cfg_base(variante, angulo_espejo_eje_deg=beta)
-            pr = sim.PSFReflejo(c, banco.K)
+            pr = sim.PSFRecortada(c, banco.K)
             for zp in ZP:
                 obs = np.full((L, L), B_SESGO)
                 pr.colocar(obs, x0, y0, zp, N_SESGO)
@@ -289,7 +292,7 @@ def parte_sesgo():
 # ----------------------------------------------------------------------------
 
 class _Recortado:
-    """Adaptador de PSFReflejo para crlb_espejo.derivadas (paso en z de 10 nm)."""
+    """Adaptador de PSFRecortada para crlb_espejo.derivadas (paso en z de 10 nm)."""
 
     def __init__(self, pr):
         self.colocar = pr.colocar
@@ -302,7 +305,7 @@ def parte_crlb():
         c = sim.Config(mascara="esferica", anillos_hacia_objetivo=VARIANTES[variante], z_rango_nm=(-800.0, 800.0),
                        z_banco_nm=(-7000.0, 1000.0))
         banco = sim.BancoPSF(c)
-        pr = sim.PSFReflejo(cfg_base(variante), banco.K)
+        pr = sim.PSFRecortada(cfg_base(variante), banco.K)
         rec = _Recortado(pr)
         v = sim._var_lectura_e2(c)
         geo = ce.geometria_canonica()
@@ -315,23 +318,28 @@ def parte_crlb():
                 g1, G1 = ce.derivadas(banco, cx, cy, z, forma)
                 g2, G2 = ce.derivadas(banco, rx, ry, prf[2], forma)
                 g3, G3 = ce.derivadas(rec, rx, ry, prf[2], forma)
+                g4, G4 = ce.derivadas(rec, cx, cy, z, forma)              # real recortado
                 for N in N_CRLB:
                     vs = ce.var_parametros(g1, G1, N, B_CRLB, v)
                     vc = ce.var_parametros(g1 + ce.RATIO * g2, G1 + ce.RATIO * (T.T @ G2), N, B_CRLB, v)
                     vr = ce.var_parametros(g1 + ce.RATIO * g3, G1 + ce.RATIO * (T.T @ G3), N, B_CRLB, v)
+                    va = ce.var_parametros(g4 + ce.RATIO * g3, G4 + ce.RATIO * (T.T @ G3), N, B_CRLB, v)
+                    vsr = ce.var_parametros(g4, G4, N, B_CRLB, v)
                     filas.append(dict(variante=variante, d_nm=d, z_nm=z, z_reflejo_nm=prf[2], fotones=N,
                                       crlb_z_solo_nm=np.sqrt(vs[2]), crlb_z_completo_nm=np.sqrt(vc[2]),
-                                      crlb_z_recortado_nm=np.sqrt(vr[2])))
+                                      crlb_z_recortado_nm=np.sqrt(vr[2]), crlb_z_ambos_nm=np.sqrt(va[2]),
+                                      crlb_z_solo_recortado_nm=np.sqrt(vsr[2])))
         print(f"  [crlb] {variante} listo", flush=True)
     t = pd.DataFrame(filas)
     print(f"\n[crlb] sqrt(CRLB z) [nm], RMS sobre z en {Z_CRLB}, ratio {ce.RATIO}, fondo {B_CRLB:.0f}, beta 45: "
-          "solo | conjunto con reflejo completo | con reflejo recortado")
+          "solo | conjunto con reflejo completo | con reflejo recortado | real y reflejo recortados (solo recortado)")
     for v in VARIANTES:
         for N in N_CRLB:
             s = t[(t.variante == v) & (t.fotones == N)]
-            g = s.groupby("d_nm")[["crlb_z_solo_nm", "crlb_z_completo_nm", "crlb_z_recortado_nm"]].apply(
-                lambda x: np.sqrt((x ** 2).mean()))
+            g = s.groupby("d_nm")[["crlb_z_solo_nm", "crlb_z_completo_nm", "crlb_z_recortado_nm", "crlb_z_ambos_nm",
+                                   "crlb_z_solo_recortado_nm"]].apply(lambda x: np.sqrt((x ** 2).mean()))
             txt = ", ".join(f"{d/1000:.1f}: {r.crlb_z_solo_nm:.0f}|{r.crlb_z_completo_nm:.0f}|{r.crlb_z_recortado_nm:.0f}"
+                            f"|{r.crlb_z_ambos_nm:.0f} ({r.crlb_z_solo_recortado_nm:.0f})"
                             for d, r in g.iterrows() if d in (0, 500, 1000, 2000, 3000, 4000))
             print(f"  {v} {N:.0f} fot, d [um]: {txt}")
     return t
@@ -341,13 +349,17 @@ def parte_crlb():
 # 5. calibracion del ratio por fotometria
 # ----------------------------------------------------------------------------
 
+CASOS_CAL = ("sin", "reflejo", "ambos")                 # recortes: ninguno, el del reflejo, los dos
+
+
 def col_q1(caso, r_um):
     return f"Q1_{caso}_r{round(r_um * 1000)}nm"
 
 
 def parte_calibracion():
-    """Q1(r, z_real): cociente de apertura por unidad de ratio_reflejo, con y
-    sin recorte. Despues, por canal y estimador, el ajuste de la curva medida
+    """Q1(r, z_real): cociente de apertura por unidad de ratio_reflejo, sin
+    recorte, con el del reflejo y con el de los dos (el modelo:
+    recorte_pupila_reflejo y recorte_pupila_real). Despues, por canal y estimador, el ajuste de la curva medida
     Q(r) = rho Q1(r, z_real) (minimos cuadrados en r, rho cerrado) da z_real y
     rho = ratio_reflejo calibrado: la forma de Q(r) fija z_real."""
     filas = []
@@ -358,41 +370,48 @@ def parte_calibracion():
         banco = sim.BancoPSF(c)
         px = c.pixel_nm
         for beta in BETAS_SESGO:
-            pr = sim.PSFReflejo(cfg_base(variante, angulo_espejo_eje_deg=beta), 256)
+            pr = sim.PSFRecortada(cfg_base(variante, angulo_espejo_eje_deg=beta), 256)
             d = SEPARACION_UM * 1000 / (2 * np.cos(np.radians(beta)))
             for z in Z_REAL_CAL:
                 zp = z - 2 * d * np.sin(np.radians(beta))
                 xr_, yr_ = W / 2 + SEPARACION_UM * 500 / px + 0.3, W / 2 + 0.4      # real (+m)
                 xf_, yf_ = xr_ - SEPARACION_UM * 1000 / px, yr_                    # reflejo, hacia -m
                 fila = dict(variante=variante, beta_deg=beta, z_real_nm=z, z_reflejo_nm=zp, d_nm=d, fraccion=pr.fraccion)
-                for recorte in (False, True):
+                for caso in CASOS_CAL:
                     img = np.full((W, W), 100.0)
-                    banco.colocar(img, xr_, yr_, z, 1e4)
-                    (pr.colocar if recorte else banco.colocar)(img, xf_, yf_, zp, 1e4)
+                    (pr.colocar if caso == "ambos" else banco.colocar)(img, xr_, yr_, z, 1e4)
+                    (banco.colocar if caso == "sin" else pr.colocar)(img, xf_, yf_, zp, 1e4)
                     cr = centroide(img, xr_, yr_)
                     cf = centroide(img, xf_, yf_)
                     for r in RADIOS_CAL_UM:
                         rp = r * 1000 / px
-                        fila[col_q1('con' if recorte else 'sin', r)] = fotometria(img, cf, cr, rp) / fotometria(img, cr, cf, rp)
+                        fila[col_q1(caso, r)] = fotometria(img, cf, cr, rp) / fotometria(img, cr, cf, rp)
                 filas.append(fila)
         print(f"  [calibracion] {variante} listo", flush=True)
     t = pd.DataFrame(filas)
     print(f"\n[calibracion] Q1 = cociente de apertura (fondo anillo) por unidad de ratio_reflejo a r = {R_FOT_UM} um, "
-          f"separacion {SEPARACION_UM} um, con recorte (sin)")
+          f"separacion {SEPARACION_UM} um, con los dos recortes (solo el del reflejo; sin recorte)")
     for v in VARIANTES:
         for beta in BETAS_SESGO:
             s = t[(t.variante == v) & (t.beta_deg == beta)]
-            txt = ", ".join(f"{f.z_real_nm/1000:+.1f}: {getattr(f, col_q1('con', R_FOT_UM)):.2f} "
-                            f"({getattr(f, col_q1('sin', R_FOT_UM)):.2f})"
+            txt = ", ".join(f"{f.z_real_nm/1000:+.1f}: {getattr(f, col_q1('ambos', R_FOT_UM)):.2f} "
+                            f"({getattr(f, col_q1('reflejo', R_FOT_UM)):.2f}; {getattr(f, col_q1('sin', R_FOT_UM)):.2f})"
                             for f in s.itertuples() if f.z_real_nm % 500 == 0)
             print(f"  {v} beta {beta:.0f}, z real [um]: {txt}")
-    print("\n  ajuste de la curva Q(r) medida: rho = ratio_reflejo calibrado (con recorte), z real, residuo rms;"
+    print("\n  intervalo de rho = Q_medido / Q1 (los dos recortes) con z real en [-1.5, 1.5] um y rho <= 1:")
+    sel = t[(t.variante == "cerca") & (t.z_real_nm.abs() <= 1500)]
+    for beta in BETAS_SESGO + ("todos",):
+        s = sel if beta == "todos" else sel[sel.beta_deg == beta]
+        q1 = s[col_q1("ambos", R_FOT_UM)]
+        print(f"    cerca beta {beta}: Q1 {q1.min():.3f}-{q1.max():.3f}; canal der (0.42-0.46): rho {0.42 / q1.max():.2f}-"
+              f"{min(1.0, 0.46 / q1.min()):.2f}; canal izq (0.37-0.44): rho {0.37 / q1.max():.2f}-{min(1.0, 0.44 / q1.min()):.2f}")
+    print("\n  ajuste de la curva Q(r) medida: rho = ratio_reflejo calibrado (los dos recortes), z real, residuo rms;"
           " rho a z real fijo")
     ajustes = []
     for v in VARIANTES:
         for beta in BETAS_SESGO:
             s = t[(t.variante == v) & (t.beta_deg == beta)].reset_index(drop=True)
-            Q1 = s[[col_q1("con", r) for r in RADIOS_CAL_UM]].to_numpy()                    # (nz, nr)
+            Q1 = s[[col_q1("ambos", r) for r in RADIOS_CAL_UM]].to_numpy()                    # (nz, nr)
             for canal, q in Q_MEDIDOS.items():
                 q = np.asarray(q)
                 rho = (Q1 @ q) / (Q1 ** 2).sum(1)
@@ -430,7 +449,7 @@ def parte_red(pares):
         g = a.merge(b, on=CLAVES, suffixes=("_sin", "_con"))
         assert len(g) == len(a) == len(b) and np.allclose(g.z_nm_sin, g.z_nm_con)
         g = g[g.en_fov_sin]
-        nombre = Path(sin).parent.name
+        nombre = f"{Path(sin).parent.name}: {Path(sin).name} -> {Path(con).name}"
         grupos = [("todos", np.ones(len(g), bool)), ("reflejo en el FOV", g.reflejo_en_fov_sin.to_numpy()),
                   ("reflejo fuera del FOV", ~g.reflejo_en_fov_sin.to_numpy())]
         for lo, hi in zip(BORDES_D_RED[:-1], BORDES_D_RED[1:]):
@@ -440,7 +459,8 @@ def parte_red(pares):
             s = g[sel]
             ambos = s[s.detectado_sin & s.detectado_con]
             dz_s, dz_c = ambos.dz_nm_sin, ambos.dz_nm_con
-            filas.append(dict(corrida=nombre, grupo=etiqueta, n=len(s), recall_sin=s.detectado_sin.mean(),
+            filas.append(dict(corrida=Path(sin).parent.name, sin=Path(sin).name, con=Path(con).name, par=nombre,
+                              grupo=etiqueta, n=len(s), recall_sin=s.detectado_sin.mean(),
                               recall_con=s.detectado_con.mean(), n_ambos=len(ambos),
                               rmse_z_sin=np.sqrt((dz_s ** 2).mean()), rmse_z_con=np.sqrt((dz_c ** 2).mean()),
                               sesgo_z_sin=dz_s.mean(), sesgo_z_con=dz_c.mean(),
@@ -450,7 +470,7 @@ def parte_red(pares):
                               rmse_lat_con=np.sqrt((ambos.dx_nm_con ** 2 + ambos.dy_nm_con ** 2).mean())))
         print(f"  {nombre}:")
         for f in filas:
-            if f["corrida"] == nombre:
+            if f["par"] == nombre:
                 print(f"    {f['grupo']:34s} n {f['n']:5d}: recall {f['recall_sin']:.3f} -> {f['recall_con']:.3f}; "
                       f"z (n {f['n_ambos']}) RMSE {f['rmse_z_sin']:.1f} -> {f['rmse_z_con']:.1f} nm, sesgo "
                       f"{f['sesgo_z_sin']:+.1f} -> {f['sesgo_z_con']:+.1f}, dz con - sin {f['dif_dz_media']:+.1f} "
@@ -515,10 +535,10 @@ def figura(perdida, forma, sesgo, crlb, cal, ruta):
     if crlb is not None:
         for v, ls in (("lejos", "-"), ("cerca", "--")):
             s = crlb[(crlb.variante == v) & (crlb.fotones == 5000.0)]
-            g = s.groupby("d_nm")[["crlb_z_solo_nm", "crlb_z_completo_nm", "crlb_z_recortado_nm"]].apply(
-                lambda x: np.sqrt((x ** 2).mean()))
+            g = s.groupby("d_nm")[["crlb_z_solo_nm", "crlb_z_completo_nm", "crlb_z_recortado_nm",
+                                   "crlb_z_ambos_nm"]].apply(lambda x: np.sqrt((x ** 2).mean()))
             for col, clave in (("crlb_z_solo_nm", "solo"), ("crlb_z_completo_nm", "completo"),
-                               ("crlb_z_recortado_nm", "recortado")):
+                               ("crlb_z_recortado_nm", "recortado"), ("crlb_z_ambos_nm", "ambos")):
                 a.plot(g.index / 1000, g[col], color=COLOR[clave], ls=ls, lw=1.6, label=f"{v}, {clave}")
         a.set_xlabel("distancia al espejo d [um]"), a.set_ylabel("sqrt(CRLB z) [nm]")
         a.set_title("CRLB z, 5000 fotones, fondo 20, beta 45"), a.legend(fontsize=7, ncol=2)
@@ -527,13 +547,14 @@ def figura(perdida, forma, sesgo, crlb, cal, ruta):
         for v in VARIANTES:
             for beta in BETAS_SESGO:
                 s = cal[(cal.variante == v) & (cal.beta_deg == beta)]
-                a.plot(s.z_real_nm / 1000, s[col_q1("con", R_FOT_UM)], color=COLOR[v], ls=ESTILO_BETA[beta], lw=1.6,
+                a.plot(s.z_real_nm / 1000, s[col_q1("ambos", R_FOT_UM)], color=COLOR[v], ls=ESTILO_BETA[beta], lw=1.6,
                        label=f"{v}, beta {beta:.0f}")
         a.axhspan(0.42, 0.46, color="0.88", zorder=0, label="medido, canal der")
         a.axhline(0, color="0.6", lw=0.8)
         a.set_xlabel("z del real [um]"), a.set_ylabel("Q1 = cociente de apertura / ratio_reflejo")
         a.set_ylim(-0.5, 1.0)
-        a.set_title(f"fotometria r = {R_FOT_UM} um, separacion {SEPARACION_UM} um, con recorte"), a.legend(fontsize=7, ncol=2)
+        a.set_title(f"fotometria r = {R_FOT_UM} um, separacion {SEPARACION_UM} um\n(real y reflejo recortados)")
+        a.legend(fontsize=7, ncol=2)
     fig.tight_layout()
     for ext in (".png", ".pdf"):
         fig.savefig(ruta.with_suffix(ext), dpi=200)
