@@ -4,7 +4,8 @@ toda), la PSF directa sin renormalizar, rotacion exacta con phi, las dos
 variantes de anillos_hacia_objetivo con la misma geometria, el lado al que
 se corre el centroide (optica geometrica con la mascara "ninguna"), y en el
 video: real, GT y otros flujos sin cambio, imagen reconstruible y, sin
-recorte efectivo o apagado, bit a bit lo de antes."""
+recorte efectivo o apagado, bit a bit lo de antes. Con recorte_pupila_real el
+real pierde lo mismo con la misma mascara, y el GT tampoco cambia."""
 import json
 
 import numpy as np
@@ -45,25 +46,25 @@ def test_fraccion_de_la_pupila():
     la geometrica); beta = 0 pierde la mitad, beta >= 55.6 nada; fraccion(-beta)
     = 1 - fraccion(beta); no depende de phi."""
     for b in (0.0, 30.0, 45.0, 50.0):
-        f = sim.PSFReflejo(rec(angulo_espejo_eje_deg=b), 32).fraccion
+        f = sim.PSFRecortada(rec(angulo_espejo_eje_deg=b), 32).fraccion
         assert abs(f - fraccion_geometrica(b)) < 2e-3, (b, f, fraccion_geometrica(b))
-        f_neg = sim.PSFReflejo(rec(angulo_espejo_eje_deg=-b), 32).fraccion
+        f_neg = sim.PSFRecortada(rec(angulo_espejo_eje_deg=-b), 32).fraccion
         assert abs(f + f_neg - 1.0) < 1e-12
-        f_phi = sim.PSFReflejo(rec(angulo_espejo_eje_deg=b, orientacion_espejo_deg=37.0), 32).fraccion
+        f_phi = sim.PSFRecortada(rec(angulo_espejo_eje_deg=b, orientacion_espejo_deg=37.0), 32).fraccion
         assert abs(f_phi - f) < 2e-3
-    assert abs(sim.PSFReflejo(rec(angulo_espejo_eje_deg=0.0), 32).fraccion - 0.5) < 1e-3
+    assert abs(sim.PSFRecortada(rec(angulo_espejo_eje_deg=0.0), 32).fraccion - 0.5) < 1e-3
     for b in (BETA_LIMITE + 0.01, 60.0, 80.0):
-        r = sim.PSFReflejo(rec(angulo_espejo_eje_deg=b), 32)
+        r = sim.PSFRecortada(rec(angulo_espejo_eje_deg=b), 32)
         assert r.completa and r.fraccion == 1.0
-    assert not sim.PSFReflejo(rec(angulo_espejo_eje_deg=BETA_LIMITE - 0.5), 32).completa
+    assert not sim.PSFRecortada(rec(angulo_espejo_eje_deg=BETA_LIMITE - 0.5), 32).completa
 
 
 def test_psf_sin_renormalizar():
     """La PSF recortada suma la fraccion (Parseval: la luz que pasa); el recorte
-    K x K de PSFReflejo es el de psf_directa(recorte=True); a beta >= 55.6 es la
+    K x K de PSFRecortada es el de psf_directa(recorte=True); a beta >= 55.6 es la
     PSF completa."""
     c = rec(mascara="esferica", K_psf=None, orientacion_espejo_deg=25.0)
-    r = sim.PSFReflejo(c, 64)
+    r = sim.PSFRecortada(c, 64)
     M = c.M_pupila
     for z in (-3000.0, 0.0, 700.0):
         full = sim.psf_directa(c, z, 0.3, 0.6, recorte=True)
@@ -127,12 +128,12 @@ def test_video_real_gt_y_flujos_sin_cambio():
 
 
 def test_imagen_reconstruible_con_recorte():
-    """limpio = fondo + reales con el banco + reflejos con PSFReflejo, con
+    """limpio = fondo + reales con el banco + reflejos con PSFRecortada, con
     subpasos; la luz del reflejo es ratio * fraccion * fotones (sin la parte
     fuera del recorte K)."""
     kw = dict(recorte_pupila_reflejo=True, n_subpasos=3, n_frames=3)
     cfg, _, gt, ex = video(**kw)
-    b, r = banco_e(**kw), sim.PSFReflejo(cfg, banco_e(**kw).K)
+    b, r = banco_e(**kw), sim.PSFRecortada(cfg, banco_e(**kw).K)
     assert not r.completa
     sub, sub_r = ex["sub"], ex["sub_reflejo"]
     for t in range(cfg.n_frames):
@@ -144,7 +145,7 @@ def test_imagen_reconstruible_con_recorte():
                 if f.reflejo_en_banco:
                     r.colocar(img, *sub_r[p, t, k], f.photons_reflejo / cfg.n_subpasos)
         assert np.allclose(ex["limpio"][t], img + ex["fondo"], rtol=1e-12, atol=1e-9), t
-    grande = sim.PSFReflejo(cfg, 256)
+    grande = sim.PSFRecortada(cfg, 256)
     lienzo = np.zeros((300, 300))
     grande.colocar(lienzo, 150.3, 149.6, -1800.0, 1000.0)
     assert abs(lienzo.sum() - 1000.0 * grande.fraccion) < 1e-8
@@ -155,4 +156,65 @@ def test_sin_recorte_efectivo_es_bit_a_bit():
     kw = dict(angulo_espejo_eje_deg=60.0)
     _, v0, g0, e0 = video(**kw)
     _, v1, g1, e1 = video(recorte_pupila_reflejo=True, **kw)
+    assert np.array_equal(v0, v1) and g0.equals(g1) and np.array_equal(e0["limpio"], e1["limpio"])
+
+
+# --- recorte del real (recorte_pupila_real) -----------------------------------
+
+def test_config_del_recorte_del_real():
+    espera_error(ValueError, sim.Config, recorte_pupila_real=True)              # sin espejo
+    assert "recorte_pupila_real" not in rec().a_dict()                          # apagado: el JSON de antes
+    c = cfg_e(recorte_pupila_real=True)
+    assert c.a_dict()["recorte_pupila_real"] is True and "recorte_pupila_reflejo" not in c.a_dict()
+    assert sim.Config.desde_dict(json.loads(json.dumps(c.a_dict()))) == c
+    assert "recorte de pupila del real" in c.resumen()
+
+
+def test_real_pierde_lo_mismo_que_el_reflejo_a_45():
+    """Espejo infinito a 45 grados: el real (rayos con w . n < 0 chocan con el
+    espejo) y el reflejo (solo llegan los w . n > 0) pierden la misma luz,
+    4.67% (optica geometrica, pupila uniforme), con la misma mascara."""
+    c = rec(recorte_pupila_real=True, mascara="esferica", orientacion_espejo_deg=40.0)
+    psf = sim.PSFRecortada(c, 256)
+    e = sim.Espejo(c)
+    real = np.array([30.0, 20.0, 300.0])
+    refl = e.reflejar(real)
+    assert refl[2] < -1000.0
+    luz = []
+    for _, _, z in (real, refl):                         # cada uno con su z, centrado en el lienzo
+        lienzo = np.zeros((300, 300))
+        psf.colocar(lienzo, 150.3, 149.6, z, 1000.0)
+        luz.append(lienzo.sum() / 1000.0)
+    assert abs(luz[0] - luz[1]) < 1e-12 and abs(luz[0] - psf.fraccion) < 1e-10
+    assert abs((1 - luz[0]) - (1 - fraccion_geometrica(45.0))) < 2e-3 and abs(1 - luz[0] - 0.0467) < 2e-3
+
+
+def test_video_con_recorte_del_real():
+    """Con los dos recortes: GT, fondo y subposiciones sin cambio; limpio =
+    fondo + reales y reflejos con PSFRecortada; solo el real (ratio 0) ya
+    difiere de sin recorte."""
+    kw = dict(recorte_pupila_reflejo=True, recorte_pupila_real=True, n_subpasos=2, n_frames=3)
+    cfg, _, gt, ex = video(**kw)
+    _, _, g0, e0 = video(n_subpasos=2, n_frames=3)
+    assert gt.equals(g0) and np.array_equal(ex["fondo"], e0["fondo"]) and np.array_equal(ex["sub"], e0["sub"])
+    r = sim.PSFRecortada(cfg, banco_e(**kw).K)
+    sub, sub_r = ex["sub"], ex["sub_reflejo"]
+    for t in range(cfg.n_frames):
+        img = np.zeros((cfg.H, cfg.W))
+        g = gt[gt.frame == t]
+        for p, f in zip(g.particle_id, g.itertuples()):
+            for k in range(cfg.n_subpasos):
+                r.colocar(img, *sub[p, t, k], f.photons / cfg.n_subpasos)
+                if f.reflejo_en_banco:
+                    r.colocar(img, *sub_r[p, t, k], f.photons_reflejo / cfg.n_subpasos)
+        assert np.allclose(ex["limpio"][t], img + ex["fondo"], rtol=1e-12, atol=1e-9), t
+    _, v_sin, _, _ = video(ratio_reflejo=0.0)
+    _, v_con, _, _ = video(ratio_reflejo=0.0, recorte_pupila_real=True)
+    assert not np.array_equal(v_sin, v_con)
+
+
+def test_recorte_del_real_sin_efecto_es_bit_a_bit():
+    kw = dict(angulo_espejo_eje_deg=60.0)
+    _, v0, g0, e0 = video(**kw)
+    _, v1, g1, e1 = video(recorte_pupila_real=True, recorte_pupila_reflejo=True, **kw)
     assert np.array_equal(v0, v1) and g0.equals(g1) and np.array_equal(e0["limpio"], e1["limpio"])
