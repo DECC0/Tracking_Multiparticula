@@ -62,4 +62,10 @@ bash hypatia/lanzar_espejo.sh cerca                                   # piloto, 
 EPOCAS=100 TIEMPO=0-09:00:00 bash hypatia/lanzar_espejo.sh lejos      # corrida completa
 ```
 
+Con la celula (`configs/celula.yaml`: 96 px, z +-2500 nm, dz = 100 nm) la epoca es mucho mas cara: localmente (RTX 3060) son ~17.6 min, y en Hypatia se estiman ~17-18 h para 100 epocas. `TIEMPO=1-06:00:00` (30 h) deja margen; el limite de la particion `gpu` es de 15 dias:
+
+```bash
+CONFIG=localizacion/configs/celula.yaml PREFIJO=celula EPOCAS=100 TIEMPO=1-06:00:00 bash hypatia/lanzar_espejo.sh lejos
+```
+
 A 45 grados los reflejos quedan hasta z' = -6.9 um (mas lejos del objetivo). Con `cerca` ese lado es el de la PSF ancha: el banco usa K = 256 y cada muestra cuesta ~16 ms localmente, frente a K = 144 y ~7 ms con `lejos`, asi que con `cerca` conviene `CPUS=8`.
