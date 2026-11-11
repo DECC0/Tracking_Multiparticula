@@ -157,7 +157,7 @@ En los datos reales la particula es la mancha mas brillante y con anillos, y
 el reflejo (mas lejos del objetivo) la mas tenue, compacta y con lobulos. Con
 `False` el reflejo cae del lado de los anillos, al reves de lo observado; con
 `True`, del lado compacto: **el frame real apunta a `True`, sin confirmar**,
-porque el truncamiento de la pupila del reflejo (no modelado, abajo) tambien
+porque el truncamiento de la pupila del reflejo (abajo) tambien
 cambia su forma (los lobulos, que no salen de una PSF de simetria circular,
 apuntan a eso). Se decidira con un z-stack de beads: si los anillos aparecen
 al acercar la bead al objetivo (+z), `True`; si aparecen al alejarla, `False`.
@@ -167,10 +167,12 @@ Supuestos (no modelados): espejo plano ideal sin aberraciones ni
 polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y
 coleccion); el reflejo es una fuente puntual vista por la misma optica, sin
 el truncamiento de la pupila (a 45 grados parte del cono de coleccion del
-reflejo no llega por el espejo, ~6% de su luz segun el asesor; puede hacer
-asimetrica su PSF y desplazar su centroide con z'; con beta <= 0 el espejo no
+reflejo no llega por el espejo: 4.7% de su luz con pupila uniforme; hace
+asimetrica su PSF y desplaza su centroide con z'; con beta <= 0 el espejo no
 manda luz al objetivo por el eje); espejo infinito; iluminacion uniforme (no
-se modela la hoja de luz).
+se modela la hoja de luz). El truncamiento si esta modelado, opcional, en
+`simulador_nuevo` (`recorte_pupila_reflejo`, mascara w . n > 0 en la pupila
+del reflejo, con espejo infinito; ver su README).
 
 ### Verificacion
 

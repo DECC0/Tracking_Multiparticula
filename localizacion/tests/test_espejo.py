@@ -256,3 +256,17 @@ def test_ratio_reflejo_por_muestra():
     with tempfile.TemporaryDirectory() as tmp:
         pregenerar(cd, 4, 5, Path(tmp) / "t")
         assert "ratio_reflejo" in pd.read_csv(Path(tmp) / "t" / "muestras.csv")
+
+
+def test_recorte_de_pupila_por_muestra():
+    """datos.simulador.recorte_pupila_reflejo pasa al simulador: la geometria de
+    cada muestra fija la mascara; mismas posiciones y GT que sin recorte, y la
+    imagen cambia (solo la luz del reflejo)."""
+    cd, cd_r = cfg_esp(), cfg_esp(sim_kw=dict(recorte_pupila_reflejo=True))
+    cs, cs_r = config_simulador(cd, 5), config_simulador(cd_r, 5)
+    assert cs_r.recorte_pupila_reflejo and not cs.recorte_pupila_reflejo
+    for i in range(3):
+        img, gt, meta = generar_muestra(cd, cs, banco_esp(), i)
+        img_r, gt_r, meta_r = generar_muestra(cd_r, cs_r, banco_esp(), i)
+        assert gt.equals(gt_r) and meta == meta_r
+        assert not np.array_equal(img, img_r)

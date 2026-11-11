@@ -54,6 +54,10 @@ movimiento queda ligado al del real. El espejo es una pared reflectante mas
 para el browniano, el reflejo se dibuja con ratio_reflejo * fotones, y el
 banco de PSF se amplia para cubrir las z' (rango_banco_nm). No consume numeros
 aleatorios; con el espejo apagado todo es identico bit a bit a antes.
+Con recorte_pupila_reflejo el reflejo solo recibe los rayos de la pupila que
+cruzan el plano del espejo (w . n > 0, espejo infinito; PSFReflejo, una FFT
+por subposicion); su PSF no se renormaliza, asi que ratio_reflejo es la
+reflectividad (la pupila tiene amplitud uniforme: no hay apodizacion aplanatica).
 La geometria vive en geometria_espejo.py, en la raiz del repo, compartida con
 simulador_psf: es la UNICA importacion de fuera de esta carpeta (ver abajo).
 
@@ -107,7 +111,7 @@ COMPONENTES_RNG = ("muestra", "trayectorias", "fotones", "fondo", "camara")
 # campos del espejo: con usar_espejo=False no se escriben en config.json (asi
 # el JSON queda como antes del espejo) y al leerlo toman su valor por defecto
 CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_eje_deg", "orientacion_espejo_deg", "espejo_punto_px",
-                 "ratio_reflejo", "z_ref_espejo_nm", "dist_max_espejo_um")
+                 "ratio_reflejo", "z_ref_espejo_nm", "dist_max_espejo_um", "recorte_pupila_reflejo")
 # convencion de z de este codigo: +z hacia el objetivo y angulo del espejo desde
 # el eje optico. config.json la guarda; cargar_config rechaza los que no la tienen.
 CONVENCION_Z = "hacia_objetivo"
@@ -178,6 +182,9 @@ class Config:
     dist_max_espejo_um: float = None  # posiciones iniciales hasta esa distancia al PLANO del espejo; None -> todas
     z_banco_nm: tuple = None        # rango que debe cubrir el banco de PSF [nm], ademas de z_rango_nm;
                                     # None -> z_rango_nm, ampliado solo con el espejo (rango_banco_nm)
+    recorte_pupila_reflejo: bool = False  # el reflejo solo recibe los rayos que cruzan el plano del espejo
+                                          # (PSFReflejo, espejo infinito); ratio_reflejo queda como la
+                                          # reflectividad. False: el reflejo usa la PSF completa del banco
 
     # --- celula (geometria_celula.py): los emisores estan dentro de una esfera ---
     usar_celula: bool = False       # False: salidas identicas a las de antes de la celula
@@ -243,6 +250,7 @@ class Config:
               "dist_max_espejo_um debe ser > 0 o None")
         exige(self.z_banco_nm is None or (len(self.z_banco_nm) == 2 and self.z_banco_nm[0] < self.z_banco_nm[1]),
               "z_banco_nm debe ser (z_min, z_max) con z_min < z_max")
+        exige(not self.recorte_pupila_reflejo or self.usar_espejo, "recorte_pupila_reflejo requiere usar_espejo")
         # celula (solo lanza: no cambia ninguna salida)
         exige(self.diametro_celula_um > 0, "diametro_celula_um debe ser positivo")
         exige(len(self.celula_centro_px) == 2, "celula_centro_px debe ser (x, y) en px")
@@ -288,6 +296,8 @@ class Config:
                 d.pop(c)
         if self.z_banco_nm is None:
             d.pop("z_banco_nm")
+        if not d.get("recorte_pupila_reflejo", True):              # sin recorte: el JSON de antes del recorte
+            d.pop("recorte_pupila_reflejo")
         return d
 
     @classmethod
@@ -312,6 +322,7 @@ class Config:
                    f"{self.orientacion_espejo_deg:.1f} deg, punto ({self.espejo_punto_px[0]:.1f}, "
                    f"{self.espejo_punto_px[1]:.1f}) px, ratio_reflejo {self.ratio_reflejo:.2f}, "
                    f"z_ref {self.z_ref_espejo_nm:.0f} nm"
+                   + (", recorte de pupila del reflejo" if self.recorte_pupila_reflejo else "")
                    if self.usar_espejo else "")
                 + (f"\ncelula           : {self.diametro_celula_um:.1f} um de diametro, centro a z = "
                    f"{self.altura_celula_nm:.0f} nm" + (" (toca el espejo)" if self.usar_espejo else "")
@@ -428,15 +439,116 @@ def _psf_de_rejilla(cfg: Config, rej, q_nm, dx_px=0.0, dy_px=0.0):
     return psf / psf.sum()
 
 
-def psf_directa(cfg: Config, z_nm, dx_px=0.0, dy_px=0.0, sobremuestreo=1):
+def psf_directa(cfg: Config, z_nm, dx_px=0.0, dy_px=0.0, sobremuestreo=1, recorte=False):
     """PSF completa (M_pupila x M_pupila, suma 1) con el emisor en z_nm (+z
     hacia el objetivo) y en el pixel M_pupila // 2 + (dx, dy). Camino lento y
     exacto, usado como referencia en los tests. Con sobremuestreo = S > 1
     (impar) la integracion sobre el pixel se hace numericamente (ignora
-    integrar_pixel)."""
+    integrar_pixel). Con recorte=True es la PSF de un reflejo con el recorte de
+    pupila del espejo de cfg (mascara_recorte): suma la fraccion de la pupila
+    que pasa, no 1."""
     if sobremuestreo < 1 or sobremuestreo % 2 == 0:
         raise ValueError("sobremuestreo debe ser un entero impar >= 1")
-    return _psf_de_rejilla(cfg, _rejilla_pupila(cfg, sobremuestreo), cfg.signo_q * z_nm, dx_px, dy_px)
+    rej = _rejilla_pupila(cfg, sobremuestreo)
+    if not recorte:
+        return _psf_de_rejilla(cfg, rej, cfg.signo_q * z_nm, dx_px, dy_px)
+    masc = mascara_recorte(cfg, rej)
+    fraccion = _fraccion_pupila(rej, masc)
+    return fraccion * _psf_de_rejilla(cfg, dict(rej, P0=rej["P0"] * masc), cfg.signo_q * z_nm, dx_px, dy_px)
+
+
+# ----------------------------------------------------------------------------
+# Recorte de pupila del reflejo
+# ----------------------------------------------------------------------------
+
+def mascara_recorte(cfg: Config, rej):
+    """Rayos de la pupila que llegan al objetivo desde el reflejo (amplitud
+    en la rejilla de _rejilla_pupila: 1 pasa, 0 no), con un espejo plano infinito. El rayo de
+    direccion w = (sin(th) cos(psi), sin(th) sin(psi), cos(th)) (+z hacia el
+    objetivo) que parece salir del reflejo virtual existe solo si cruza el plano
+    del espejo hacia la muestra: w . n > 0, n = cos(beta) m + sin(beta) z. Si
+    beta >= arcsin(NA / n_medio) (55.6 grados) pasa toda la pupila; a beta = 0
+    (espejo vertical), la mitad.
+
+    La frecuencia (fx, fy) de la pupila es la direccion transversal del rayo,
+    w_xy = (lambda / n_medio) (fx, fy), con la fase de desenfoque fisica (q = -z,
+    anillos_hacia_objetivo False). Con q = +z (True) el modelo calcula la PSF
+    conjugada, que es la del sistema fisico con la frecuencia invertida, asi
+    que la mascara se toma en -f: w_xy = -signo_q (lambda / n_medio) f. Asi la
+    misma geometria del espejo recorta el mismo lado de la PSF con las dos
+    variantes (con mascara "ninguna" las dos dan la misma PSF).
+
+    Un punto de la rejilla justo sobre el borde (w . n == 0 exacto, p. ej. la
+    columna fx = 0 con beta = 0 y phi = 0) lleva amplitud sqrt(1/2), la mitad
+    de la energia: asi fraccion(-beta) = 1 - fraccion(beta) tambien ahi."""
+    n = Espejo(cfg).n
+    escala = -cfg.signo_q * cfg.lambda_nm / cfg.n_medio
+    wx, wy = escala * rej["fx"], escala * rej["fy"]
+    wz = np.sqrt(np.clip(1.0 - wx ** 2 - wy ** 2, 0.0, None))
+    wn = n[0] * wx + n[1] * wy + n[2] * wz
+    return np.where(wn > 0.0, 1.0, np.where(wn == 0.0, np.sqrt(0.5), 0.0))
+
+
+def _fraccion_pupila(rej, mascara):
+    """Fraccion de la energia de la pupila que pasa la mascara (Parseval: la luz del reflejo que llega)."""
+    a2 = np.abs(rej["P0"]) ** 2
+    return float((a2 * mascara ** 2).sum() / a2.sum())
+
+
+class PSFReflejo:
+    """PSF del reflejo con el recorte de pupila (Config.recorte_pupila_reflejo).
+    La mascara depende de la direccion del rayo pero no de la posicion (espejo
+    infinito), asi que la pupila recortada es una por configuracion; la PSF se
+    calcula directo para cada subposicion (z' exacta, sin banco ni
+    interpolacion; desplazamiento subpixel exacto en la pupila) y se recorta a
+    K x K y se coloca como en BancoPSF.colocar.
+
+    No se renormaliza: la PSF suma fraccion (la parte de la pupila que pasa la
+    mascara, < 1 si 0 <= beta < 55.6 grados), asi que los fotones del reflejo
+    en la imagen son ratio_reflejo * fraccion * fotones del real, y
+    ratio_reflejo queda como la reflectividad del espejo. completa es True si
+    pasa toda la pupila: entonces generar_video usa el banco, y la imagen es la
+    de sin recorte bit a bit."""
+
+    def __init__(self, cfg: Config, K):
+        self.cfg, self.K = cfg, int(K)
+        rej = _rejilla_pupila(cfg)
+        masc = mascara_recorte(cfg, rej)
+        self.mascara = masc
+        self.fraccion = _fraccion_pupila(rej, masc)
+        self.completa = bool((masc[np.abs(rej["P0"]) > 0] == 1.0).all())
+        M = cfg.M_pupila
+        self._P0 = rej["P0"] * masc
+        self._kcos = rej["kcos"]
+        self._gx = -2 * np.pi * rej["fx"] * cfg.pixel_nm
+        self._gy = -2 * np.pi * rej["fy"] * cfg.pixel_nm
+        self._filtro = rej["filtro"][:, : M // 2 + 1]            # par en fx: vale para rfft2
+        self._idx = np.arange(-(self.K // 2), self.K // 2) % M   # recorte K centrado en el pixel 0
+
+    def psf(self, z_nm, dx_px=0.0, dy_px=0.0):
+        """Recorte (K, K) de la PSF del reflejo en z_nm, centrado en K // 2 +
+        (dx, dy); la PSF entera suma fraccion."""
+        M = self.cfg.M_pupila
+        P = self._P0 * np.exp(1j * (self._kcos * (self.cfg.signo_q * z_nm) + self._gx * dx_px + self._gy * dy_px))
+        psf = np.abs(np.fft.ifft2(P)) ** 2
+        psf = np.fft.irfft2(np.fft.rfft2(psf) * self._filtro, s=(M, M))
+        np.clip(psf, 0.0, None, out=psf)
+        return (self.fraccion / psf.sum()) * psf[np.ix_(self._idx, self._idx)]
+
+    def colocar(self, img, x, y, z_nm, N):
+        """Suma N * PSF del reflejo en (x, y) [px] y z_nm sobre img (in place),
+        con la misma ventana que BancoPSF.colocar."""
+        if N <= 0:
+            return
+        K = self.K
+        ix, iy = int(np.floor(x)), int(np.floor(y))
+        y0, x0 = iy - K // 2, ix - K // 2
+        ys, xs = max(0, y0), max(0, x0)
+        ye, xe = min(img.shape[0], y0 + K), min(img.shape[1], x0 + K)
+        if ys >= ye or xs >= xe:
+            return
+        parche = self.psf(z_nm, x - ix, y - iy)
+        img[ys:ye, xs:xe] += N * parche[ys - y0: ye - y0, xs - x0: xe - x0]
 
 
 class BancoPSF:
@@ -800,7 +912,10 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     real) se dibuja con ratio_reflejo * fotones / S en la misma imagen de
     fotones esperados, si su z' esta en el banco; el GT del reflejo es la
     media de sus subposiciones (= el reflejo de la del real: R es afin) y
-    reflejo_en_banco es True si todas sus subposiciones se dibujaron."""
+    reflejo_en_banco es True si todas sus subposiciones se dibujaron. Con
+    recorte_pupila_reflejo el reflejo se dibuja con PSFReflejo (pierde la
+    parte de la pupila que no cruza el espejo); el GT no cambia (photons_reflejo
+    sigue siendo ratio_reflejo * photons, sin la perdida del recorte)."""
     zg = banco.z_grid
     if cfg.z_rango_nm[0] < zg[0] or cfg.z_rango_nm[1] > zg[-1]:
         raise ValueError(f"z_rango_nm {cfg.z_rango_nm} se sale del banco de PSF [{zg[0]}, {zg[-1]}]")
@@ -817,6 +932,11 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
         sub_r = Espejo(cfg).reflejar(sub)                        # (n, T, S, 3), sin rng
         dibujar_r = (sub_r[..., 2] >= zg[0] - TOL_BANCO_NM) & (sub_r[..., 2] <= zg[-1] + TOL_BANCO_NM)
         Ns_r = cfg.ratio_reflejo * Ns
+        colocar_r = banco.colocar
+        if cfg.recorte_pupila_reflejo:
+            psf_r = PSFReflejo(cfg, banco.K)
+            if not psf_r.completa:
+                colocar_r = psf_r.colocar
     video = np.empty((T, cfg.H, cfg.W), dtype=np.uint16)
     limpio = np.empty((T, cfg.H, cfg.W)) if extra else None
     for t in range(T):
@@ -827,7 +947,7 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
                 banco.colocar(img, x, y, z, Ns[p] / S)
                 if cfg.usar_espejo and dibujar_r[p, t, k]:       # fuera del banco psf_en_z recortaria z
                     xr, yr, zr = sub_r[p, t, k]
-                    banco.colocar(img, xr, yr, zr, Ns_r[p] / S)
+                    colocar_r(img, xr, yr, zr, Ns_r[p] / S)
         img += fondo
         video[t] = aplicar_camara(img, cfg, r["camara"])          # ruido nuevo por frame
         if extra:
