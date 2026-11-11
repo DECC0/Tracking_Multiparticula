@@ -231,3 +231,28 @@ def test_entrena_infiere_y_evalua_con_espejo():
         esp = resumen["espejo"]
         assert esp["fp"] == r["fp"] and 0 <= esp["fp_sobre_reflejo"] <= esp["fp"]
         assert pd.read_csv(ev / "por_dist_espejo_fotones.csv").n.sum() == r["n_gt"]
+
+
+def test_ratio_reflejo_por_muestra():
+    """datos.ratio_reflejo_rango sortea ratio_reflejo por muestra con su propio
+    flujo: en el rango, regenerable, y sin cambiar posiciones, fotones, fondo
+    ni geometria; photons_reflejo = ratio * photons y muestras.csv lo guarda."""
+    espera_error(ValueError, cfg_esp, ratio_reflejo_rango=(0.9, 0.5))
+    espera_error(ValueError, cfg_datos, ratio_reflejo_rango=(0.3, 0.8))                # sin espejo
+    cd, cd_fijo = cfg_esp(ratio_reflejo_rango=(0.35, 0.8)), cfg_esp()
+    cs = config_simulador(cd, 5)
+    rs = []
+    for i in range(30):
+        m, m_fijo = config_muestra(cd, cs, i), config_muestra(cd_fijo, cs, i)
+        assert 0.35 <= m.ratio_reflejo <= 0.8 and m == config_muestra(cd, cs, i)
+        from dataclasses import replace
+        assert replace(m, ratio_reflejo=m_fijo.ratio_reflejo) == m_fijo
+        rs.append(m.ratio_reflejo)
+    assert np.std(rs) > 0.08
+    _, gt, meta = generar_muestra(cd, cs, banco_esp(), 3)
+    _, gt_f, _ = generar_muestra(cd_fijo, cs, banco_esp(), 3)
+    assert np.allclose(gt.photons_reflejo, meta["ratio_reflejo"] * gt.photons)
+    assert gt[["x_px", "y_px", "z_nm", "photons"]].equals(gt_f[["x_px", "y_px", "z_nm", "photons"]])
+    with tempfile.TemporaryDirectory() as tmp:
+        pregenerar(cd, 4, 5, Path(tmp) / "t")
+        assert "ratio_reflejo" in pd.read_csv(Path(tmp) / "t" / "muestras.csv")

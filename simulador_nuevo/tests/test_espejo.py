@@ -40,7 +40,7 @@ def video(video_id=0, **kw):
 # --- configuracion ----------------------------------------------------------
 
 def test_config_valida_el_espejo():
-    for kw in (dict(angulo_espejo_eje_deg=90.0), dict(angulo_espejo_eje_deg=-90.0), dict(ratio_reflejo=0.0),
+    for kw in (dict(angulo_espejo_eje_deg=90.0), dict(angulo_espejo_eje_deg=-90.0), dict(ratio_reflejo=-0.1),
                dict(ratio_reflejo=1.5), dict(espejo_punto_px=(1.0, 2.0, 3.0)), dict(dist_max_espejo_um=0.0),
                dict(z_banco_nm=(100.0, -100.0))):
         espera_error(ValueError, cfg_e, **kw)
@@ -299,3 +299,19 @@ def test_espejo_apagado_ignora_sus_parametros():
     vb, gb = sim.generar_video(b, ba, 0)
     assert np.array_equal(va, vb) and ga.equals(gb) and list(ga.columns) == sim.COLUMNAS_GT
     assert a.resumen() == b.resumen() and a.a_dict() == b.a_dict()
+
+
+def test_ratio_cero_es_el_control_sin_luz_del_reflejo():
+    """ratio_reflejo = 0: mismas posiciones (reales y reflejos), fotones y
+    fondo que con 0.8, pero la imagen solo tiene la luz de los reales."""
+    cfg0, _, g0, e0 = video(ratio_reflejo=0.0)
+    _, _, g8, e8 = video()
+    cols = ["x_px", "y_px", "z_nm", "x_reflejo_px", "y_reflejo_px", "z_reflejo_nm", "photons"]
+    assert g0[cols].equals(g8[cols]) and (g0.photons_reflejo == 0).all()
+    assert np.array_equal(e0["fondo"], e8["fondo"])
+    b = banco_e()
+    for t in range(cfg0.n_frames):
+        img = np.zeros((cfg0.H, cfg0.W))
+        for _, f in g0[g0.frame == t].iterrows():
+            b.colocar(img, f.x_px, f.y_px, f.z_nm, f.photons)
+        assert np.allclose(e0["limpio"][t], img + e0["fondo"], rtol=1e-12, atol=1e-9), t

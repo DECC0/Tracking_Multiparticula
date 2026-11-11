@@ -44,6 +44,7 @@ datos:
   canal_distancia_espejo: true            # entrada con 2 canales: imagen + distancia al espejo
   escala_distancia_px: null               # null -> max(H, W) = 64 px
   max_reintentos_espejo: 20
+  ratio_reflejo_rango: [0.35, 0.8]        # PROVISIONAL: se fija con la calibracion por fotometria
   celula_diametro_rango_um: [4.0, 6.0]
   celula_altura_rango_nm: null           # null -> altura_celula_nm
   celula_contacto_centrado: true          # contacto celula-espejo en el centro del FOV ...

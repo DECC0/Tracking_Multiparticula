@@ -60,6 +60,9 @@ class ConfigDatos:
     max_reintentos_espejo: int = 20         # una muestra con algun reflejo sin dibujar (fuera del banco) se
                                             # regenera con otro video_id del simulador; se cuenta en meta
 
+    ratio_reflejo_rango: tuple = None       # ratio_reflejo uniforme en [min, max] por muestra (su propio flujo);
+                                            # None -> el de datos.simulador. Requiere el espejo
+
     # celula (requiere datos.simulador.usar_celula: true): sorteada por muestra con su propio flujo
     celula_diametro_rango_um: tuple = None  # diametro uniforme en [min, max]; None -> el de datos.simulador
     celula_altura_rango_nm: tuple = None    # z del centro uniforme en [min, max]; None -> el de datos.simulador
@@ -75,7 +78,7 @@ class ConfigDatos:
             self.espejo_angulo_eje_rango_deg = tuple(float(v) for v in self.espejo_angulo_eje_rango_deg)
         if self.espejo_linea_rango_fov is not None:
             self.espejo_linea_rango_fov = tuple(float(v) for v in self.espejo_linea_rango_fov)
-        for c in ("celula_diametro_rango_um", "celula_altura_rango_nm"):
+        for c in ("celula_diametro_rango_um", "celula_altura_rango_nm", "ratio_reflejo_rango"):
             if getattr(self, c) is not None:
                 setattr(self, c, tuple(float(v) for v in getattr(self, c)))
         self.validar()
@@ -123,6 +126,10 @@ class ConfigDatos:
         _exige(self.max_reintentos_espejo >= 0, "datos.max_reintentos_espejo debe ser >= 0")
         _exige(not self.usa_espejo or self.simulador.get("usar_espejo", False),
                "las opciones datos.espejo_* y canal_distancia_espejo requieren datos.simulador.usar_espejo: true")
+        if self.ratio_reflejo_rango is not None:
+            lo, hi = self.ratio_reflejo_rango
+            _exige(0 <= lo <= hi <= 1, "datos.ratio_reflejo_rango: se requiere 0 <= min <= max <= 1")
+            _exige(self.simulador.get("usar_espejo", False), "datos.ratio_reflejo_rango requiere el espejo")
         _exige(not self.celula_aleatoria or self.simulador.get("usar_celula", False),
                "las opciones datos.celula_* requieren datos.simulador.usar_celula: true")
         if self.celula_diametro_rango_um is not None:

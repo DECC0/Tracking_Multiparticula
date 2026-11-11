@@ -36,7 +36,7 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 | `test_fondo.py` | fondo uniforme / no uniforme acotado y suave |
 | `test_difusion.py` | paredes reflectantes, MSD = 2Dt por eje, incrementos gaussianos independientes, z uniforme, desenfoque de movimiento (MSD con correccion t_e(n^2-1)/(3n^2)) |
 | `test_video.py` | forma del video, columnas y filas del GT, en_fov, imagen limpia reconstruible desde el GT, residuo de ruido ~ N(0,1), semilla, componentes independientes, prefijo temporal, escritura a disco |
-| `test_espejo.py` | validacion y JSON de los campos del espejo, misma geometria que `simulador_psf`, banco ampliado con los planos de `z_rango_nm` intactos, ningun real cruza el espejo (tambien en los subpasos), `dist_max_espejo_um`, espejo lejano = sin espejo, GT del reflejo, desenfoque ligado, imagen limpia reconstruible (con subpasos y desde el GT), el espejo no cambia los otros flujos, regeneracion por video, convencion (reflejo del lado correcto, `anillos_hacia_objetivo` solo cambia la PSF, `config.json` de la convencion anterior rechazado), espejo apagado |
+| `test_espejo.py` | validacion y JSON de los campos del espejo, misma geometria que `simulador_psf`, banco ampliado con los planos de `z_rango_nm` intactos, ningun real cruza el espejo (tambien en los subpasos), `dist_max_espejo_um`, espejo lejano = sin espejo, GT del reflejo, desenfoque ligado, imagen limpia reconstruible (con subpasos y desde el GT), el espejo no cambia los otros flujos, regeneracion por video, convencion (reflejo del lado correcto, `anillos_hacia_objetivo` solo cambia la PSF, `config.json` de la convencion anterior rechazado), `ratio_reflejo = 0` sin luz del reflejo, espejo apagado |
 | `test_celula.py` | celula (`usar_celula`): validacion y JSON, tangente al espejo, posiciones uniformes en el volumen con los mismos sorteos que sin celula, reflexion especular exacta, ningun emisor sale ni cruza el espejo (tambien en los subpasos), MSD que se satura en 6 R^2 / 5, reflejos dentro de la celula virtual, `en_rango_z` y banco, celula apagada |
 | `test_regresion.py` | con el espejo apagado, salidas bit a bit iguales a las de antes del espejo (`referencia_regresion.json`; se salta si cambia la version de numpy; `--generar` la reescribe) |
 | `test_diagnosticos.py` | SNR del pixel pico vs simulacion, escalamiento de la CRLB; CRLB 3D (`crlb_3d`, z desconocido) vs la PSF exacta de `psf_directa`, vs la 2D y escalamiento con N |
@@ -65,7 +65,8 @@ campos (`angulo_espejo_eje_deg`, `orientacion_espejo_deg`, `espejo_punto_px`,
   e y se reescalan a la franja cercana al espejo.
 - Cada subposicion del reflejo es el reflejo de la del real, asi que el
   desenfoque de movimiento queda ligado; se dibuja con
-  `ratio_reflejo * fotones / n_subpasos`. El GT agrega `COLUMNAS_REFLEJO`
+  `ratio_reflejo * fotones / n_subpasos` (`ratio_reflejo` en [0, 1]; con 0 el
+  reflejo queda en el GT pero sin luz, como control). El GT agrega `COLUMNAS_REFLEJO`
   (`x_reflejo_px, y_reflejo_px, z_reflejo_nm, photons_reflejo, reflejo_en_fov,
   reflejo_en_banco`); la posicion del reflejo es la media de sus subposiciones.
 - El banco se amplia (`rango_banco_nm`) para cubrir las z' de la caja inicial,

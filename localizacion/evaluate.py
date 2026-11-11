@@ -23,6 +23,7 @@ Escribe en --salida (por defecto <carpeta del checkpoint>/evaluacion_<primera en
     con espejo (GT con columnas *_reflejo):
     por_dist_espejo.csv          ... por rango de distancia del emisor al plano del espejo
     por_dist_espejo_fotones.csv  recall y RMSE en z por (distancia al espejo, fotones)
+    por_ratio_reflejo.csv        ... por rango de ratio_reflejo, si se sorteo por muestra
     resumen.yaml / espejo        falsos positivos sobre reflejos (lateral <= --r-xy de un
                                  reflejo del mismo frame) y reflejos con algun FP encima
     metricas.png       las tablas por_*.csv y los histogramas de los errores
@@ -260,6 +261,11 @@ def main(argv=None):
     r_espejo = resumen_espejo(pred_eval, gt_eval) if con_espejo else None
     if con_espejo and len(gt_eval[gt_eval.en_fov]):
         tabla_dist_espejo_fotones(gt_eval).to_csv(salida / "por_dist_espejo_fotones.csv", index=False)
+        ratio = (gt_eval.photons_reflejo / gt_eval.photons).to_numpy(float)
+        if np.nanstd(ratio) > 1e-9:                              # ratio_reflejo sorteado por muestra
+            g_r = gt_eval.assign(ratio_reflejo=ratio)
+            por_rangos(g_r, "ratio_reflejo", bordes(g_r[g_r.en_fov].ratio_reflejo, "lineal", N_RANGOS_2D)).to_csv(
+                salida / "por_ratio_reflejo.csv", index=False)
     pred_eval.to_csv(salida / "predicciones.csv", index=False)
     gt_eval.to_csv(salida / "gt_eval.csv", index=False)
     pd.DataFrame(filas).to_csv(salida / "por_entrada.csv", index=False)

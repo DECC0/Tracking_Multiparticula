@@ -42,6 +42,7 @@ import simulador as sim  # noqa: E402
 CLAVE_RNG = 1000                        # spawn_key del flujo de randomizacion; el simulador usa 0..4
 CLAVE_RNG_ESPEJO = 1001                 # spawn_key del flujo de la geometria del espejo
 CLAVE_RNG_CELULA = 1002                 # spawn_key del flujo de la celula
+CLAVE_RNG_RATIO = 1003                  # spawn_key del flujo de ratio_reflejo (un uniforme por muestra)
 DESFASE_REINTENTO = 2 ** 40             # video_id del simulador en el intento k: idx + k * DESFASE_REINTENTO
 CAMPOS_RESERVADOS = ("n_frames", "n_videos", "seed")
 COLUMNAS_GT = sim.COLUMNAS_GT + ["snr"]
@@ -233,6 +234,10 @@ def config_muestra(cfg_datos, cfg_sim, idx, intento=0):
     cambios = geometria_muestra(cfg_datos, cfg_sim, idx, intento) if cfg_sim.usar_espejo else {}
     if cfg_sim.usar_celula:
         cambios.update(celula_muestra(cfg_datos, cfg_sim, idx, cambios, intento))
+    if cfg_datos.ratio_reflejo_rango is not None:              # su propio flujo: no cambia los demas sorteos
+        u = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG_RATIO))).uniform()
+        lo, hi = cfg_datos.ratio_reflejo_rango
+        cambios["ratio_reflejo"] = float(lo + u * (hi - lo))
     d = cfg_datos.fotones_dispersion
     if not usa_rango_completo(cfg_datos, cfg_sim, idx):
         Nmin, Nmax = cfg_sim.fotones_rango
@@ -290,7 +295,8 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
     if cfg_sim.usar_espejo:
         meta.update(espejo_angulo_eje_deg=cfg_m.angulo_espejo_eje_deg, espejo_orientacion_deg=cfg_m.orientacion_espejo_deg,
                     espejo_punto_x_px=cfg_m.espejo_punto_px[0], espejo_punto_y_px=cfg_m.espejo_punto_px[1],
-                    reintentos=intento, n_reflejos_en_fov=int(gt.reflejo_en_fov.sum()))
+                    reintentos=intento, n_reflejos_en_fov=int(gt.reflejo_en_fov.sum()),
+                    ratio_reflejo=cfg_m.ratio_reflejo)
     if cfg_sim.usar_celula:
         meta.update(celula_diametro_um=cfg_m.diametro_celula_um, celula_altura_nm=cfg_m.altura_celula_nm,
                     celula_centro_x_px=cfg_m.celula_centro_px[0], celula_centro_y_px=cfg_m.celula_centro_px[1],

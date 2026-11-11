@@ -173,7 +173,7 @@ class Config:
                                          # muestra vista desde el objetivo (el montaje)
     orientacion_espejo_deg: float = 0.0   # phi: azimut de la direccion linea del espejo -> muestra, de +x hacia +y
     espejo_punto_px: tuple = (20.0, 32.0)  # (x, y) [px] de un punto de la linea del espejo en el plano de referencia
-    ratio_reflejo: float = 0.8      # fotones del reflejo / del real, en (0, 1]
+    ratio_reflejo: float = 0.8      # fotones del reflejo / del real, en [0, 1] (0: reflejo sin luz, para controles)
     z_ref_espejo_nm: float = 0.0    # z [nm] (+ hacia el objetivo) del plano de referencia del espejo (0: el plano focal)
     dist_max_espejo_um: float = None  # posiciones iniciales hasta esa distancia al PLANO del espejo; None -> todas
     z_banco_nm: tuple = None        # rango que debe cubrir el banco de PSF [nm], ademas de z_rango_nm;
@@ -237,7 +237,7 @@ class Config:
         exige(min(self.W, self.H) + 2 * self.margen_px > 0, "margen_px deja una region inicial vacia")
         # espejo (solo lanza: no cambia ninguna salida)
         exige(-90.0 < self.angulo_espejo_eje_deg < 90.0, "angulo_espejo_eje_deg debe estar en (-90, 90)")
-        exige(0.0 < self.ratio_reflejo <= 1.0, "ratio_reflejo debe estar en (0, 1]")
+        exige(0.0 <= self.ratio_reflejo <= 1.0, "ratio_reflejo debe estar en [0, 1]")
         exige(len(self.espejo_punto_px) == 2, "espejo_punto_px debe ser (x, y) en px")
         exige(self.dist_max_espejo_um is None or self.dist_max_espejo_um > 0,
               "dist_max_espejo_um debe ser > 0 o None")
