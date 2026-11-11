@@ -1,5 +1,5 @@
 # Igual a mezcla_renovar_largo.yaml, con el espejo (simulador_nuevo, usar_espejo):
-# cada emisor real tiene un reflejo (reflectividad ratio_reflejo en [0.5, 1], con recorte de pupila) y solo
+# cada emisor real tiene un reflejo (reflectividad ratio_reflejo en [0.45, 1], con recorte de pupila) y solo
 # los reales son objetivo. Convencion: +z hacia el objetivo y el angulo del
 # espejo desde el EJE OPTICO (beta; el montaje esta a 45 grados). La geometria
 # del espejo se sortea por muestra (beta en espejo_angulo_eje_rango_deg, phi en
@@ -42,7 +42,9 @@ datos:
     angulo_espejo_eje_deg: 45.0   # beta desde el eje optico; centro del rango sorteado (espejo_angulo_eje_rango_deg)
     ratio_reflejo: 0.8          # sin uso: datos.ratio_reflejo_rango lo sortea por muestra
     recorte_pupila_reflejo: true   # el reflejo pierde los rayos que no cruzan el espejo (4.7% a 45 grados);
-                                   # ratio_reflejo = reflectividad. ~13 ms por muestra con 8 workers
+                                   # ratio_reflejo = reflectividad
+    recorte_pupila_real: true      # el real pierde los rayos que chocan con el espejo (la misma mascara): el
+                                   # portaobjetos espejado mide mm, infinito a escala de um
     dist_max_espejo_um: 4.0   # posiciones iniciales hasta 4 um del plano del espejo
     anillos_hacia_objetivo: false   # lado del foco con anillos de la PSF esferica (pendiente; las corridas
                                     # espejo_b45_lejos / espejo_b45_cerca difieren solo aqui)
@@ -66,8 +68,8 @@ datos:
   canal_distancia_espejo: true            # entrada con 2 canales: imagen + distancia al espejo
   escala_distancia_px: null               # null -> max(H, W) = 64 px
   max_reintentos_espejo: 20
-  ratio_reflejo_rango: [0.5, 1.0]         # calibracion por fotometria de los datos reales con recorte
-                                          # (resultados_recorte_pupila.md): 0.55-1 segun z del real y beta
+  ratio_reflejo_rango: [0.45, 1.0]        # calibracion por fotometria de los datos reales con los recortes
+                                          # (resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
 
 target:
   upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y

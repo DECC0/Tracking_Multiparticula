@@ -161,7 +161,22 @@ porque el truncamiento de la pupila del reflejo (abajo) tambien
 cambia su forma (los lobulos, que no salen de una PSF de simetria circular,
 apuntan a eso). Se decidira con un z-stack de beads: si los anillos aparecen
 al acercar la bead al objetivo (+z), `True`; si aparecen al alejarla, `False`.
-Hasta entonces el valor por defecto (`False`) no se cambia.
+Hasta entonces el valor por defecto del simulador (`False`) no se cambia.
+
+**Decision para entrenar (2026-11-10): la corrida principal es "cerca"
+(`anillos_hacia_objetivo = True`)**, con "lejos" solo como respaldo
+(`bash hypatia/lanzar_espejo.sh cerca|lejos`; las configs dejan `false` y la
+variante la fija el lanzador). Evidencia (`resultados_recorte_pupila.md`,
+seccion 6, y `resultados_datos_reales.md`): en el frame real el reflejo, a
+z' ~ z - 4.5 um, es compacto, y la fotometria da un cociente reflejo/real de
+~0.43 > 0. Con "lejos" un reflejo a esa z' es un sistema de anillos de ~8 um
+sin nucleo (`figuras/fig_recorte_pupila_psf.png`): la misma fotometria sobre
+imagenes simuladas da un cociente negativo o casi nulo para casi cualquier z
+del real, y el ajuste del cociente contra el radio deja residuos 3 a 4 veces
+mayores que con "cerca". Con "cerca" el reflejo es compacto y el cociente
+cae en el rango medido. **Falta confirmarlo con el z-stack de beads**
+(`resultados_calibracion_espejo.md`): es una sola particula del montaje
+anterior y su mascara de fase puede no ser la del simulador.
 
 Supuestos (no modelados): espejo plano ideal sin aberraciones ni
 polarizacion; una sola perdida constante `ratio_reflejo` (reflectividad y
@@ -172,7 +187,10 @@ asimetrica su PSF y desplaza su centroide con z'; con beta <= 0 el espejo no
 manda luz al objetivo por el eje); espejo infinito; iluminacion uniforme (no
 se modela la hoja de luz). El truncamiento si esta modelado, opcional, en
 `simulador_nuevo` (`recorte_pupila_reflejo`, mascara w . n > 0 en la pupila
-del reflejo, con espejo infinito; ver su README).
+del reflejo, con espejo infinito; ver su README), y tambien el del real
+(`recorte_pupila_real`: con la misma mascara pierde los rayos que chocan con
+el espejo, que es un portaobjetos espejado de varios mm). Los dos estan
+activos en `localizacion/configs/espejo.yaml` y `celula.yaml`.
 
 ### Verificacion
 
