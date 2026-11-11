@@ -6,8 +6,9 @@
 # celula virtual (los reflejos) caben en 96 px: ~100% de pares real-reflejo
 # completos (con 64 px, ~79%). Los emisores llegan a z = +-3 um: el rango
 # axial de la red pasa a +-2500 nm; los de fuera (en_rango_z = False) no son
-# objetivo ni cuentan como FN. dz_nm: 50 hasta decidirlo con el piloto
-# (50 vs 100 nm a +-800).
+# objetivo ni cuentan como FN. dz_nm = 100: en el piloto a +-800 nm (espejo.yaml,
+# 10 epocas x 10000 muestras) 100 nm no empeoro el RMSE z frente a 50 nm (pareado
+# sobre los emisores que detectan las dos: -1.5 a -4% por rango de fotones).
 #
 datos:
   simulador:                  # campos de simulador.Config (menos n_frames, n_videos y seed)
@@ -50,7 +51,7 @@ datos:
 
 target:
   upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y
-  dz_nm: 50.0                 # 101 planos en [-2500, 2500] + 2 de margen a cada lado = 105 (100 nm si el piloto lo permite)
+  dz_nm: 100.0                # 51 planos en [-2500, 2500] + 2 de margen a cada lado = 55
   planos_margen: 2
   sigma_xy_vox: 1.0
   sigma_z_vox: 1.0
