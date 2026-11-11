@@ -21,7 +21,9 @@ datos:
     fondo_rango: [5.0, 40.0]
     usar_espejo: true
     angulo_espejo_eje_deg: 45.0   # beta desde el eje optico; centro del rango sorteado (espejo_angulo_eje_rango_deg)
-    ratio_reflejo: 0.8
+    ratio_reflejo: 0.8          # sin uso: datos.ratio_reflejo_rango lo sortea por muestra
+    recorte_pupila_reflejo: true   # el reflejo pierde los rayos que no cruzan el espejo (4.7% a 45 grados);
+                                   # ratio_reflejo = reflectividad. ~13 ms por muestra con 8 workers
     usar_celula: true
     diametro_celula_um: 5.0
     altura_celula_nm: 0.0     # centro de la celula en el foco (pendiente de confirmar)
@@ -44,7 +46,8 @@ datos:
   canal_distancia_espejo: true            # entrada con 2 canales: imagen + distancia al espejo
   escala_distancia_px: null               # null -> max(H, W) = 64 px
   max_reintentos_espejo: 20
-  ratio_reflejo_rango: [0.35, 0.8]        # PROVISIONAL: se fija con la calibracion por fotometria
+  ratio_reflejo_rango: [0.5, 1.0]         # calibracion por fotometria de los datos reales con recorte
+                                          # (resultados_recorte_pupila.md): 0.55-1 segun z del real y beta
   celula_diametro_rango_um: [4.0, 6.0]
   celula_altura_rango_nm: null           # null -> altura_celula_nm
   celula_contacto_centrado: true          # contacto celula-espejo en el centro del FOV ...
