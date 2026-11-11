@@ -26,7 +26,8 @@ fondos por defecto (los del test anterior).
 Las CRLB se promedian como varianzas (RMS) sobre z en [-800, 800], sobre los
 quintiles del fondo medio del test y sobre las distancias de cada rango, que
 es lo comparable con un RMSE. No modela el recorte de pupila del reflejo
-(a 45 grados parte del cono de coleccion del reflejo no llega por el espejo), ni
+(a 45 grados parte del cono de coleccion del reflejo no llega por el espejo;
+su efecto en la CRLB esta en figuras/recorte_pupila.py: <= ~12%), ni
 el FOV, ni otros emisores, ni el prior z en [-800, 800] que la red si aprende.
 Los resultados anteriores (resultados_crlb_espejo.md, fig_crlb_espejo_sz+-1)
 son de la convencion vieja: alpha = 34 desde el plano focal y signo_z.
