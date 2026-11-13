@@ -188,7 +188,7 @@ No incluye a los otros emisores ni el prior de la célula. Por eso, además del 
 | cerca: RMSE red / CRLB conjunta (detectados) | 6.1 | 5.0 | 3.3 | 2.0 |
 
 - **El reflejo podría reducir a la mitad el error en z** en cerca (×2.2), y a un cuarto a d < 1 µm. En cerca el reflejo cae del lado compacto de la PSF (z' entre −2 y −8 µm), donde su forma cambia con z' y su localización lateral es buena. En lejos cae del lado de los anillos y aporta menos (×1.5).
-- La red **no llega ni a la cota del real solo** (1.46×). Solo en el rango de menos fotones (< 1530) queda por debajo de esa cota (127 frente a 145 nm), por el prior de la célula y por el sesgo de supervivencia de los detectados. A muchos fotones se queda en un piso de ~35–40 nm en z (aislados: 33 nm cerca, 21 nm lejos) y de ~8.5 nm lateral, donde la cota es 5–12 nm. Ese piso no depende del reflejo: está igual en el control. Posibles causas son la rejilla (dz = 100 nm, ×4 lateral), el centro de masa de ±2 planos y la capacidad o el entrenamiento de la red; este análisis no las separa.
+- La red **no llega ni a la cota del real solo** (1.46×). Solo en el rango de menos fotones (< 1530) queda por debajo de esa cota (127 frente a 145 nm), por el prior de la célula y por el sesgo de supervivencia de los detectados. A muchos fotones se queda en un piso de ~35–40 nm en z (aislados: 33 nm cerca, 21 nm lejos) y de ~8.5 nm lateral, donde la cota es 5–12 nm. Ese piso no depende del reflejo: está igual en el control. No es la rejilla (dz = 100 nm, ×4 lateral) ni el centro de masa de ±2 planos: el error no depende de la posición dentro de la celda y ningún estimador subplano alternativo lo mejora (`resultados_cuantizacion.md`). Lo lateral de los aislados es 3.8–4.2 nm por eje, por debajo de la cota de redondeo; los ~8.5 nm son el RMSE 2D de todos los emisores, que incluye la superposición.
 - Que el cociente RMSE/CRLB conjunta crezca hacia el espejo es justo lo que se espera de una red que ignora el reflejo, porque ahí el reflejo informa más.
 
 ## 4. Datos reales (Yeast6_1, canal derecho)
@@ -269,8 +269,8 @@ Esto matiza lo que se veía a ojo en `resultados_recorte_pupila.md` («con lejos
    - entrenar más con emisores aislados cerca del espejo.
 
    El control de este documento sirve como prueba de aceptación: con − sin < 0 en RMSE z y creciendo con el ratio.
-2. **Agujeros de z de cerca:** comprobar con `ultimo.pt` u otra semilla si el de +400 nm es estable. Para el tope de −2 µm, extender el rango axial del entrenamiento (`z_rango_nm` ±3000 con la célula) o sobremuestrear los polos de la célula.
-3. **Piso de ~35 nm en z a muchos fotones:** probar dz = 50 nm (el piloto dz50/dz100 fue a ±800 nm, sin célula) y el post-procesado.
+2. **Agujeros de z de cerca:** en esta corrida `ultimo.pt` = `mejor.pt` y no hay checkpoints intermedios. El de +400 nm es estable frente a d, fondo, fotones, ratio y β (`resultados_cuantizacion.md`); falta otra semilla para saber si es de esta corrida. Para el tope de −2 µm, extender el rango axial del entrenamiento (`z_rango_nm` ±3000 con la célula) o sobremuestrear los polos de la célula.
+3. **Piso de ~35 nm en z a muchos fotones:** no es cuantización ni el post-procesado (`resultados_cuantizacion.md`), así que dz = 50 nm no se justifica por eso. Queda en la red: que use el reflejo (punto 1) y su precisión propia en z.
 4. **Datos reales:** para decidir la variante con estos datos falta fijar la línea espejo/plano focal (¿es el borde de la franja?) o la posición del foco; un z-stack de beads lo resuelve. Además, antes de pedirle z a la red sobre datos reales hay que acercar la PSF simulada a la medida (z-stack de beads: amplitud de la máscara esférica, aberraciones, los dos lóbulos) y el fondo (~2 fotones/px). Hoy la red está fuera de distribución.
 
 ## Supuestos y limitaciones
