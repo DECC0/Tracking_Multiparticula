@@ -67,7 +67,7 @@ Ajuste lineal de cada serie contra la época en las épocas 80–99. El error es
 
 `train.py` usa AdamW (lr 10⁻³, weight_decay 10⁻⁴) y `torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=3, min_lr=1e-5)` sobre `val_total`, con un paso al final de cada época. Los valores salen de `configs/celula.yaml` (`factor_lr: 0.5`, `paciencia_lr: 3`, `lr_min: 1.0e-5`). Dos detalles:
 
-- La columna `lr` de `log.csv` se escribe **después** de `plan.step`, así que es la lr de la época siguiente. La usada en cada época es la de `log_iter.csv`; se verificó que es constante dentro de cada época.
+- En estas corridas, la columna `lr` de `log.csv` se escribía **después** de `plan.step`, así que es la lr de la época siguiente. La usada en cada época es la de `log_iter.csv`; se verificó que es constante dentro de cada época. *Corregido el 2026-11-12: las corridas nuevas guardan la lr usada en la época (ver la sección 4).*
 - `ReduceLROnPlateau` en modo `rel` con el `threshold` por defecto (10⁻⁴) solo cuenta como mejora una bajada de más del 0.01 %. `mejor.pt`, en cambio, se guarda con cualquier bajada (`<`). Por eso la lr puede caer en épocas en que `mejor.pt` sí se actualiza. La lr cae en la cuarta época seguida sin mejora suficiente (`patience = 3`).
 
 lr usada en cada época (`figuras/convergencia_lr.csv`):
@@ -79,7 +79,26 @@ lr usada en cada época (`figuras/convergencia_lr.csv`):
 
 **Sí decayó en las dos.** Cerca cayó 6 veces y quedó a una caída del mínimo: la siguiente se recortaría a 10⁻⁵. Lejos solo 3 veces, porque mejoró de forma más sostenida, y terminó con una lr 8 veces mayor.
 
-## 4. Propuesta: checkpoints cada 10 épocas y métricas de validación por época (no implementada)
+## 4. Checkpoints cada N épocas y métricas de validación por época
+
+**Implementado (2026-11-12)** como se propuso abajo, con valores por defecto que no cambian nada:
+
+- `entrenamiento.checkpoint_cada: 0` y `entrenamiento.metricas_val: false` en `localizacion/config.py`;
+- `epoca_XXX.pt`, y `val_recall`, `val_precision`, `val_jaccard`, `val_rmse_lat_nm`, `val_rmse_z_nm` en `log.csv`, calculadas en la misma pasada que la pérdida de validación (`train.perdida_val`), más un panel en `curvas.png`;
+- `log.csv` ahora guarda en `lr` la lr usada en la época;
+- `_agregar_fila` reescribe el CSV con la unión de columnas si una corrida se reanuda activando `metricas_val`.
+
+Uso: `--set entrenamiento.checkpoint_cada=10 entrenamiento.metricas_val=true`, o en Hypatia `EXTRA_SET="entrenamiento.checkpoint_cada=10 entrenamiento.metricas_val=true"`, que admite espacios pero no comas.
+
+Tests en `localizacion/tests/test_entrenamiento.py`:
+
+- `test_checkpoint_cada_metricas_val_y_lr_de_la_epoca`: 2 épocas de `smoke.yaml`. Comprueba `epoca_000.pt` y `epoca_001.pt` con `checkpoint_cada=1` y solo `epoca_001.pt` con `checkpoint_cada=2`, las columnas nuevas en [0, 1] y `lr` igual a la de `log_iter.csv`. El test cambia el scheduler por uno que baja la lr al final de cada época, para que el desfase anterior fallara.
+- `test_agregar_fila_con_columnas_nuevas`.
+- La prueba existente verifica que por defecto no aparece nada nuevo.
+
+**Validación:** `perdida_val` con la red `hypatia_celula_b45_cerca` (`mejor.pt`) sobre `localizacion/datos/test_celula_b45_cerca` da recall 0.7572, precisión 0.9496, Jaccard 0.7279, RMSE lateral 21.20 nm y RMSE z 78.49 nm. `evaluate.py` da 0.7572, 0.9498, 0.7280, 21.20 y 78.49: la precisión sale 0.0002 más baja, por los emisores no evaluables.
+
+### Propuesta original
 
 Hoy solo hay `mejor.pt` y `ultimo.pt` (en cerca son el mismo), y `log.csv` solo guarda pérdidas. El cambio mínimo, compatible hacia atrás (los valores por defecto dejan todo como está y las configs y corridas viejas no cambian):
 

@@ -229,6 +229,8 @@ class ConfigEntrenamiento:
     dispositivo: str = "auto"           # "auto", "cpu" o "cuda"
     semilla: int = 0                    # pesos iniciales y orden de los batches
     log_cada: int = 50                  # iteraciones entre lineas de log_iter.csv
+    checkpoint_cada: int = 0            # > 0: guarda tambien epoca_XXX.pt cada tantas epocas (0: no)
+    metricas_val: bool = False          # recall, precision, Jaccard y RMSE de val en log.csv cada epoca
     datos_train: str = None             # carpeta de pregenerar.py; None -> on-the-fly
     datos_val: str = None
     carpeta_corridas: str = None        # None -> localizacion/corridas/; si no, relativa al directorio de trabajo
@@ -245,6 +247,9 @@ class ConfigEntrenamiento:
         _exige(0 < self.factor_lr < 1 and self.paciencia_lr >= 0, "se requiere 0 < factor_lr < 1 y paciencia_lr >= 0")
         _exige(self.parada_temprana is None or self.parada_temprana >= 1, "parada_temprana debe ser >= 1 (o null)")
         _exige(self.workers >= 0 and self.log_cada >= 1, "se requiere workers >= 0 y log_cada >= 1")
+        _exige(isinstance(self.checkpoint_cada, int) and self.checkpoint_cada >= 0,
+               "checkpoint_cada debe ser un entero >= 0 (0: sin checkpoints por epoca)")
+        _exige(isinstance(self.metricas_val, bool), "metricas_val debe ser true o false")
         _exige(self.dispositivo in ("auto", "cpu", "cuda"), f"dispositivo desconocido: {self.dispositivo}")
 
 

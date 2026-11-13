@@ -9,9 +9,9 @@ Convergencia del entrenamiento de las corridas con celula, solo desde sus logs
    cuadrados contra la epoca, con su error estandar OLS y el de Newey-West (lag
    3; las epocas consecutivas no son independientes), el cambio esperado en 10
    epocas y si el IC 95% excluye 0.
-3. Tasa de aprendizaje usada en cada epoca (de log_iter.csv: la columna lr de
-   log.csv se escribe despues de ReduceLROnPlateau.step, asi que es la de la
-   epoca siguiente) y las epocas en que decae.
+3. Tasa de aprendizaje usada en cada epoca (de log_iter.csv: en las corridas
+   anteriores al 2026-11-12 la columna lr de log.csv se escribia despues de
+   ReduceLROnPlateau.step, asi que era la de la epoca siguiente) y las epocas en que decae.
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python

@@ -117,7 +117,10 @@ def graficar_log(carpeta):
     ep = pd.read_csv(carpeta / "log.csv")
     it = pd.read_csv(carpeta / "log_iter.csv") if (carpeta / "log_iter.csv").exists() else None
     terminos = [c[len("train_"):] for c in ep.columns if c.startswith("train_")]
-    fig, axes = plt.subplots(1, len(terminos) + 1, figsize=(5 * (len(terminos) + 1), 3.8))
+    metricas = [c for c in ("val_recall", "val_precision", "val_jaccard") if c in ep]   # entrenamiento.metricas_val
+    rmse = [c for c in ("val_rmse_lat_nm", "val_rmse_z_nm") if c in ep]
+    extra = int(bool(metricas)) + int(bool(rmse))
+    fig, axes = plt.subplots(1, len(terminos) + 1 + extra, figsize=(5 * (len(terminos) + 1 + extra), 3.8))
     colores = {"train_iter": "#86b6ef", "train": "#2a78d6", "val": "#eb6834"}
     for ax, t in zip(axes, terminos):
         if it is not None and len(it):
@@ -127,8 +130,19 @@ def graficar_log(carpeta):
         ax.set_yscale("log")
         ax.set_xlabel("epoca"); ax.set_title(t)
     axes[0].legend(frameon=False, fontsize=9)
-    axes[-1].plot(ep.epoca + 1, ep.lr, "o-", color=colores["train"], lw=2, ms=5)
-    axes[-1].set_yscale("log"); axes[-1].set_xlabel("epoca"); axes[-1].set_title("lr")
+    ax_lr = axes[len(terminos)]
+    ax_lr.plot(ep.epoca + 1, ep.lr, "o-", color=colores["train"], lw=2, ms=5)
+    ax_lr.set_yscale("log"); ax_lr.set_xlabel("epoca"); ax_lr.set_title("lr")
+    paleta = ["#2a78d6", "#eb6834", "#1baf7a"]
+    k = len(terminos) + 1
+    for grupo, titulo in ((metricas, "metricas de val"), (rmse, "RMSE de val [nm]")):
+        if not grupo:
+            continue
+        for c, color in zip(grupo, paleta):
+            axes[k].plot(ep.epoca + 1, ep[c], "o-", color=color, lw=2, ms=5, label=c[len("val_"):])
+        axes[k].set_xlabel("epoca"); axes[k].set_title(titulo)
+        axes[k].legend(frameon=False, fontsize=9)
+        k += 1
     for ax in axes:
         ax.spines[["top", "right"]].set_visible(False)
     fig.suptitle(carpeta.name)

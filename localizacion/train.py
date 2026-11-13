@@ -10,11 +10,22 @@ Uso:
 
 Cada corrida escribe en <carpeta_corridas>/<nombre>_<fecha-hora>/:
     config.yaml     configuracion completa usada
-    log.csv         una fila por epoca: perdidas de train y val, lr, tiempo
+    log.csv         una fila por epoca: perdidas de train y val, lr usada en la epoca, tiempo y, con
+                    entrenamiento.metricas_val, val_recall, val_precision, val_jaccard,
+                    val_rmse_lat_nm y val_rmse_z_nm (detecciones de val con cfg.postproc y
+                    metricas.evaluar; el GT son los emisores evaluables del lote, asi que una
+                    deteccion de un emisor fuera del FOV o de en_rango_z cuenta como FP: la
+                    precision es algo pesimista frente a evaluate.py)
     log_iter.csv    perdida de train cada log_cada iteraciones
     curvas.png      log.csv y log_iter.csv graficados
     ultimo.pt       checkpoint de la ultima epoca (para reanudar)
     mejor.pt        checkpoint con la menor perdida de validacion (para infer.py)
+    epoca_XXX.pt    con entrenamiento.checkpoint_cada = k > 0, el de las epocas k-1, 2k-1, ...
+                    (XXX desde 0, como la columna epoca de log.csv)
+
+La columna lr de log.csv es la lr usada durante la epoca. Las corridas anteriores a
+2026-11-12 guardaban la de despues de ReduceLROnPlateau.step (la de la epoca
+siguiente); log_iter.csv siempre tuvo la usada.
 """
 import argparse
 import csv
@@ -28,7 +39,10 @@ from torch.utils.data import DataLoader
 
 from config import agregar_argumentos, cargar_config, config_desde_args, a_dict, guardar_yaml
 from data.dataset import DatasetSimulado, DatasetDisco, collate
+from data.simulacion import config_simulador
+from metricas import evaluar, resumen
 from models import crear_modelo, crear_perdida, n_parametros
+from postproc import detectar
 from utils import (elegir_dispositivo, modo_amp, autocast, rejilla_de, carpeta_nueva, guardar_checkpoint,
                    cargar_checkpoint, graficar_log, resumen_tiempo, media_ponderada, es_finito)
 
@@ -66,11 +80,20 @@ def _a_dispositivo(lote, dispositivo):
     return (lote[k].to(dispositivo, non_blocking=True) for k in ("imagen", "pos", "valido"))
 
 
+COLUMNAS_METRICAS = {"recall": "recall", "precision": "precision", "jaccard": "jaccard",
+                     "rmse_lat_nm": "rmse_lat_nm", "rmse_z_nm": "rmse_z_nm"}   # clave de metricas.resumen -> val_<nombre>
+R_XY_NM, R_Z_NM = 150.0, 300.0                                   # tolerancia de evaluate.py
+
+
 @torch.no_grad()
-def perdida_val(modelo, loader, rejilla, perdida, amp, dispositivo):
-    """Perdida media (total y por termino) sobre el set de validacion."""
+def perdida_val(modelo, loader, rejilla, perdida, amp, dispositivo, cfg_postproc=None, pixel_nm=None):
+    """Perdida media (total y por termino) sobre el set de validacion. Con
+    cfg_postproc tambien las metricas de deteccion (COLUMNAS_METRICAS) en la misma
+    pasada: detecciones con postproc.detectar y emparejamiento de metricas.evaluar
+    contra las posiciones del lote (emisores evaluables), cada imagen por su idx."""
     modelo.eval()
     sumas, n = {}, 0
+    dets, gts = [], []
     for lote in loader:
         x, pos, val = _a_dispositivo(lote, dispositivo)
         with autocast(amp, dispositivo):
@@ -80,11 +103,33 @@ def perdida_val(modelo, loader, rejilla, perdida, amp, dispositivo):
         for k, t in {"total": total, **v}.items():
             sumas[k] = sumas.get(k, 0.0) + t * B
         n += B
-    return media_ponderada(sumas, n)
+        if cfg_postproc is not None:
+            idx = lote["idx"].numpy()
+            d = detectar(pred, rejilla, cfg_postproc)
+            dets.append(d.assign(video_id=idx[d.pop("b").to_numpy()], frame=0))
+            p, ok = lote["pos"].numpy(), lote["valido"].numpy()
+            b, e = ok.nonzero()
+            gts.append(pd.DataFrame({"video_id": idx[b], "frame": 0, "x_px": p[b, e, 0], "y_px": p[b, e, 1],
+                                     "z_nm": p[b, e, 2], "en_fov": True}))
+    salida = media_ponderada(sumas, n)
+    if cfg_postproc is not None:
+        r = resumen(*evaluar(pd.concat(dets, ignore_index=True), pd.concat(gts, ignore_index=True), pixel_nm,
+                             R_XY_NM, R_Z_NM))
+        salida.update({nombre: float(r[clave]) for clave, nombre in COLUMNAS_METRICAS.items()})
+    return salida
 
 
 def _agregar_fila(ruta, fila):
-    nueva = not Path(ruta).exists()
+    """Agrega una fila al CSV. Si las columnas no son las del encabezado (p. ej. al
+    reanudar con metricas_val activado), reescribe el archivo con la union."""
+    ruta = Path(ruta)
+    if ruta.exists():
+        with open(ruta, newline="") as f:
+            cabecera = next(csv.reader(f), [])
+        if cabecera != list(fila):
+            pd.concat([pd.read_csv(ruta), pd.DataFrame([fila])], ignore_index=True).to_csv(ruta, index=False)
+            return
+    nueva = not ruta.exists()
     with open(ruta, "a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(fila))
         if nueva:
@@ -133,6 +178,8 @@ def entrenar(cfg, carpeta, reanudar=False, log=_imprimir):
     guardar_yaml(a_dict(cfg), carpeta / "config.yaml")
 
     val_loader = _loader(val_ds, cfg, dispositivo, shuffle=False)
+    pixel_nm = config_simulador(cfg.datos, cfg.datos.seed_val).pixel_nm
+    pp_val = cfg.postproc if e.metricas_val else None
     n_iter = len(train_ds) // e.batch
     log(f"{carpeta}\n  dispositivo {dispositivo}, AMP {amp}; modelo {n_parametros(modelo) / 1e3:.1f} k parametros; "
         f"salida {rejilla.forma}\n  train {len(train_ds)} ({type(train_ds).__name__}), val {len(val_ds)}; "
@@ -145,6 +192,7 @@ def entrenar(cfg, carpeta, reanudar=False, log=_imprimir):
         if hasattr(train_ds, "fijar_epoca"):
             train_ds.fijar_epoca(epoca)
         gen = torch.Generator().manual_seed(e.semilla * 1_000_003 + epoca)
+        lr_epoca = opt.param_groups[0]["lr"]                     # la usada en esta epoca (plan.step la cambia al final)
         modelo.train()
         t_ep = t_log = time.time()
         sumas_ep, sumas_log, n_ep, n_log = {}, {}, 0, 0
@@ -181,7 +229,8 @@ def entrenar(cfg, carpeta, reanudar=False, log=_imprimir):
                 sumas_log, n_log, t_log = {}, 0, time.time()
 
         tr = media_ponderada(sumas_ep, n_ep)
-        va = perdida_val(modelo, val_loader, rejilla, perdida, amp, dispositivo)
+        va = perdida_val(modelo, val_loader, rejilla, perdida, amp, dispositivo, pp_val, pixel_nm)
+        metricas = {f"val_{k}": va.pop(k) for k in COLUMNAS_METRICAS.values() if k in va}
         plan.step(va["total"])
         mejor = va["total"] < mejor_val
         mejor_val, sin_mejorar = (va["total"], 0) if mejor else (mejor_val, sin_mejorar + 1)
@@ -190,17 +239,21 @@ def entrenar(cfg, carpeta, reanudar=False, log=_imprimir):
         guardar_checkpoint(carpeta / "ultimo.pt", cfg, modelo, **estado)
         if mejor:
             guardar_checkpoint(carpeta / "mejor.pt", cfg, modelo, **estado)
+        if e.checkpoint_cada and (epoca + 1) % e.checkpoint_cada == 0:
+            guardar_checkpoint(carpeta / f"epoca_{epoca:03d}.pt", cfg, modelo, **estado)
         dt = time.time() - t_ep
-        _agregar_fila(carpeta / "log.csv", {"epoca": epoca, "lr": opt.param_groups[0]["lr"],
+        _agregar_fila(carpeta / "log.csv", {"epoca": epoca, "lr": lr_epoca,
                                             **{f"train_{k}": m for k, m in tr.items()},
                                             **{f"val_{k}": m for k, m in va.items()},
-                                            "mejor": mejor, "t_epoca_s": dt})
+                                            **metricas, "mejor": mejor, "t_epoca_s": dt})
         graficar_log(carpeta)
         memoria = (f", memoria pico {torch.cuda.max_memory_allocated() / 2**30:.2f} GB"
                    if dispositivo.type == "cuda" else "")
         log(f"epoca {epoca + 1}/{e.epocas} ({resumen_tiempo(dt)}{memoria}): train {tr['total']:.4f}, "
             f"val {va['total']:.4f} (mse {va.get('mse', float('nan')):.4f}, dice {va.get('dice', float('nan')):.3f})"
-            f"{'  <- mejor' if mejor else ''}")
+            + (f"; recall {metricas['val_recall']:.3f}, precision {metricas['val_precision']:.3f}, RMSE lateral "
+               f"{metricas['val_rmse_lat_nm']:.1f} nm, z {metricas['val_rmse_z_nm']:.1f} nm" if metricas else "")
+            + f"{'  <- mejor' if mejor else ''}")
         if e.parada_temprana and sin_mejorar >= e.parada_temprana:
             log(f"parada temprana: {sin_mejorar} epocas sin mejorar en val")
             break
