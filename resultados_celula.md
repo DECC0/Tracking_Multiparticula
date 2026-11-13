@@ -201,7 +201,7 @@ No incluye a los otros emisores ni el prior de la célula. Por eso, además del 
 - La línea espejo/plano focal se toma en el borde nítido de la franja del espejo, a −32.0 px del punto medio del par. Es un supuesto: `resultados_datos_reales.md` señala que el borde forma ~5° con t.
 - β = 45°, por el acople en m y el comentario de la adquisición.
 - La triangulación es z_real = −s_M / tan β + (L/2) tan β (s_M: punto medio a lo largo de m desde la línea), verificada contra `GeometriaEspejo`. A 45°, z_real = −s_reflejo.
-- z triangulada: media −836 nm, std 260 nm, rango −1265 a −333 nm. Con β = 40° la media es −1813 nm y con 50° es +115 nm (corr > 0.99 con la de 45°): **el desfase absoluto depende mucho de β y de la línea; la correlación y la pendiente, no.**
+- z triangulada: media −836 nm, std 260 nm, rango −1265 a −333 nm. Con β = 40° la media es −1813 nm y con 50° es +115 nm (corr > 0.99 con la de 45°), unos **0.19 µm por grado** alrededor de 45°. Coincide con dz/dβ = s_M / sin²β + (L/2) / cos²β = 10.9 µm/rad con s_M = 3.15 µm y L/2 = 2.32 µm. Correr la línea 1 µm a lo largo de m desplaza la z 1 µm (a 45°): **el desfase absoluto depende de β y, sobre todo, de la línea; la correlación y la pendiente, no.**
 
 ### La red sobre la ventana de 96 px
 
@@ -277,5 +277,5 @@ Esto matiza lo que se veía a ojo en `resultados_recorte_pupila.md` («con lejos
 
 - La CRLB es de un emisor sin vecinos y sin prior. La comparación justa con la red es la de los aislados.
 - En el control, la red entrenada con reflejo ve imágenes sin reflejo (ratio 0, fuera del rango de entrenamiento [0.45, 1.0]). Eso solo podría favorecer la hipótesis «usa el reflejo», y aun así no aparece ninguna diferencia.
-- Datos reales: una sola partícula y 100 cuadros. La forma de la PSF es simétrica entre variantes bajo z → −z, así que la decisión depende de la z absoluta (línea y foco). β y la línea no están calibrados, así que el desfase absoluto entre la z de la red y la triangulada no es interpretable (±1 µm por grado de β). La fracción en el anillo depende de la estimación del fondo.
+- Datos reales: una sola partícula y 100 cuadros. La forma de la PSF es simétrica entre variantes bajo z → −z, así que la decisión depende de la z absoluta (línea y foco). β y la línea no están calibrados, así que el desfase absoluto entre la z de la red y la triangulada no es interpretable (~0.19 µm por grado de β alrededor de 45°, y 1 µm por cada µm que se corra la línea). La fracción en el anillo depende de la estimación del fondo.
 - `figuras/red_celula.py reales` importa `figuras/analisis_datos_reales.py`.
