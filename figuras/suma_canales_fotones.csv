@@ -1,0 +1,45 @@
+punto,radio_um,fuente,e_media,e_std,metodo
+real,1.5,der,15083.085666666671,2576.845348151004,disco
+real,1.5,izq_reg,4855.278682613399,854.2989187138714,disco
+real,1.5,suma,19786.557532907424,3364.8919410128983,disco
+real,1.5,suma_eq,28622.98328317479,4918.656653593788,disco
+real,1.5,izq_nativo,4941.749333333332,874.4073175977578,disco
+real,2.5,der,31441.720666666668,4926.681434512684,disco
+real,2.5,izq_reg,11053.092876835315,1750.5320152218728,disco
+real,2.5,suma,42346.47810530516,6579.896130645618,disco
+real,2.5,suma_eq,62765.27511599156,9753.356913541144,disco
+real,2.5,izq_nativo,11260.769333333335,1746.3182371648968,disco
+reflejo,1.5,der,6394.966000000001,1219.4216327553502,disco
+reflejo,1.5,izq_reg,2388.8506386992826,416.36060623587247,disco
+reflejo,1.5,suma,8666.640135822228,1619.6320897616945,disco
+reflejo,1.5,suma_eq,13011.685848768004,2396.360880176649,disco
+reflejo,1.5,izq_nativo,2420.826666666667,436.12768956946013,disco
+reflejo,2.5,der,13995.591999999999,2190.4439673403954,disco
+reflejo,2.5,izq_reg,5345.504335544262,955.291759417975,disco
+reflejo,2.5,suma,19175.33848969496,3071.967553062314,disco
+reflejo,2.5,suma_eq,28901.72049874934,4822.795854610741,disco
+reflejo,2.5,izq_nativo,5378.411999999999,912.2353907748092,disco
+real,,der,94128.33195335664,,ajuste cerca
+real,,izq_reg,62399.608189788545,,ajuste cerca
+real,,suma,210182.28589736516,,ajuste cerca
+real,,suma_eq,343471.0126734269,,ajuste cerca
+real,,der,13328.307861718995,,"ajuste cerca, |z| <= 3 um"
+real,,izq_reg,4971.166693017932,,"ajuste cerca, |z| <= 3 um"
+real,,suma,19041.441072175836,,"ajuste cerca, |z| <= 3 um"
+real,,suma_eq,29729.504778492843,,"ajuste cerca, |z| <= 3 um"
+real,,der,96365.81010952497,,ajuste lejos
+real,,izq_reg,59698.787705779025,,ajuste lejos
+real,,suma,188056.96209464048,,ajuste lejos
+real,,suma_eq,316279.8535281745,,ajuste lejos
+real,,der,14045.811444684394,,"ajuste lejos, |z| <= 3 um"
+real,,izq_reg,4691.693845770074,,"ajuste lejos, |z| <= 3 um"
+real,,suma,20114.163628150167,,"ajuste lejos, |z| <= 3 um"
+real,,suma_eq,29344.74901033918,,"ajuste lejos, |z| <= 3 um"
+reflejo,,der,26044.580587882396,,ajuste cerca
+reflejo,,izq_reg,15522.759597629332,,ajuste cerca
+reflejo,,suma,51379.989015139494,,ajuste cerca
+reflejo,,suma_eq,82663.1311120753,,ajuste cerca
+reflejo,,der,26267.441844300327,,ajuste lejos
+reflejo,,izq_reg,15257.370552538745,,ajuste lejos
+reflejo,,suma,38872.24275340954,,ajuste lejos
+reflejo,,suma_eq,80583.88401831611,,ajuste lejos
