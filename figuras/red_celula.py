@@ -80,8 +80,8 @@ R_ASOC_REAL_PX = 3.0
 TIF_DEF = "/home/decar/Datos Alex/Yeast6_1_MMStack_Pos0.ome.tif"
 
 
-def cargar_red(var, dispositivo):
-    modelo, cfg, _ = cargar_modelo(CORRIDAS / CORRIDA[var] / "mejor.pt", dispositivo)
+def cargar_red(var, dispositivo, checkpoint=None):
+    modelo, cfg, _ = cargar_modelo(checkpoint or CORRIDAS / CORRIDA[var] / "mejor.pt", dispositivo)
     cs = config_simulador(cfg.datos, cfg.datos.seed_train)
     return modelo, cfg, cs
 
@@ -99,37 +99,45 @@ def geometria(beta, phi, x0, y0, n=1):
 # Curva de transferencia
 # ----------------------------------------------------------------------------
 
-def transferencia(var, n_rep, dispositivo, rng):
-    modelo, cfg, cs = cargar_red(var, dispositivo)
-    geo = geometria(45.0, 0.0, X_LINEA, Y_EMISOR)
-    cg = config_geometria(cs, geo.iloc[0])
-    assert cg.recorte_pupila_real and cg.recorte_pupila_reflejo
-    psf = sim.PSFRecortada(cg, k_psf(var))
-    assert not psf.completa
-    esp = sim.Espejo(cg)
-    b = np.radians(45.0)
-    filas, imgs = [], []
-    for N in N_FOT:
-        for ratio in (RATIO, 0.0):
-            for z in Z_BARRIDO:
-                for r in range(n_rep):
-                    x = X_LINEA + (D_NM - np.sin(b) * z) / np.cos(b) / cg.pixel_nm + rng.uniform(-0.5, 0.5)
-                    y = Y_EMISOR + rng.uniform(-0.5, 0.5)
-                    p = np.array([x, y, z])
-                    xr, yr, zr = esp.reflejar(p)
-                    assert abs(esp.distancia_nm(esp.a_nm(p)) - D_NM) < 40.0      # +-0.5 px de jitter en x
-                    img = np.full((H, W), FONDO)
-                    psf.colocar(img, x, y, z, N)
-                    psf.colocar(img, xr, yr, zr, ratio * N)
-                    imgs.append(sim.aplicar_camara(img, cg, rng))
-                    filas.append(dict(variante=var, fotones=N, ratio=ratio, z_nm=z, rep=r, x_px=x, y_px=y,
-                                      x_reflejo_px=xr, y_reflejo_px=yr, z_reflejo_nm=zr))
+def condiciones_base():
+    """Las de la curva de transferencia: N en N_FOT, con reflejo (RATIO) y sin el."""
+    return [dict(nombre="base", d_nm=D_NM, fondo=FONDO, fotones=N, ratio=r, beta=45.0) for N in N_FOT for r in (RATIO, 0.0)]
+
+
+def transferencia(var, n_rep, dispositivo, rng, checkpoint=None, zs=Z_BARRIDO, condiciones=None):
+    """Un emisor aislado por imagen para cada condicion (d_nm, fondo, fotones, ratio,
+    beta), z en zs y n_rep repeticiones; la red y su deteccion mas cercana (<= 150 nm)."""
+    modelo, cfg, cs = cargar_red(var, dispositivo, checkpoint)
+    psfs, filas, imgs, geos = {}, [], [], []
+    for c in condiciones or condiciones_base():
+        beta = c["beta"]
+        geo = geometria(beta, 0.0, X_LINEA, Y_EMISOR)
+        cg = config_geometria(cs, geo.iloc[0])
+        assert cg.recorte_pupila_real and cg.recorte_pupila_reflejo
+        if beta not in psfs:
+            psfs[beta] = sim.PSFRecortada(cg, k_psf(var))
+            assert not psfs[beta].completa
+        psf, esp, b = psfs[beta], sim.Espejo(cg), np.radians(beta)
+        for z in zs:
+            for r in range(n_rep):
+                x = X_LINEA + (c["d_nm"] - np.sin(b) * z) / np.cos(b) / cg.pixel_nm + rng.uniform(-0.5, 0.5)
+                y = Y_EMISOR + rng.uniform(-0.5, 0.5)
+                p = np.array([x, y, z])
+                xr, yr, zr = esp.reflejar(p)
+                assert abs(esp.distancia_nm(esp.a_nm(p)) - c["d_nm"]) < 40.0      # +-0.5 px de jitter en x
+                img = np.full((H, W), float(c["fondo"]))
+                psf.colocar(img, x, y, z, c["fotones"])
+                psf.colocar(img, xr, yr, zr, c["ratio"] * c["fotones"])
+                imgs.append(sim.aplicar_camara(img, cg, rng))
+                geos.append(geo)
+                filas.append(dict(variante=var, condicion=c["nombre"], d_nm=c["d_nm"], fondo=c["fondo"], beta=beta,
+                                  fotones=c["fotones"], ratio=c["ratio"], z_nm=z, rep=r, x_px=x, y_px=y,
+                                  x_reflejo_px=xr, y_reflejo_px=yr, z_reflejo_nm=zr))
     t = pd.DataFrame(filas)
-    det = localizar(modelo, np.stack(imgs), cfg, cg, dispositivo, geometria=geometria(45.0, 0.0, X_LINEA, Y_EMISOR,
-                                                                                         len(imgs)))
+    det = localizar(modelo, np.stack(imgs), cfg, cg, dispositivo, geometria=pd.concat(geos, ignore_index=True))
     px = cg.pixel_nm
-    z_pred, conf, n_det = np.full(len(t), np.nan), np.full(len(t), np.nan), np.zeros(len(t), int)
-    sobre_reflejo = np.zeros(len(t), int)
+    pred = np.full((len(t), 4), np.nan)                          # x, y, z, conf de la deteccion del emisor
+    n_det, sobre_reflejo = np.zeros(len(t), int), np.zeros(len(t), int)
     for i, d in det.groupby("t"):
         dl = np.hypot(d.x_px - t.x_px.iat[i], d.y_px - t.y_px.iat[i]) * px
         dr = np.hypot(d.x_px - t.x_reflejo_px.iat[i], d.y_px - t.y_reflejo_px.iat[i]) * px
@@ -137,8 +145,96 @@ def transferencia(var, n_rep, dispositivo, rng):
         sobre_reflejo[i] = int((dr <= R_ASOC_NM).sum())
         if (dl <= R_ASOC_NM).any():
             j = np.argmin(dl.to_numpy())
-            z_pred[i], conf[i] = d.z_nm.iat[j], d.conf.iat[j]
-    return t.assign(z_pred_nm=z_pred, conf=conf, n_det=n_det, det_sobre_reflejo=sobre_reflejo)
+            pred[i] = d.x_px.iat[j], d.y_px.iat[j], d.z_nm.iat[j], d.conf.iat[j]
+    return t.assign(x_pred_px=pred[:, 0], y_pred_px=pred[:, 1], z_pred_nm=pred[:, 2], conf=pred[:, 3], n_det=n_det,
+                    det_sobre_reflejo=sobre_reflejo)
+
+
+Z_AGUJERO = np.arange(0.0, 800.1, 10.0)
+BASE_AGUJERO = dict(nombre="base", d_nm=D_NM, fondo=FONDO, fotones=10000.0, ratio=RATIO, beta=45.0)
+VARIACIONES_AGUJERO = [("d_nm", 500.0), ("d_nm", 1000.0), ("d_nm", 3500.0), ("fondo", 5.0), ("fondo", 40.0),
+                       ("fotones", 3000.0), ("fotones", 30000.0), ("ratio", 0.0), ("beta", 40.0), ("beta", 50.0)]
+
+
+def bordes_agujero(s, imgs):
+    """De una condicion: intervalo de z real donde la deteccion baja de 0.9 (y su minimo),
+    z predicha mediana justo antes y justo despues de ese intervalo, y el mayor hueco entre
+    z predichas consecutivas (de todas las imagenes, z predicha en [100, 800]): las z que
+    la red no devuelve nunca."""
+    s = s.sort_values("z_nm")
+    bajo = s.z_nm[s.detectado < 0.9]
+    out = dict(z_det_bajo_desde=bajo.min() if len(bajo) else np.nan, z_det_bajo_hasta=bajo.max() if len(bajo) else np.nan,
+               det_min=s.detectado.min(), z_det_min=s.z_nm.iat[int(np.argmin(s.detectado.to_numpy()))])
+    if len(bajo):
+        antes, despues = s[s.z_nm < bajo.min()], s[s.z_nm > bajo.max()]
+        out.update(z_pred_antes=antes.z_pred_mediana.iat[-1] if len(antes) else np.nan,
+                   z_pred_despues=despues.z_pred_mediana.iat[0] if len(despues) else np.nan)
+    zp = np.sort(imgs.z_pred_nm.dropna().to_numpy())
+    zp = zp[(zp >= 100) & (zp <= 800)]
+    if len(zp) > 1:
+        k = int(np.argmax(np.diff(zp)))
+        out.update(hueco_pred_desde=zp[k], hueco_pred_hasta=zp[k + 1], hueco_pred_nm=zp[k + 1] - zp[k])
+    return out
+
+
+def agujero(a, dispositivo, rng, salida):
+    """Agujero de +400 nm de cerca: curva de transferencia fina (z en [0, 800] cada 10 nm)
+    en la condicion base y variando una cosa a la vez (d, fondo, fotones, ratio, beta)."""
+    conds = [BASE_AGUJERO] + [dict(BASE_AGUJERO, **{k: v}, nombre=f"{k}={v:g}") for k, v in VARIACIONES_AGUJERO]
+    ck = dict(a.checkpoint or []).get("cerca")
+    previo = salida / "red_celula_agujero_imagenes.csv"
+    if a.reusar and previo.exists():
+        t = pd.read_csv(previo)
+    else:
+        t = transferencia("cerca", a.n_rep, dispositivo, rng, ck, Z_AGUJERO, conds)
+        t.to_csv(previo, index=False, float_format="%.6g")
+    r = resumen_transferencia(t)
+    r.to_csv(salida / "red_celula_agujero.csv", index=False)
+    filas = [dict(condicion=c, **bordes_agujero(s, t[t.condicion == c])) for c, s in r.groupby("condicion", sort=False)]
+    b = pd.DataFrame(filas)
+    b.to_csv(salida / "red_celula_agujero_bordes.csv", index=False)
+    print(f"checkpoint: {ck or 'mejor.pt'}; {int(t.groupby(['condicion', 'z_nm']).size().max())} imagenes por (condicion, z)")
+    with pd.option_context("display.width", 200):
+        print(b.to_string(index=False, float_format=lambda v: f"{v:.3g}"))
+    figura_agujero(r, salida / "fig_red_celula_agujero")
+
+
+def figura_agujero(r, ruta):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({"font.size": 9, "axes.spines.top": False, "axes.spines.right": False})
+    grupos = [("base", ["base"]), ("d al espejo", ["d_nm=500", "d_nm=1000", "d_nm=3500"]),
+              ("fondo", ["fondo=5", "fondo=40"]), ("fotones", ["fotones=3000", "fotones=30000"]),
+              ("ratio y beta", ["ratio=0", "beta=40", "beta=50"])]
+    paleta = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+    fig, axes = plt.subplots(2, len(grupos), figsize=(3.6 * len(grupos), 6.2), height_ratios=[2, 1], sharex=True)
+    base = r[r.condicion == "base"]
+    for j, (titulo, conds) in enumerate(grupos):
+        ax, ax2 = axes[0, j], axes[1, j]
+        if titulo != "base":
+            ax.plot(base.z_nm, base.z_pred_mediana, "-", color="#8a8984", lw=1.2, label="base")
+            ax2.plot(base.z_nm, base.detectado, "-", color="#8a8984", lw=1.2)
+        for k, c in enumerate(conds):
+            s = r[r.condicion == c]
+            ax.plot(s.z_nm, s.z_pred_mediana, "-", color=paleta[k], lw=1.6, label=c)
+            ax2.plot(s.z_nm, s.detectado, "-", color=paleta[k], lw=1.6)
+        ax.plot([0, 800], [0, 800], ":", color="#52514e", lw=0.8)
+        for v in (300, 600):
+            ax.axhline(v, color="#e6e5e0", lw=0.8)
+        ax.set_title(titulo, fontsize=10)
+        ax.legend(frameon=False, fontsize=7)
+        ax2.set_ylim(0, 1.03)
+        ax2.set_xlabel("z real [nm]")
+        for x in (ax, ax2):
+            x.grid(True, color="#e6e5e0", lw=0.6)
+    axes[0, 0].set_ylabel("z predicha [nm] (mediana)")
+    axes[1, 0].set_ylabel("detectado")
+    fig.suptitle("Agujero de +400 nm de la red cerca: emisor aislado (base: d = 2 um, fondo 20, N = 1e4, ratio 0.7, "
+                 "beta 45), una variacion por panel", fontsize=10.5)
+    fig.tight_layout()
+    fig.savefig(ruta.with_suffix(".png"), dpi=300)
+    plt.close(fig)
 
 
 def fisher_z(salida):
@@ -172,7 +268,8 @@ def resumen_transferencia(t):
         return pd.Series(dict(detectado=ok.mean(), z_pred_p16=q[0], z_pred_mediana=q[1], z_pred_p84=q[2],
                               rmse_z=np.sqrt(np.mean(dz ** 2)) if ok.any() else np.nan,
                               fp_por_imagen=(s.n_det - ok).mean(), fp_sobre_reflejo=s.det_sobre_reflejo.mean()))
-    return (t.assign(z_real=t.z_nm).groupby(["variante", "fotones", "ratio", "z_nm"])
+    claves = [c for c in ("variante", "condicion", "fotones", "ratio", "z_nm") if c in t]
+    return (t.assign(z_real=t.z_nm).groupby(claves)
             .apply(agg, include_groups=False).reset_index())
 
 
@@ -589,9 +686,12 @@ def figura_reales(f, imagenes, m, phi, beta_deg, ruta):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("modo", choices=("transferencia", "reales", "fisher"))
+    p.add_argument("modo", choices=("transferencia", "reales", "fisher", "agujero"))
+    p.add_argument("--checkpoint", nargs=2, action="append", metavar=("VARIANTE", "RUTA"),
+                   help="transferencia / agujero: checkpoint en lugar de mejor.pt de la corrida de la variante")
     p.add_argument("--variantes", nargs="+", default=["cerca", "lejos"], choices=list(CORRIDA))
     p.add_argument("--n-rep", type=int, default=8, help="transferencia: imagenes por (z, N, ratio)")
+    p.add_argument("--reusar", action="store_true", help="agujero: resume red_celula_agujero_imagenes.csv sin correr la red")
     p.add_argument("--tif", default=TIF_DEF)
     p.add_argument("--beta-deg", type=float, default=45.0)
     p.add_argument("--seed", type=int, default=0)
@@ -601,11 +701,16 @@ def main():
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
     dispositivo = elegir_dispositivo(a.dispositivo)
+    if a.modo == "agujero":
+        agujero(a, dispositivo, rng, salida)
+        return
     if a.modo == "fisher":
         fisher_z(salida)
         return
     if a.modo == "transferencia":
-        t = pd.concat([transferencia(v, a.n_rep, dispositivo, rng) for v in a.variantes], ignore_index=True)
+        t = pd.concat([transferencia(v, a.n_rep, dispositivo, rng, dict(a.checkpoint or []).get(v))
+                       for v in a.variantes], ignore_index=True)
+        t.to_csv(salida / "red_celula_transferencia_imagenes.csv", index=False, float_format="%.6g")
         r = resumen_transferencia(t)
         r.to_csv(salida / "red_celula_transferencia.csv", index=False)
         figura_transferencia(r, salida / "fig_red_celula_transferencia")
