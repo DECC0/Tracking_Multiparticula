@@ -23,6 +23,19 @@ Sin el test de la variante (localizacion/datos/test_espejo_b45_<variante>,
 generar_espejo.py) solo se calcula la CRLB, con rangos de d y de fotones y
 fondos por defecto (los del test anterior).
 
+4. Con --celula, en lugar de 1-3: CRLB por emisor del test con celula
+   (localizacion/datos/test_celula_b45_<variante>, sin rejilla canonica):
+   cada emisor evaluable con la geometria, ratio_reflejo y el mapa de fondo
+   exactos de su muestra (regenerado con su flujo del simulador), la imagen
+   entera de 96 x 96 como ROI (corte del FOV incluido), real y reflejo con el
+   recorte de pupila (PSFRecortada, z exacta, sin banco) y parametros (x, y,
+   z, N, b) con b un desplazamiento del fondo; solo, conjunto (r conocido) y
+   conjunto con r desconocido. Por rango de z, fotones y distancia al espejo,
+   junto al RMSE z de las redes (evaluacion_test_celula_b45_<variante>), con
+   IC 95% por bootstrap de imagenes, tambien solo de los emisores aislados
+   (> 1 um lateral de otro real y de otro reflejo: sin otros emisores, como la
+   CRLB). Sin el prior de la celula ni los demas emisores.
+
 Las CRLB se promedian como varianzas (RMS) sobre z en [-800, 800], sobre los
 quintiles del fondo medio del test y sobre las distancias de cada rango, que
 es lo comparable con un RMSE. No modela el recorte de pupila del reflejo
@@ -37,15 +50,20 @@ Uso:
     $PY figuras/crlb_espejo.py              # redes: corridas/*/evaluacion_test_espejo_b45_<variante>/ (salvo humo_*)
     $PY figuras/crlb_espejo.py --red espejo localizacion/corridas/<corrida>/evaluacion_test_espejo_b45_lejos [--red ...]
     $PY figuras/crlb_espejo.py --variantes cerca --sufijo _x
+    $PY figuras/crlb_espejo.py --celula [--variantes cerca lejos] [--procesos 14]   # ~2 min por variante
 Escribe en figuras/: fig_crlb_espejo_b45_<variante>.png/.pdf, crlb_espejo_b45_<variante>.csv
-(rejilla completa de la CRLB) y crlb_espejo_rangos_b45_<variante>.csv (por rango, con las redes).
+(rejilla completa de la CRLB) y crlb_espejo_rangos_b45_<variante>.csv (por rango, con las redes);
+con --celula: fig_crlb_celula_b45_<variante>.png/.pdf, crlb_celula_b45_<variante>.csv (por emisor) y
+crlb_celula_rangos_b45_<variante>.csv (por rango de z, fotones y distancia al espejo, columna tabla).
 """
 import argparse
 import json
+import os
 import re
 import sys
 import textwrap
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -90,13 +108,19 @@ def unitaria(banco, x, y, z, forma):
     return img.ravel()
 
 
-def derivadas(banco, x, y, z, forma):
+def derivadas(banco, x, y, z, forma, hz=None):
     """PSF unitaria g (P,) y sus derivadas G (3, P) respecto de (x [px], y [px],
-    z [nm]), con los mismos pasos que simulador._fisher_roi."""
+    z [nm]), con los mismos pasos que simulador._fisher_roi. banco es un
+    BancoPSF (z con medio paso de su rejilla) o, con hz [nm], cualquier objeto
+    con colocar, p. ej. PSFRecortada (PSF exacta en cada z: diferencia centrada
+    con paso hz)."""
     h = 1e-3
-    zg = banco.z_grid
-    hz = np.diff(zg).min() / 2
-    z1, z2 = max(z - hz, zg[0]), min(z + hz, zg[-1])
+    if hz is None:
+        zg = banco.z_grid
+        hz = np.diff(zg).min() / 2
+        z1, z2 = max(z - hz, zg[0]), min(z + hz, zg[-1])
+    else:
+        z1, z2 = z - hz, z + hz
     u = lambda xx, yy, zz: unitaria(banco, xx, yy, zz, forma)   # noqa: E731
     G = np.stack([(u(x + h, y, z) - u(x - h, y, z)) / (2 * h),
                   (u(x, y + h, z) - u(x, y - h, z)) / (2 * h),
@@ -104,11 +128,13 @@ def derivadas(banco, x, y, z, forma):
     return u(x, y, z), G
 
 
-def var_parametros(s, Ju, N, b, v):
-    """Diagonal de la inversa de Fisher para (x, y, z, N, b) con mu = b + N s,
-    d mu / d(x, y, z) = N Ju, ruido Poisson + lectura (var = mu + v). s (P,),
-    Ju (3, P); N, b escalares."""
-    J = np.vstack([N * Ju, s, np.ones_like(s)])
+def var_parametros(s, Ju, N, b, v, extra=()):
+    """Diagonal de la inversa de Fisher para (x, y, z, N, b[, extra]) con mu =
+    b + N s, d mu / d(x, y, z) = N Ju, ruido Poisson + lectura (var = mu + v).
+    s (P,), Ju (3, P); N escalar; b escalar o mapa (P,) de fondo conocido en
+    forma (el parametro es entonces un desplazamiento uniforme sobre el);
+    extra: derivadas (P,) de parametros de molestia adicionales."""
+    J = np.vstack([N * Ju, s, np.ones_like(s), *extra])
     F = (J / (b + N * s + v)) @ J.T
     return np.diag(np.linalg.inv(F))
 
@@ -558,6 +584,257 @@ def figura(variante, crlb, tabla, redes, bd, bf, fondos, ruta):
     plt.close(fig)
 
 
+# ----------------------------------------------------------------------------
+# Celula: CRLB por emisor del test (--celula)
+# ----------------------------------------------------------------------------
+
+HZ_CELULA_NM = 10.0                     # paso de la derivada en z con PSFRecortada (PSF exacta en cada z)
+BORDES_CELULA = {"z": ("z_nm", np.linspace(-2500.0, 2500.0, 11), "z del emisor [nm]", False),
+                 "fotones": ("photons", np.geomspace(1000.0, 30000.0, 9), "fotones del real", True),
+                 "dist_espejo": ("d_espejo_nm", np.array([0, 500, 1000, 1500, 2000, 3000, 4000, 6000.0]),
+                                 "distancia al espejo [nm]", False)}
+AISLADO_NM = 1000.0                     # sin otro real ni otro reflejo a menos de esto (lateral): comparable con la CRLB
+
+
+def config_muestra_celula(cfg, fila):
+    """simulador.Config de una muestra del test con celula (geometria, ratio y fondo de muestras.csv)."""
+    return replace(cfg, angulo_espejo_eje_deg=float(fila.espejo_angulo_eje_deg),
+                   orientacion_espejo_deg=float(fila.espejo_orientacion_deg),
+                   espejo_punto_px=(float(fila.espejo_punto_x_px), float(fila.espejo_punto_y_px)),
+                   ratio_reflejo=float(fila.ratio_reflejo), fondo_no_uniforme=bool(fila.fondo_no_uniforme))
+
+
+def _crlb_muestra(tarea):
+    """sqrt(CRLB) en z y lateral de los emisores evaluables de una muestra: en la
+    imagen entera (H x W, con el corte del FOV), con su fondo exacto (mapa
+    conocido en forma, desplazamiento desconocido), real y reflejo con el
+    recorte de pupila (PSFRecortada) y parametros (x, y, z, N, b):
+        solo         mu = b + N g(p)                   (real recortado, sin reflejo)
+        conjunto     mu = b + N g(p) + r N g'(p')      (r conocido)
+        conjunto_r   lo mismo con r desconocido (parametro de molestia)"""
+    cfg, K, idx, filas = tarea
+    psf, esp, px = sim.PSFRecortada(cfg, K), sim.Espejo(cfg), cfg.pixel_nm
+    assert not psf.completa
+    fondo = sim.generar_fondo(cfg, sim.rngs_video(cfg.seed, idx)["fondo"])
+    v, r, forma = sim._var_lectura_e2(cfg), cfg.ratio_reflejo, (cfg.H, cfg.W)
+    T = transformacion_px(esp, px)
+    b = fondo.ravel()
+    out = []
+    for pid, x, y, z, N, xr_gt, yr_gt, zr_gt in filas:
+        xr, yr, zr = esp.reflejar(np.array([x, y, z]))
+        assert abs(xr - xr_gt) < 1e-6 and abs(yr - yr_gt) < 1e-6 and abs(zr - zr_gt) < 1e-3
+        g1, G1 = derivadas(psf, x, y, z, forma, HZ_CELULA_NM)
+        g2, G2 = derivadas(psf, xr, yr, zr, forma, HZ_CELULA_NM)
+        v_solo = var_parametros(g1, G1, N, b, v)
+        s, Ju = g1 + r * g2, G1 + r * (T.T @ G2)
+        v_conj = var_parametros(s, Ju, N, b, v)
+        v_conj_r = var_parametros(s, Ju, N, b, v, extra=[N * g2]) if g2.sum() > 1e-4 else v_conj
+        out.append(dict(video_id=idx, particle_id=pid, fondo_local=float(fondo[int(np.clip(round(y), 0, cfg.H - 1)),
+                                                                               int(np.clip(round(x), 0, cfg.W - 1))]),
+                        energia_real_en_fov=float(g1.sum()), energia_reflejo_en_fov=float(g2.sum()),
+                        crlb_z_solo_nm=np.sqrt(v_solo[2]), crlb_z_conjunto_nm=np.sqrt(v_conj[2]),
+                        crlb_z_conjunto_r_nm=np.sqrt(v_conj_r[2]),
+                        crlb_lat_solo_nm=np.sqrt(v_solo[0] + v_solo[1]) * px,
+                        crlb_lat_conjunto_nm=np.sqrt(v_conj[0] + v_conj[1]) * px))
+    return out, float(fondo.mean())
+
+
+def crlb_test_celula(carpeta, procesos):
+    """DataFrame por emisor evaluable del test con celula: GT + sqrt(CRLB) de _crlb_muestra."""
+    from concurrent.futures import ProcessPoolExecutor
+    carpeta = Path(carpeta)
+    meta = json.loads((carpeta / "config_simulador.json").read_text())
+    cfg = sim.cargar_config(carpeta / "config_simulador.json")
+    assert cfg.usar_celula and cfg.recorte_pupila_real and cfg.recorte_pupila_reflejo
+    K = int(meta["K_psf_usado"])
+    gt = pd.read_csv(carpeta / "ground_truth.csv")
+    m = pd.read_csv(carpeta / "muestras.csv").set_index("video_id")
+    assert (m.reintentos == 0).all()
+    ev = gt[gt.en_fov & gt.en_rango_z]
+    cols = ["particle_id", "x_px", "y_px", "z_nm", "photons", "x_reflejo_px", "y_reflejo_px", "z_reflejo_nm"]
+    tareas = [(config_muestra_celula(cfg, m.loc[v]), K, int(v), g[cols].to_numpy(float).tolist())
+              for v, g in ev.groupby("video_id")]
+    filas = []
+    with ProcessPoolExecutor(procesos) as ex:
+        for (out, fondo_medio), t in zip(ex.map(_crlb_muestra, tareas, chunksize=4), tareas):
+            assert np.isclose(fondo_medio, m.loc[t[2]].fondo_medio), "el fondo regenerado no es el del test"
+            filas += out
+    c = pd.DataFrame(filas)
+    c["particle_id"] = c.particle_id.astype(int)
+    px = cfg.pixel_nm
+    g = ev.merge(c, on=["video_id", "particle_id"], validate="1:1")
+    dif = np.c_[(g.x_reflejo_px - g.x_px) * px, (g.y_reflejo_px - g.y_px) * px, g.z_reflejo_nm - g.z_nm]
+    g["d_espejo_nm"] = 0.5 * np.linalg.norm(dif, axis=1)
+    g["ratio_reflejo"] = g.video_id.map(m.ratio_reflejo)
+    return cfg, g
+
+
+def vecinos_laterales(g, px):
+    """Distancia lateral [nm] al otro real y al reflejo de otro emisor mas cercanos del frame (todo el GT)."""
+    d_real, d_refl = np.full(len(g), np.inf), np.full(len(g), np.inf)
+    xy = g[["x_px", "y_px"]].to_numpy(float) * px
+    xr = g[["x_reflejo_px", "y_reflejo_px"]].to_numpy(float) * px
+    for _, idx in g.groupby("video_id").indices.items():
+        if len(idx) < 2:
+            continue
+        for a, out in ((xy, d_real), (xr, d_refl)):
+            d = np.hypot(*(xy[idx][:, None] - a[idx][None]).transpose(2, 0, 1))
+            np.fill_diagonal(d, np.inf)
+            out[idx] = d.min(1)
+    return d_real, d_refl
+
+
+def tablas_celula(crlb, redes, n_boot, rng):
+    """{variable: DataFrame} por rango: RMS de sqrt(CRLB) (de todos los evaluables y de
+    los detectados por cada red) y RMSE z / recall de cada red, con IC 95% por bootstrap de
+    imagenes; tambien el RMSE de los emisores aislados (AISLADO_NM)."""
+    vids = np.unique(crlb.video_id)
+    W = rng.multinomial(len(vids), np.full(len(vids), 1.0 / len(vids)), size=n_boot).astype(float)
+    iv = np.searchsorted(vids, crlb.video_id)
+    aislado = ((crlb.d_vecino_nm > AISLADO_NM) & (crlb.d_reflejo_vecino_nm > AISLADO_NM)).to_numpy()
+    out = {}
+    for nombre, (col, b, _, _) in BORDES_CELULA.items():
+        nb = len(b) - 1
+        k = np.clip(np.digitize(crlb[col], b[1:-1]), 0, nb - 1)
+
+        def S(peso):
+            M = np.bincount(iv * nb + k, weights=np.asarray(peso, float), minlength=len(vids) * nb).reshape(len(vids), nb)
+            return M.sum(0), W @ M
+
+        def rms_ic(peso_sel, valor):
+            (n0, nB), (s0, sB) = S(peso_sel), S(np.where(peso_sel, valor, 0.0) ** 2)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                e, bs = np.sqrt(s0 / n0), np.sqrt(sB / nB)
+            lo, hi = np.nanpercentile(bs, [2.5, 97.5], axis=0)
+            return e, lo, hi
+
+        t = pd.DataFrame({"desde": b[:-1], "hasta": b[1:], "n": S(np.ones(len(crlb)))[0]})
+        todos = np.ones(len(crlb), bool)
+        for c in ("crlb_z_solo_nm", "crlb_z_conjunto_nm", "crlb_z_conjunto_r_nm"):
+            t[c] = rms_ic(todos, crlb[c].to_numpy())[0]
+        for etiq, det, dz in redes:
+            t[f"crlb_z_conjunto_detectados[{etiq}]"] = rms_ic(det, crlb.crlb_z_conjunto_nm.to_numpy())[0]
+            t[f"crlb_z_solo_detectados[{etiq}]"] = rms_ic(det, crlb.crlb_z_solo_nm.to_numpy())[0]
+            for sufijo, sel in (("", det), ("_aislados", det & aislado)):
+                e, lo, hi = rms_ic(sel, dz)
+                t[f"rmse_z{sufijo}[{etiq}]"], t[f"rmse_z{sufijo}[{etiq}]_lo"], t[f"rmse_z{sufijo}[{etiq}]_hi"] = e, lo, hi
+            (n0, nB), (d0, dB) = S(todos), S(det)
+            t[f"recall[{etiq}]"] = d0 / n0
+            t[f"n_aislados_detectados[{etiq}]"] = S(det & aislado)[0]
+        out[nombre] = t
+    return out
+
+
+def eje_x_log(ax):
+    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+    ax.set_xscale("log")
+    ax.xaxis.set_major_locator(LogLocator(subs=(1, 2, 5)))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+
+
+def figura_celula(variante, tablas, redes, ruta):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import FuncFormatter
+    plt.rcParams.update({"font.size": 9, "axes.spines.top": False, "axes.spines.right": False})
+    fig, axes = plt.subplots(2, 3, figsize=(14, 7.4), height_ratios=[1.4, 1])
+    for j, (nombre, (_, b, etiq_x, log)) in enumerate(BORDES_CELULA.items()):
+        t = tablas[nombre]
+        x = np.sqrt(t.desde * t.hasta) if log else (t.desde + t.hasta) / 2
+        ax = axes[0, j]
+        ax.plot(x, t.crlb_z_solo_nm, "-", color=COLOR["solo"], lw=2, label="CRLB, real solo (recortado)")
+        ax.plot(x, t.crlb_z_conjunto_nm, "-", color=COLOR["conjunto"], lw=2, label="CRLB, real + reflejo (r conocido)")
+        ax.plot(x, t.crlb_z_conjunto_r_nm, "--", color=COLOR["conjunto"], lw=1.5, label="CRLB, real + reflejo (r desconocido)")
+        for k, etiq in enumerate(redes):
+            c = f"rmse_z[{etiq}]"
+            ax.errorbar(x, t[c], yerr=[t[c] - t[c + "_lo"], t[c + "_hi"] - t[c]], fmt=MARCAS_REDES[k % 4],
+                        color=COLORES_REDES[k % 4], ms=6, mec="white", mew=1, capsize=2, ls="none",
+                        label=f"red {etiq}: RMSE z de los detectados")
+            c = f"rmse_z_aislados[{etiq}]"
+            ax.plot(x, t[c], MARCAS_REDES[k % 4], mfc="none", mec=COLORES_REDES[k % 4], ms=7,
+                    label=f"red {etiq}: solo aislados (> {AISLADO_NM / 1000:g} um de otro real y reflejo)")
+            ax.plot(x, t[f"crlb_z_conjunto_detectados[{etiq}]"], ":", color=COLOR["conjunto"], lw=1.2,
+                    label="CRLB conjunta de los detectados por la red")
+        ax.set_yscale("log")
+        if log:
+            eje_x_log(ax)
+        ax.set_ylim(5, 400)
+        ax.set_ylabel("error en z [nm]")
+        ax.grid(True, which="major", color="#e6e5e0", lw=0.6)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+        ax2 = axes[1, j]
+        for k, etiq in enumerate(redes):
+            ax2.plot(x, t[f"rmse_z[{etiq}]"] / t[f"crlb_z_conjunto_detectados[{etiq}]"], "o-", color=COLORES_REDES[k % 4],
+                     lw=1.8, ms=4, label="RMSE red / CRLB conjunta (detectados)")
+            ax2.plot(x, t[f"rmse_z_aislados[{etiq}]"] / t[f"crlb_z_conjunto_detectados[{etiq}]"], "o--",
+                     color=COLORES_REDES[k % 4], mfc="none", lw=1.2, ms=4, label="idem, aislados")
+        ax2.plot(x, t.crlb_z_solo_nm / t.crlb_z_conjunto_nm, "-", color=COLOR["conjunto"], lw=1.8,
+                 label="ganancia del reflejo: CRLB solo / conjunta")
+        ax2.axhline(1, color=COLOR["solo"], lw=0.8)
+        ax2.set_ylim(bottom=0)
+        ax2.set_xlabel(etiq_x)
+        ax2.grid(True, color="#e6e5e0", lw=0.6)
+        if log:
+            eje_x_log(ax2)
+    h, l = axes[0, 0].get_legend_handles_labels()
+    fig.legend(h, l, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 0.965), fontsize=8)
+    axes[1, 0].legend(frameon=False, fontsize=7.5)
+    fig.suptitle(f"CRLB por emisor del test con celula ({variante}): geometria, ratio y fondo de cada muestra, FOV 96 px, "
+                 "recorte de pupila del real y del reflejo; sin otros emisores ni el prior de la celula", fontsize=10.5, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    fig.savefig(ruta.with_suffix(".png"), dpi=200)
+    fig.savefig(ruta.with_suffix(".pdf"))
+    plt.close(fig)
+
+
+def modo_celula(a, rng, salida):
+    for variante in a.variantes:
+        t0 = time.time()
+        carpeta = Path(a.datos) / f"test_celula_b45_{variante}"
+        cfg, crlb = crlb_test_celula(carpeta, a.procesos)
+        if cfg.anillos_hacia_objetivo != VARIANTES[variante]:
+            raise ValueError(f"{carpeta}: no es un test con la PSF '{variante}'")
+        gt_todo = pd.read_csv(carpeta / "ground_truth.csv")
+        dv, dr = vecinos_laterales(gt_todo, cfg.pixel_nm)
+        gt_todo = gt_todo.assign(d_vecino_nm=dv, d_reflejo_vecino_nm=dr)
+        crlb = crlb.merge(
+            gt_todo[CLAVES + ["d_vecino_nm", "d_reflejo_vecino_nm"]], on=CLAVES, validate="1:1")
+        print(f"\n{variante}: CRLB de {len(crlb)} emisores evaluables de {carpeta.name} ({time.time() - t0:.0f} s)")
+        entradas = [(e, Path(c)) for e, c in a.red] if a.red else [
+            (None, c) for c in sorted((RAIZ / "localizacion" / "corridas").glob(f"*/evaluacion_test_celula_b45_{variante}"))]
+        redes = []
+        for etiq, carpeta_eval in entradas:
+            if variante_de_evaluacion(carpeta_eval) != variante:
+                continue
+            ge = pd.read_csv(carpeta_eval / "gt_eval.csv")
+            ge = crlb[CLAVES].merge(ge[CLAVES + ["detectado", "dz_nm"]], on=CLAVES, how="left", validate="1:1")
+            assert ge.detectado.notna().all(), f"{carpeta_eval}: otro GT"
+            redes.append((etiq or etiqueta_red(carpeta_eval), ge.detectado.to_numpy(bool), ge.dz_nm.fillna(0.0).to_numpy()))
+        tablas = tablas_celula(crlb, redes, a.n_boot, rng)
+        nombre = f"b45_{variante}{a.sufijo}"
+        cols = CLAVES + ["en_rango_z", "d_espejo_nm", "photons", "ratio_reflejo", "fondo_local", "energia_real_en_fov",
+                         "energia_reflejo_en_fov", "crlb_z_solo_nm", "crlb_z_conjunto_nm", "crlb_z_conjunto_r_nm",
+                         "crlb_lat_solo_nm", "crlb_lat_conjunto_nm", "d_vecino_nm", "d_reflejo_vecino_nm"]
+        crlb[cols].to_csv(salida / f"crlb_celula_{nombre}.csv", index=False, float_format="%.5g")
+        pd.concat([t.assign(tabla=k) for k, t in tablas.items()], ignore_index=True).to_csv(
+            salida / f"crlb_celula_rangos_{nombre}.csv", index=False)
+        figura_celula(variante, tablas, [r[0] for r in redes], salida / f"fig_crlb_celula_{nombre}")
+        ais = (crlb.d_vecino_nm > AISLADO_NM) & (crlb.d_reflejo_vecino_nm > AISLADO_NM)
+        print(f"  RMS sqrt(CRLB_z): solo {rms(crlb.crlb_z_solo_nm):.1f}, conjunto {rms(crlb.crlb_z_conjunto_nm):.1f}, "
+              f"conjunto con r desconocido {rms(crlb.crlb_z_conjunto_r_nm):.1f} nm; lateral solo "
+              f"{rms(crlb.crlb_lat_solo_nm):.1f}, conjunto {rms(crlb.crlb_lat_conjunto_nm):.1f} nm; aislados {ais.mean():.2f}")
+        for etiq, det, dz in redes:
+            print(f"  red {etiq}: RMSE z {rms(dz[det]):.1f} nm (aislados {rms(dz[det & ais.to_numpy()]):.1f}); "
+                  f"CRLB conjunta de sus detectados {rms(crlb.crlb_z_conjunto_nm[det]):.1f}, solo "
+                  f"{rms(crlb.crlb_z_solo_nm[det]):.1f} nm -> RMSE / CRLB conjunta {rms(dz[det]) / rms(crlb.crlb_z_conjunto_nm[det]):.2f}")
+        with pd.option_context("display.width", 250, "display.max_columns", 30, "display.float_format", "{:.3g}".format):
+            for k, t in tablas.items():
+                print(f"\n  por {k}:\n" + t[[c for c in t if not c.endswith(("_lo", "_hi"))]].to_string(index=False))
+        print(f"  -> {salida / f'fig_crlb_celula_{nombre}.png'}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
@@ -570,10 +847,16 @@ def main():
     p.add_argument("--sufijo", default="")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=2000, help="remuestreos de imagenes para los IC de las redes")
+    p.add_argument("--celula", action="store_true",
+                   help="CRLB por emisor de test_celula_b45_<variante> contra evaluacion_test_celula_b45_<variante>")
+    p.add_argument("--procesos", type=int, default=max(1, (os.cpu_count() or 2) - 2), help="--celula: procesos")
     a = p.parse_args()
 
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
+    if a.celula:
+        modo_celula(a, rng, salida)
+        return
 
     for variante in a.variantes:
         t0 = time.time()
