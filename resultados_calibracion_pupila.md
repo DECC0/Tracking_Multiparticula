@@ -8,17 +8,21 @@ export LD_PRELOAD=$HOME/miniforge3/envs/tesis/lib/libstdc++.so.6
 $PY figuras/calibracion_pupila.py --cache datos.npz                    # barrido, arranques, validacion, incertidumbre, sintetico (~4 h en la RTX 3060)
 $PY figuras/calibracion_pupila.py --cache datos.npz --perfil-ratio 0.1 0.2 0.45 0.7 0.9   # seccion 3 (~20 min)
 $PY figuras/calibracion_pupila.py --cache datos.npz --desde-arranques  # rehace 4-6 sin el barrido ni los arranques (~85 min)
+$PY figuras/calibracion_pupila.py --cache datos.npz --solo-esferica    # seccion 7: solo a40, beta y linea (~3 h)
 ```
 
-La sección 1 sale de la primera orden (barrido y arranques), la sección 3 de la segunda y las secciones 2, 4 y 5 de la tercera, que reutiliza las tablas de la primera. El script importa la detección de `figuras/analisis_datos_reales.py` y la óptica de `simulador_nuevo/simulador.py` (`Config`, `PSFRecortada` para la verificación) y `geometria_espejo.py`. Escribe:
+La sección 1 sale de la primera orden (barrido y arranques), la sección 3 de la segunda, las secciones 2, 4 y 5 de la tercera, que reutiliza las tablas de la primera, y la sección 7 de la cuarta. El script importa la detección de `figuras/analisis_datos_reales.py` y la óptica de `simulador_nuevo/simulador.py` (`Config`, `PSFRecortada` para la verificación) y `geometria_espejo.py`. Escribe:
 
 - las tablas `figuras/calibracion_pupila_*.csv` y `figuras/calibracion_pupila.json`;
-- cuatro figuras PNG a 300 dpi:
+- cinco figuras PNG a 300 dpi:
   - `fig_calibracion_pupila_imagenes.png`: datos, modelos y residuos del real y del reflejo;
   - `fig_calibracion_pupila_signo.png`: la elección del signo;
-  - `fig_calibracion_pupila_medidas_cerca.png` y `fig_calibracion_pupila_medidas_lejos.png`.
+  - `fig_calibracion_pupila_medidas_cerca.png` y `fig_calibracion_pupila_medidas_lejos.png`;
+  - `fig_calibracion_pupila_esferica.png`: el modelo que se simula (sección 7).
 
 ## Resumen
+
+**La sección 7 corrige la recomendación de cerca de esta tabla.** Con el modelo que se simula (a40 sola, sin astigmatismo ni coma) aparece una cuenca de cerca que las secciones 1–6 no exploraron: real a +1.4 µm, a40 = −4.11 y β en el borde de 50°. Es 9 351 mejor en log L que la rama de −6.40 y, con los cinco Zernike, 15 348 mejor que el mínimo de cerca de abajo. Las filas «β y desfase», «pupila calibrada (cerca)» y «valores para `celula.yaml`» describen ese mínimo anterior; la sección 7 da los nuevos valores y sus cautelas.
 
 | pregunta | respuesta |
 |---|---|
@@ -28,7 +32,8 @@ La sección 1 sale de la primera orden (barrido y arranques), la sección 3 de l
 | pupila calibrada (cerca) | a40 = −5.16 rad = **−1.64π** [−5.27, −4.93], astigmatismo de 1.33 rad (a22 −0.49, a2m2 −1.23) y coma de 0.86 rad (a31 −0.83, a3m1 +0.20), en el marco del canal derecho. Los IC son del bootstrap de bloques |
 | ¿se recupera en sintético? | **Sí, todos.** En dos películas sintéticas por variante, con la misma geometría, fotones, fondo y cuadros, los siete compartidos y la z media se recuperan a ≤ 1.1 ee de la Hessiana en cerca y a ≤ 2.3 ee en lejos, y el signo de a40 se recupera siempre (el otro signo queda ≥ 55 000 peor). Con una partícula, todos los parámetros se pueden calibrar *si el modelo fuera el correcto* |
 | incertidumbre | La del bootstrap de bloques es **4–16 veces** la de la Hessiana (2–9 veces si se escala por la sobredispersión, deviance/ν = 2.7–3.1). Domina el desajuste del modelo, no el ruido. Hay correlaciones fuertes: a40–a31 +0.9 (Hessiana y bootstrap), a40–a2m2 +0.86, a2m2–δ +0.91, β–δ −0.89 (bootstrap) en cerca |
-| valores para `celula.yaml` | `anillos_hacia_objetivo: true` (cerca, como ya lanza `lanzar_espejo.sh cerca`), **`amp_esferica: 5.16`** (1.64π; hoy 1.5π), `espejo_angulo_eje_rango_deg`: el [40, 50] actual contiene el β medido (45–48°); se puede estrechar a [44, 50]. `ratio_reflejo_rango` [0.45, 1.0] se queda. **No** se recomienda agregar el astigmatismo ni la coma todavía (sección 6) |
+| modelo que se simula (sección 7) | Solo a40, β y línea. Sin restricciones gana lejos (+3.59, reflejo con el 9 % de los fotones del real, el mismo modo de la sección 3). **En cerca gana a40 = −4.113 (bootstrap −4.169 a −4.030)**, con β en el borde de 50°, la línea a +1.52 µm del borde de la franja y el real a +1.37 µm. **El mínimo de −6.40 es real** (11 de 18 arranques, y reproducido con los cinco Zernike), pero queda 9 351 peor en los pares y 9 575 en los impares |
+| valores para `celula.yaml` | **Superados por la sección 7** (`amp_esferica` ≈ 4.11, condicionado a β ≤ 50°). Los de las secciones 1–6: `anillos_hacia_objetivo: true` (cerca, como ya lanza `lanzar_espejo.sh cerca`), **`amp_esferica: 5.16`** (1.64π; hoy 1.5π), `espejo_angulo_eje_rango_deg`: el [40, 50] actual contiene el β medido (45–48°); se puede estrechar a [44, 50]. `ratio_reflejo_rango` [0.45, 1.0] se queda. **No** se recomienda agregar el astigmatismo ni la coma todavía (sección 6) |
 
 ## 0. Datos y modelo
 
@@ -214,7 +219,7 @@ En lejos las correlaciones fuertes son a40–β (−0.58 / −0.89), a3m1–δ (
 
 ## 6. Valores recomendados para `configs/celula.yaml`
 
-No se modifica el archivo. Valores, con la variante cerca:
+No se modifica el archivo. **Esta tabla queda superada por la sección 7**, porque su mínimo de cerca no era el mejor. Valores de las secciones 1–6, con la variante cerca:
 
 | campo | hoy | recomendado | por qué |
 |---|---|---|---|
@@ -234,13 +239,113 @@ No se modifica el archivo. Valores, con la variante cerca:
 - **Están mal determinados con estos datos:** el bootstrap de a2m2 va de −1.35 a −0.69 y el de a31 de −1.09 a −0.52, correlacionados con a40, β y la línea.
 - **Alternativa mientras llega el z-stack de beads** (que medirá el patrón en los dos canales sin la partícula moviéndose): sortear un astigmatismo y una coma aleatorios de ~1 rad en el entrenamiento, como aumentación. Es un cambio en el simulador y no se hizo aquí.
 
+## 7. Solo la esférica: el modelo que se simula
+
+```bash
+$PY figuras/calibracion_pupila.py --cache datos.npz --solo-esferica   # ~3 h en la RTX 3060
+```
+
+El ajuste usa la fase de `simulador_nuevo` sin términos extra, a40·Z4⁰ con a40 de signo libre (sin astigmatismo ni coma). β ∈ [40, 50]° y la línea δ son compartidos, y los parámetros por cuadro son los de antes: x, y, d, fotones del real, fotones del reflejo y fondo. Todo lo demás (datos, máscara en rampa, verosimilitud, cuadros pares para ajustar e impares para validar) es lo de la sección 0. Como antes, a40 < 0 es la variante cerca, con `amp_esferica` = −a40.
+
+- **Arranques:** a40 = ±4.71, ±5.16 y ±6.40, cada uno con β0 de 41, 45 y 49°.
+- **z inicial del real:** −1 y 0 µm con a40 < 0 (la zona del mínimo de −6.40 y el mínimo del barrido de cerca); +6 y −2 µm con a40 > 0 (los mínimos locales del barrido).
+- **Total:** 36 ajustes.
+
+**Salidas:**
+
+- `calibracion_pupila_esferica_arranques.csv`: un ajuste por fila.
+- `calibracion_pupila_esferica_minimos.csv`: los 28 mínimos distintos (misma −log L a menos de 2 y mismos a40, β y δ redondeados), con la −log L en los pares y en los impares. En los impares se reajustan solo los parámetros por cuadro.
+- `calibracion_pupila_esferica_perfil.csv`: perfil en a40 de las ramas de cerca.
+- `calibracion_pupila_esferica_cinco.csv`: la prueba con los cinco Zernike.
+- `calibracion_pupila_esferica_bootstrap_{cerca,lejos}.csv` y `calibracion_pupila_esferica.json`.
+
+![](figuras/fig_calibracion_pupila_esferica.png)
+
+### Mínimos
+
+Mínimos representativos (−log L respecto del mejor; los demás están en el CSV):
+
+| mínimo | variante | arranques que llegan | a40 | β | δ | z real / z' | log L − mejor (pares) | ídem (impares) | reflejo / real | N real | fondo |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | lejos | 1 (+4.71, 49°, +6 µm) | **+3.586** | 50.0° (borde) | +7.17 µm | +6.10 / +0.62 µm | **0** | **0** | 0.093 | 65 300 | 5.5 |
+| 1–2, 5 | lejos | 3 | +3.59 a +3.67 | 49.4–50.0° | +7.09 a +7.16 µm | +6.1 / +0.6 a +0.7 µm | −345 a −3 246 | −174 a −1 128 | 0.09 | 64 000 | 5.5–5.7 |
+| 3–4 | lejos | 2 (β0 41°) | +2.84 / +2.91 | 43.6 / 44.5° | +5.7 / +5.8 µm | +4.8 a +4.9 / +0.4 µm | −2 578 a −2 721 | −2 095 a −2 584 | 0.10 | 50 000 | 6.2 |
+| 6–8 | lejos | 3 (+6.40) | +3.19 a +4.67 | 43.0–50.0° | +5.7 a +8.2 µm | +5.1 a +7.0 µm | −4 066 a −10 970 | −1 580 a −3 168 | 0.10–0.11 | 52 000–66 000 | 6.2–6.7 |
+| **9** | **cerca** | 1 (−6.40, 45°, 0 µm) | **−4.113** | **50.0° (borde)** | **+1.52 µm** | **+1.37 / −4.17 µm** | **−21 776** | **−19 154** | **0.85** | 13 600 | 8.2 |
+| 10 | cerca | 1 (−6.40, 49°, 0 µm) | −4.089 | 50.0° (borde) | +1.57 µm | +1.43 / −4.14 µm | −21 828 | −19 081 | 0.84 | 13 700 | 8.2 |
+| 11–14 | cerca | **11** | **−6.42 a −6.46** | 46.9–49.0° | −0.77 a −1.24 µm | −1.17 a −1.20 / −6.2 a −6.5 µm | −31 127 a −31 832 | −28 696 a −29 269 | 0.68–0.76 | 19 000 | 8.4–8.6 |
+| 15 | cerca | 1 | −6.360 | 47.4° | −0.83 µm | −1.15 / −6.22 µm | −33 877 | −28 741 | 0.69 | 18 600 | 8.7 |
+| 16–17 | cerca | 3 | −5.33 / −5.13 | 49.4 / 50.0° | −0.44 / −0.46 µm | −0.40 a −0.32 / −5.8 µm | −34 358 a −34 491 | −31 678 a −31 782 | 0.92–0.99 | 16 400 | 8.3–8.4 |
+| 18 | cerca | 1 (−6.40, 41°, 0 µm) | −6.799 | 43.5° | +1.35 µm | +0.23 / −4.14 µm | −48 269 | −45 526 | 0.41 | 18 900 | 8.6 |
+| 19–27 | lejos | 9 (z0 −2 µm) | +4.03 a +7.06 | 48.0–50.0° | −7.3 a −1.2 µm | −2.9 a −0.7 µm | −89 660 a −104 480 | −86 199 a −269 884 | 0.02–1.4 | 11 000–22 000 | 10 |
+
+Los 18 arranques de cerca caen en cuatro zonas de z del real: +1.4 µm (mínimos 9 y 10), −1.2 µm (11–15, 12 arranques), −0.3 a −0.4 µm (16–17) y +0.2 µm (18). Los mínimos 1–2 y 5 son el 0 con otro β; 11–14 y 9–10 también difieren solo en β y δ, con ≤ 705 en log L entre ellos. Son los quiebres de la máscara discretizada en β (sección 4): el L-BFGS se detiene en distintos quiebres de la misma cuenca. La −log L con la máscara binaria del simulador difiere de la de la rampa en ≤ 62 en los 28 mínimos, y en ≤ 31 en los mínimos 0 y 9.
+
+### ¿Cuál gana?
+
+- **Sin restricciones gana lejos** (mínimo 0), por 21 776 en log L en los pares y 19 154 en los impares. Es el mismo modo de la sección 3: el reflejo con el 9 % de los fotones del real, el real con 65 000 fotones (4.8 veces los de cerca) y difuso a +6.1 µm, y el fondo bajo (5.5 frente a 8.2 e⁻/px). Con la esférica sola no se repitió el perfil en la reflectividad. Con los cinco Zernike, ese perfil daba la ventaja a cerca en cuanto R ≥ 0.45.
+- **En la variante cerca gana el mínimo 9:** a40 = −4.113, β en el borde de 50°, la línea a +1.52 µm del borde de la franja, el real a +1.37 µm (hacia el objetivo) y el reflejo a −4.17 µm. La reflectividad le sale física sin pedirla: 0.85 en los pares y 0.85 en los impares. Le gana a la rama de −6.4 por 9 351 en log L en los pares y 9 575 en los impares, así que la ventaja se sostiene fuera de muestra. Con la sobredispersión (deviance/ν = 3.04) eso equivale a ~3 100. En los impares el mínimo 10, de la misma cuenca, queda 73 por encima del 9: dentro del ruido de los quiebres.
+
+### ¿Es real el mínimo de 6.40?
+
+**Sí, es un mínimo local real, pero no es el de cerca.**
+
+- **Reproducibilidad:** con la esférica sola, 11 de los 18 arranques de cerca caen en él (a40 −6.42 a −6.46, z −1.2 µm); un duodécimo, el mínimo 15, se detuvo 2 750 más arriba en la misma cuenca. Con los cinco Zernike, el arranque de la corrida exploratoria (a40 −1.5π, β0 41°, z0 −1 µm) da otra vez −4 260 526.38 (a40 −6.399, β 46.91°, z −1.13 µm). La corrida exploratoria queda reproducida al centésimo.
+- **Perfil en a40** (panel b, continuación desde los mínimos 9, 11 y 16). En la rama de z ≈ −1.2 µm, la −log L tiene un mínimo en a40 ≈ −6.45 y sube hacia los dos lados:
+  - hacia −7.25 sube 3 000;
+  - hacia −5.25, donde el real sube a −0.4 µm, sube 3 300;
+  - con a40 ≥ −4.0, la continuación salta a la rama de z ≈ +1.4 µm.
+
+  Los mínimos 16–17 (a40 ≈ −5.1 a −5.3, la zona del mínimo de cerca de las secciones 1–6) son bolsillos de < 100 unidades sobre esa misma ladera, y no tienen cuenca propia.
+- **Envolvente del perfil** (el mejor de las tres ramas en cada a40), respecto del mínimo 9:
+
+  | a40 | −3.50 | −3.75 | −4.00 | −4.25 | −4.50 | −4.75 | −5.00 | −5.50 | −6.00 | −6.50 | −7.00 | −7.50 | −8.00 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | −log L − mínimo 9 | 12 561 | 4 088 | 335 | 473 | 3 108 | 6 842 | 11 043 | 12 558 | 10 773 | 9 377 | 11 019 | 11 965 | 9 951 |
+  | z real [µm] | +1.45 | +1.46 | +1.40 | +1.33 | +1.25 | +1.16 | +1.05 | −0.51 | −0.92 | −1.22 | −1.45 | −1.79 | −2.14 |
+
+  La z del real es la que separa las dos cuencas, con el real 1.4 µm por encima o 1.2 µm por debajo del foco. Con a40 = −8 aparece otra rama más, con el real a −2.1 µm y β en 50°, ~10 000 peor; la grilla no sigue más allá.
+
+### Los cinco Zernike desde el nuevo mínimo
+
+Desde el mínimo 9, liberando los cinco Zernike, el ajuste llega a **−4 275 363**:
+
+- a40 −4.268, a22 −0.832, a2m2 +0.633, a31 −1.012, a3m1 +0.239;
+- β 50.0° (borde), δ +1.22 µm, z real +1.25 µm.
+
+Es 15 348 mejor que el mínimo de cerca de las secciones 1–6 (−4 260 015, a40 −5.16) y 14 837 mejor que el de −6.40. **El mínimo de cerca de las secciones 1–6 no era el mejor de cerca:** esa búsqueda no exploró la rama con el real por encima del foco y β en el borde. Lejos con los cinco Zernike (−4 291 530) sigue 16 167 por delante sin restricciones, con el mismo modo de reflectividad baja. Esta comparación es solo en los pares, y el astigmatismo de este mínimo (a2m2 cambió de signo) no tiene validación ni bootstrap.
+
+### Incertidumbre de a40 (bootstrap de bloques)
+
+Treinta remuestreos de bloques de 5 cuadros pares consecutivos, desde cada mínimo, con a40, β, δ y los parámetros por cuadro libres:
+
+| | valor | ee Hessiana | ee Hessiana × √(deviance/ν) | ee bootstrap | bootstrap 2.5–97.5 % | mediana |
+|---|---|---|---|---|---|---|
+| **a40, cerca (mínimo 9)** | **−4.113 rad (−1.309π)** | 0.0042 | 0.0074 | **0.045** | **−4.169 a −4.030** | −4.103 |
+| δ, cerca | +1.523 µm | 0.0038 | 0.0066 | 0.091 | +1.437 a +1.759 | +1.510 |
+| z media del real, cerca | +1 367 nm | 3 | 5 | 51 | +1 313 a +1 482 | +1 385 |
+| a40, lejos (mínimo 0) | +3.586 rad | 0.0054 | 0.0090 | 0.082 | +3.481 a +3.764 | +3.594 |
+
+- **β:** en los 30 remuestreos de cada mínimo queda en 50°, el borde, así que no tiene intervalo.
+- **Bootstrap frente a Hessiana:** el ee del bootstrap es ~11 veces el de la Hessiana en cerca y ~15 en lejos. La sobredispersión explica un factor de ~1.7; el resto es desajuste del modelo, como en la sección 4.
+- **Rango del intervalo de a40 en cerca:** la mitad que el de la calibración con los cinco Zernike (4.93–5.27), porque con la esférica sola nada compensa a40.
+
+### Qué cambia para `celula.yaml`
+
+No se modifica el archivo. Con el modelo que se simula y la variante cerca, el mejor ajuste da **`amp_esferica` ≈ 4.11 (1.31π; bootstrap 4.03–4.17)**, por debajo de la actual 1.5π (4.71), con β = 50° y el real a +1.4 µm. Eso **reemplaza la recomendación de 5.16 de la sección 6**, que venía de un mínimo de cerca que no era el mejor. Tres cautelas antes de usarlo:
+
+- **β está en el borde de 50°** en el ganador de cerca (y en el de lejos), en el ajuste y en todo el bootstrap. La cota se activa: el ajuste quiere β ≥ 50°, y a40, δ y z están condicionados a β ≤ 50°. Hay que repetir con una cota más ancha (`BETA_H` en el script) antes de fijar β. La geometría de `resultados_datos_reales.md` midió β ≈ 45°.
+- **La línea ya no queda en el borde de la franja:** se corre +1.52 µm (15 px). La lectura de la sección 3, que decía que cerca ponía la línea en el borde por sí sola, valía para el mínimo de las secciones 1–6, no para este.
+- **Dos cuencas de cerca:** separadas por la z del real (+1.4 frente a −1.2 µm), con a40 −4.1 y −6.4. La diferencia de log L es grande (9 351 en pares y 9 575 en impares, ~3 100 con la sobredispersión), pero una sola partícula no tiene cómo comprobar de qué lado del foco está. El z-stack de beads, con z conocida, lo decide.
+
 ## Supuestos y limitaciones
 
 - **Una sola partícula, un canal.** La pupila calibrada es la del canal derecho, con su polarización. Su núcleo de dos lóbulos no es escalar (`resultados_psf_real.md`), y ningún ajuste de esta pupila lo reproduce: el residuo no baja de ~40 % en la imagen suma ni de ~0.5 por cuadro.
 - **Fondo uniforme por cuadro.** La autofluorescencia de la célula, el halo y la franja del espejo no están modelados. Esto es lo que permite el mínimo de lejos con el real difuso (sección 3).
 - **Sin recorte de energía en la ventana.** La PSF se calcula entera (M = 256) y se recorta a la ventana sin renormalizar, así que los fotones son totales, comparables con `fotones_rango`.
 - **El blur no se ajusta:** blur_extra_px = 0.6 queda fijo, porque no es un parámetro de la pupila.
-- **Paisaje multimodal en z.** Los mínimos de cerca no están agotados (sección 1: uno de −4 260 526, con z = −1.1 µm, a40 = −6.40 y β = 46.9°, apareció desde otro arranque). Los valores recomendados tienen esa ambigüedad además del IC del bootstrap. El bootstrap arranca en el mínimo global y no explora otros mínimos.
+- **Paisaje multimodal en z.** En cerca hay al menos dos cuencas, con el real a +1.4 µm y a −1.2 µm (sección 7). La de −1.2 µm es la del mínimo de −6.40. Las secciones 1–6 no encontraron la mejor. El bootstrap arranca en un mínimo y no explora los otros.
+- **β en el borde de 50°** en los ganadores de la sección 7: la cota [40, 50] se activa y no se probó una más ancha.
 - **β tiene quiebres** por la discretización de la máscara del espejo, así que su intervalo es unilateral (sección 4).
 - **Sobredispersión:** deviance/ν = 2.7 (lejos) y 3.1 (cerca). Las Δ log L ordenan hipótesis pero no son probabilidades. La sección 3 da la ventaja de cerca también escalada.
 - **El ruido de lectura es la mediana de los píxeles** (0.97 e⁻). Los píxeles ruidosos del sCMOS dentro de los discos no se excluyen.

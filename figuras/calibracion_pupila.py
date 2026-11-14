@@ -50,6 +50,13 @@ incertidumbre por la Hessiana (complemento de Schur) y por bootstrap de
 bloques de cuadros. Con --perfil-ratio, solo el perfil de la verosimilitud en la
 reflectividad (fotones del reflejo / del real, comun a todos los cuadros)
 desde el mejor arranque de cada signo (lee calibracion_pupila_arranques.csv).
+Con --solo-esferica, el modelo que se simula (a40 sola, signo libre, con beta
+y delta compartidos y los parametros por cuadro de siempre): arranques en
+--a40-arranques x --betas (z inicial por signo), minimos distintos con su
+-log L en pares e impares, perfil en a40 por continuacion desde las ramas de
+cerca, los cinco Zernike desde el arranque exploratorio que dio a40 = -6.40 y
+desde el mejor minimo de cerca, y bootstrap de bloques del ganador y del
+mejor de cerca (~3 h).
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
@@ -57,12 +64,16 @@ Uso:
         [--tif RUTA] [--cache NPZ] [--betas 41 45 49] [--z-barrido -4000 8000 1000] [--n-minimos 2]
         [--n-boot 30] [--n-sint 2] [--desde-arranques] [--salida figuras]
     LD_PRELOAD=... $PY figuras/calibracion_pupila.py --perfil-ratio 0.1 0.2 0.45 0.7 0.9   # despues de la corrida
+    LD_PRELOAD=... $PY figuras/calibracion_pupila.py --solo-esferica [--a40-arranques ...] [--perfil-a40 -8 -3.5 0.25]
 Escribe en --salida: calibracion_pupila_barrido.csv, calibracion_pupila_arranques.csv,
 calibracion_pupila_validacion.csv, calibracion_pupila_residuos_impares.csv, calibracion_pupila.json,
 por variante calibracion_pupila_{parametros,bootstrap,correlaciones,sintetico,cuadros}_{cerca,lejos}.csv,
 fig_calibracion_pupila_imagenes.png, fig_calibracion_pupila_signo.png y
 fig_calibracion_pupila_medidas_{cerca,lejos}.png (300 dpi); los de cada variante llevan el sufijo _cerca / _lejos;
-con --perfil-ratio, calibracion_pupila_ratio.csv.
+con --perfil-ratio, calibracion_pupila_ratio.csv; con --solo-esferica,
+calibracion_pupila_esferica_{arranques,minimos,perfil,cinco}.csv,
+calibracion_pupila_esferica_bootstrap_{cerca,lejos}.csv, calibracion_pupila_esferica.json y
+fig_calibracion_pupila_esferica.png.
 Resultados en resultados_calibracion_pupila.md.
 """
 import argparse
@@ -684,6 +695,181 @@ def distintos(filas, tol_nll=1.0):
     return grupos
 
 
+def bootstrap_bloques(d, pares, th, mod, compartidos, n_boot, bloque, rng):
+    """Bootstrap de bloques de `bloque` cuadros pares consecutivos: reajusta los
+    compartidos libres y los parametros por cuadro desde th (el minimo)."""
+    nb = len(pares) // bloque
+    T = len(pares)
+    pc = th[NC:].view(T, NP)
+    boot = []
+    for r in range(n_boot):
+        t0 = time.time()
+        bl = rng.integers(0, nb, nb)
+        loc = np.concatenate([np.arange(b * bloque, (b + 1) * bloque) for b in bl])
+        Pb = Problema(d, pares[loc], mod)
+        th0 = torch.cat([th[:NC], pc[loc].reshape(-1)])
+        thb = ajustar(Pb, th0, indices(Pb, compartidos, POR_CUADRO), max_iter=1500)
+        boot.append(dict(remuestreo=r, nll=Pb.nll(thb), **describir(thb[:NC].cpu().numpy()),
+                         z_real_media=float(Pb.geometria(thb)[1].mean())))
+        print(f"  {r}: " + ", ".join(f"{k} {v:+.3f}" for k, v in boot[-1].items() if k in compartidos)
+              + f" ({time.time() - t0:.0f} s)", flush=True)
+    return pd.DataFrame(boot)
+
+
+# ----------------------------------------------------------------------------
+# Modelo que se simula: solo la esferica (--solo-esferica)
+# ----------------------------------------------------------------------------
+
+ESFERICA = ("a40", "beta", "delta_um")
+
+
+def agrupar_minimos(res, tol_nll=2.0):
+    """res: lista de (fila, th). Minimos distintos: misma nll (tol_nll) y mismos
+    a40, beta y delta redondeados. Lista de (fila del mejor, th, arranques)."""
+    grupos = []
+    for f, th in sorted(res, key=lambda x: x[0]["nll"]):
+        clave = (round(f["a40"], 2), round(f["beta"], 1), round(f["delta_um"], 2))
+        for g in grupos:
+            if abs(g[0]["nll"] - f["nll"]) < tol_nll and g[3] == clave:
+                g[2].append(f)
+                break
+        else:
+            grupos.append([f, th, [f], clave])
+    return [(f, th, fs) for f, th, fs, _ in grupos]
+
+
+def perfil_a40(P, ramas, grilla):
+    """Perfil de la -log L en a40 (fijo; beta, delta y por cuadro libres; los
+    otros Zernike en 0) por continuacion desde el minimo de cada rama, hacia
+    arriba y hacia abajo de la grilla (cada punto arranca del anterior)."""
+    filas = []
+    for nombre, th0 in ramas:
+        a0 = float(th0[0])
+        tramos = (sorted(a for a in grilla if a >= a0), sorted((a for a in grilla if a < a0), reverse=True))
+        for tramo in tramos:
+            th = th0.clone()
+            for a40 in tramo:
+                t0 = time.time()
+                prueba = th.clone()
+                prueba[0] = a40
+                prueba = ajustar(P, prueba, indices(P, ("beta", "delta_um"), POR_CUADRO), max_iter=600)
+                nll = P.nll(prueba)
+                ok = bool(np.isfinite(nll) and torch.isfinite(prueba).all())
+                if ok:
+                    th = prueba
+                fila = dict(rama=nombre, a40_fijo=float(a40), nll=nll if ok else np.inf,
+                            **{k: v for k, v in resumen_theta(P, prueba if ok else th).items() if k != "a40"},
+                            segundos=time.time() - t0)
+                filas.append(fila)
+                print(f"  rama {nombre}, a40 {a40:+.2f}: nll {fila['nll']:.1f}; beta {fila['beta']:.2f}, delta "
+                      f"{fila['delta_um']:+.3f} um, z real {fila['z_real_media']:+.0f} nm ({fila['segundos']:.0f} s)", flush=True)
+    return pd.DataFrame(filas)
+
+
+def solo_esferica(a, d, P, Pi, mod, salida, rng):
+    """El modelo que se simula: fase a40 Z4^0 sola (signo libre), beta y delta
+    compartidos y los parametros por cuadro de siempre. Arranques en los a40 y
+    beta pedidos (z inicial por signo), minimos distintos con su -log L en
+    pares e impares, perfil en a40 de las ramas de cerca, los cinco Zernike
+    desde el arranque que dio a40 = -6.40 en la corrida exploratoria, y
+    bootstrap de bloques del ganador."""
+    t_ini = time.time()
+    pares = P.cuadros
+    print(f"\n[E1] solo esferica: arranques a40 {a.a40_arranques} x beta0 {a.betas}; z0 cerca {a.z_arranques_cerca}, "
+          f"lejos {a.z_arranques_lejos} (cuadros pares)")
+    res = []
+    for a40 in a.a40_arranques:
+        sg = int(np.sign(a40))
+        for z0 in (a.z_arranques_cerca if sg < 0 else a.z_arranques_lejos):
+            for f, th in arranques(P, [(sg, z0)], a.betas, compartidos=ESFERICA, a_abs=abs(a40), etiqueta="esferica"):
+                f["a40_inicial"] = float(a40)
+                res.append((f, th))
+            pd.DataFrame([f for f, _ in res]).to_csv(salida / "calibracion_pupila_esferica_arranques.csv", index=False)
+    grupos = agrupar_minimos(res)
+    print("\n[E2] minimos distintos; cuadros impares con los compartidos de cada uno")
+    filas, ths = [], []
+    for i, (f, th, fs) in enumerate(grupos):
+        thi = ajustar_cuadros(Pi, th[:NC], f["beta"])
+        pci = thi[NC:].view(Pi.T, NP).cpu().numpy()
+        pcp = th[NC:].view(P.T, NP).cpu().numpy()
+        fila = dict(minimo=i, variante=VARIANTE[int(np.sign(f["a40"]))], a40=f["a40"], beta=f["beta"], delta_um=f["delta_um"],
+                    z_real_media=f["z_real_media"], z_reflejo_media=f["z_reflejo_media"],
+                    nll_pares=f["nll"], nll_pares_mascara_binaria=f["nll_mascara_binaria"], nll_impares=Pi.nll(thi),
+                    z_real_media_impares=float(Pi.geometria(thi)[1].mean()),
+                    N_real_media=f["N_real_media"], reflejo_sobre_real=float(np.mean(np.exp(pcp[:, 4] - pcp[:, 3]))),
+                    reflejo_sobre_real_impares=float(np.mean(np.exp(pci[:, 4] - pci[:, 3]))), fondo_media=f["fondo_media"],
+                    n_arranques=len(fs),
+                    arranques=" ".join(f"({g['a40_inicial']:+.2f},{g['beta_inicial']:g},{g['z_real_inicial'] / 1000:+g})"
+                                       for g in fs))
+        filas.append(fila)
+        ths.append(th)
+    mins = pd.DataFrame(filas)
+    mins["delta_logL_pares"] = mins.nll_pares.min() - mins.nll_pares
+    mins["delta_logL_impares"] = mins.nll_impares.min() - mins.nll_impares
+    mins.to_csv(salida / "calibracion_pupila_esferica_minimos.csv", index=False)
+    with pd.option_context("display.width", 250, "display.max_columns", 40):
+        print(mins.drop(columns=["arranques"]).to_string(index=False, float_format=lambda v: f"{v:.6g}"))
+
+    # ------------------------------------------------ perfil en a40 de las ramas de cerca
+    grilla = np.round(np.arange(a.perfil_a40[0], a.perfil_a40[1] + 1e-9, a.perfil_a40[2]), 6)
+    cerca = mins[mins.variante == "cerca"].sort_values("nll_pares")
+    ramas = []
+    for _, f in cerca.iterrows():               # ramas de cerca distintas en z (la rama la marca la z del real)
+        if all(abs(f.z_real_media - g.z_real_media) > 250 or abs(f.a40 - g.a40) > 0.4 for _, g in ramas):
+            ramas.append((f"{int(f.minimo)}", f))
+    ramas = ramas[:a.ramas_perfil]
+    print(f"\n[E3] perfil en a40 ({grilla[0]:g} a {grilla[-1]:g}) desde los minimos de cerca {[r for r, _ in ramas]}")
+    perfil = perfil_a40(P, [(r, ths[int(f.minimo)]) for r, f in ramas], grilla)
+    perfil.to_csv(salida / "calibracion_pupila_esferica_perfil.csv", index=False)
+
+    # ------------------------------------------------ los cinco Zernike desde el arranque de a40 = -6.40
+    print("\n[E4] cinco Zernike: arranque de la corrida exploratoria (a40 -1.5 pi, beta0 41, z0 -1 um) y desde "
+          "el mejor minimo de cerca de la esferica sola")
+    cinco = []
+    for f, th in arranques(P, [(-1, -1000.0)], [41.0], compartidos=COMPARTIDOS, etiqueta="cinco, exploratorio"):
+        cinco.append(dict(desde="exploratorio (a40 -1.5 pi, beta0 41, z0 -1 um)", **f))
+    j = int(cerca.iloc[0].minimo)
+    t0 = time.time()
+    th5 = ajustar(P, ths[j], indices(P), max_iter=1500)
+    cinco.append(dict(desde=f"minimo {j} de la esferica sola (cerca)", ajuste="cinco", nll=P.nll(th5),
+                      nll_mascara_binaria=nll_binaria(P, th5), **resumen_theta(P, th5), segundos=time.time() - t0))
+    print(f"  desde el minimo {j}: nll {cinco[-1]['nll']:.2f}; " + ", ".join(
+        f"{k} {cinco[-1][k]:+.3f}" for k in ZERNIKE + ("beta", "delta_um", "z_real_media")))
+    cinco = pd.DataFrame(cinco)
+    cinco.to_csv(salida / "calibracion_pupila_esferica_cinco.csv", index=False)
+
+    # ------------------------------------------------ incertidumbre del ganador (y del mejor de cerca)
+    ganadores = [int(mins.sort_values("nll_pares").iloc[0].minimo)]
+    if int(cerca.iloc[0].minimo) not in ganadores:
+        ganadores.append(int(cerca.iloc[0].minimo))
+    resumen = dict(minimos=mins.drop(columns=["arranques"]).to_dict("records"), incertidumbre={})
+    for j in ganadores:
+        f = mins.set_index("minimo").loc[j]
+        print(f"\n[E5] minimo {j} ({f.variante}): Hessiana y bootstrap de bloques de {a.bloque} cuadros pares "
+              f"({a.n_boot} remuestreos)")
+        _, C, vals, Cd, ev_min = covarianza(P, ths[j], indices(P, ESFERICA, POR_CUADRO))
+        dv, npx = P.deviance(ths[j])
+        sobre = dv / (npx - (len(ESFERICA) + P.T * NP))
+        boot = bootstrap_bloques(d, pares, ths[j], mod, ESFERICA, a.n_boot, a.bloque, rng)
+        boot.to_csv(salida / f"calibracion_pupila_esferica_bootstrap_{f.variante}.csv", index=False)
+        inc = {}
+        for k, ee in (("a40", np.sqrt(C[0, 0])), ("beta", np.sqrt(Cd[0, 0])), ("delta_um", np.sqrt(C[6, 6])),
+                      ("z_real_media", np.sqrt(Cd[1, 1]))):
+            inc[k] = dict(valor=float(f[k]), ee_hessiana=float(ee), ee_hessiana_sobredispersion=float(ee * np.sqrt(sobre)),
+                          ee_bootstrap=float(boot[k].std(ddof=1)), p2_5=float(boot[k].quantile(0.025)),
+                          p97_5=float(boot[k].quantile(0.975)), mediana_bootstrap=float(boot[k].median()))
+            print(f"  {k}: {inc[k]['valor']:+.4g}, ee Hessiana {ee:.3g} (x sobredispersion {inc[k]['ee_hessiana_sobredispersion']:.3g}), "
+                  f"bootstrap {inc[k]['ee_bootstrap']:.3g} [{inc[k]['p2_5']:+.4g}, {inc[k]['p97_5']:+.4g}]")
+        inc["deviance_nu"], inc["autovalor_minimo"] = sobre, ev_min
+        resumen["incertidumbre"][f"{j} {f.variante}"] = inc
+    resumen["segundos"] = time.time() - t_ini
+    (salida / "calibracion_pupila_esferica.json").write_text(json.dumps(resumen, indent=1, default=float))
+    figura_esferica(pd.DataFrame([f for f, _ in res]), mins, perfil,
+                    {j: pd.read_csv(salida / f"calibracion_pupila_esferica_bootstrap_{mins.set_index('minimo').loc[j].variante}.csv")
+                     for j in ganadores}, salida / "fig_calibracion_pupila_esferica.png")
+    print(f"\nlisto en {(time.time() - t_ini) / 60:.1f} min")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
@@ -704,6 +890,16 @@ def main():
     p.add_argument("--desde-arranques", action="store_true",
                    help="no repite el barrido ni los arranques: reajusta el mejor de cada signo de "
                         "calibracion_pupila_arranques.csv y sigue con la validacion")
+    p.add_argument("--solo-esferica", action="store_true",
+                   help="el modelo que se simula: solo a40 (signo libre), beta y delta compartidos; arranques, minimos, "
+                        "perfil en a40, cinco Zernike desde el arranque exploratorio y bootstrap del ganador")
+    p.add_argument("--a40-arranques", type=float, nargs="+", default=[-4.71, -5.16, -6.40, 4.71, 5.16, 6.40])
+    p.add_argument("--z-arranques-cerca", type=float, nargs="+", default=[-1000.0, 0.0],
+                   help="z media inicial del real [nm] de los arranques con a40 < 0 (--solo-esferica)")
+    p.add_argument("--z-arranques-lejos", type=float, nargs="+", default=[6000.0, -2000.0],
+                   help="idem con a40 > 0 (los minimos locales del barrido)")
+    p.add_argument("--perfil-a40", type=float, nargs=3, default=[-8.0, -3.5, 0.25], metavar=("INI", "FIN", "PASO"))
+    p.add_argument("--ramas-perfil", type=int, default=3, help="minimos de cerca (distintos en z o a40) con perfil")
     p.add_argument("--salida", default=str(AQUI))
     a = p.parse_args()
     salida = Path(a.salida)
@@ -728,6 +924,9 @@ def main():
     Pi = Problema(d, impares, mod)
     if a.perfil_ratio:
         perfil_ratio(P, pd.read_csv(salida / "calibracion_pupila_arranques.csv"), a.perfil_ratio, salida)
+        return
+    if a.solo_esferica:
+        solo_esferica(a, d, P, Pi, mod, salida, rng)
         return
 
     # ---------------------------------------------------- 2. arranques (calibrada y actual)
@@ -851,21 +1050,7 @@ def analizar_variante(a, d, P, Pi, mod, tabla, fcal, th_cal, th_imp, rng, salida
     print(f"  autovalor minimo de la Hessiana {ev_min:.3g}; deviance / nu = {sobre:.2f} ({npx} px, {nlib} parametros)")
 
     print(f"[3c] {var}: bootstrap de bloques de {a.bloque} cuadros pares ({a.n_boot} remuestreos)")
-    nb = len(pares) // a.bloque
-    boot = []
-    pc_cal = th_cal[NC:].view(P.T, NP)
-    for r in range(a.n_boot):
-        t0 = time.time()
-        bl = rng.integers(0, nb, nb)
-        loc = np.concatenate([np.arange(b * a.bloque, (b + 1) * a.bloque) for b in bl])
-        Pb = Problema(d, pares[loc], mod)
-        th0 = torch.cat([th_cal[:NC], pc_cal[loc].reshape(-1)])
-        thb = ajustar(Pb, th0, indices(Pb), max_iter=1500)
-        boot.append(dict(remuestreo=r, nll=Pb.nll(thb), **describir(thb[:NC].cpu().numpy()),
-                         z_real_media=float(Pb.geometria(thb)[1].mean())))
-        print(f"  {r}: " + ", ".join(f"{k} {v:+.3f}" for k, v in boot[-1].items() if k in COMPARTIDOS)
-              + f" ({time.time() - t0:.0f} s)", flush=True)
-    boot = pd.DataFrame(boot)
+    boot = bootstrap_bloques(d, pares, th_cal, mod, COMPARTIDOS, a.n_boot, a.bloque, rng)
     boot.to_csv(salida / f"calibracion_pupila_bootstrap_{var}.csv", index=False)
 
     params = []
@@ -1127,6 +1312,83 @@ def figura_medidas(var, fcal, cuadros, corr, sint, fase, mod, ruta):
                     color="white" if abs(corr[i, j]) > 0.6 else "black")
     fig.colorbar(im, ax=ax, fraction=0.046)
     ax.set_title("d) correlaciones de los compartidos (Hessiana)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(ruta, dpi=300)
+    plt.close(fig)
+
+
+def figura_esferica(arr, mins, perfil, boots, ruta):
+    """--solo-esferica: minimos de los arranques, perfil en a40 (nll, beta, z),
+    pares frente a impares y bootstrap de a40."""
+    plt = _plt()
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8.6))
+    nmin = mins.nll_pares.min()
+    mk_beta = {41.0: "v", 45.0: "o", 49.0: "^"}
+    # a) arranques
+    ax = axes[0, 0]
+    for sg in (-1, 1):
+        for b0, mk in mk_beta.items():
+            s_ = arr[(np.sign(arr.a40) == sg) & (arr.beta_inicial == b0)]
+            if len(s_):
+                ax.scatter(s_.a40, s_.nll - nmin, s=34, marker=mk, color=COLOR[sg], edgecolor="white", linewidth=0.6,
+                           zorder=3, label=f"{VARIANTE[sg]}, beta0 {b0:g}")
+    ax.set_yscale("symlog", linthresh=100)
+    ax.set_xlabel("a40 en el minimo [rad]")
+    ax.set_ylabel("-log L - minimo global (pares)")
+    ax.set_title("a) minimos desde cada arranque (solo a40, beta y linea)", fontsize=9)
+    ax.legend(frameon=False, fontsize=6.5, ncol=2)
+    # b-d) perfil
+    colores = ["#2a78d6", "#1baf7a", "#8a5cd1", "#52514e"]
+    for i, (rama, s_) in enumerate(perfil.groupby("rama", sort=False)):
+        s_ = s_[np.isfinite(s_.nll)].sort_values("a40_fijo")
+        c = colores[i % len(colores)]
+        f = mins.set_index("minimo").loc[int(rama)]
+        etiqueta = f"desde el minimo {rama} (a40 {f.a40:+.2f}, z {f.z_real_media / 1000:+.2f} um)"
+        axes[0, 1].plot(s_.a40_fijo, s_.nll - nmin, "o-", color=c, ms=3.5, lw=1.4, label=etiqueta)
+        axes[0, 2].plot(s_.a40_fijo, s_.beta, "o-", color=c, ms=3.5, lw=1.4, label=etiqueta)
+        axes[1, 0].plot(s_.a40_fijo, s_.z_real_media / 1000, "o-", color=c, ms=3.5, lw=1.4, label=etiqueta)
+    cer = mins[mins.variante == "cerca"]
+    axes[0, 1].plot(cer.a40, cer.nll_pares - nmin, "*", color="black", ms=8, label="minimos con a40 libre")
+    axes[0, 2].plot(cer.a40, cer.beta, "*", color="black", ms=8)
+    axes[1, 0].plot(cer.a40, cer.z_real_media / 1000, "*", color="black", ms=8)
+    axes[0, 1].set_ylabel("-log L - minimo global (pares)")
+    axes[0, 1].set_title("b) perfil en a40 (beta, linea y por cuadro libres)", fontsize=9)
+    axes[0, 2].set_ylabel("beta [grados]")
+    axes[0, 2].set_title("c) beta a lo largo del perfil", fontsize=9)
+    axes[1, 0].set_ylabel("z media del real [um]")
+    axes[1, 0].set_title("d) z del real a lo largo del perfil", fontsize=9)
+    for ax in (axes[0, 1], axes[0, 2], axes[1, 0]):
+        ax.set_xlabel("a40 fijo [rad] (cerca: amp_esferica = -a40)")
+        ax.legend(frameon=False, fontsize=6.5)
+    # e) pares frente a impares
+    ax = axes[1, 1]
+    for sg in (-1, 1):
+        s_ = mins[mins.variante == VARIANTE[sg]]
+        ax.scatter(-s_.delta_logL_pares, -s_.delta_logL_impares, s=34, color=COLOR[sg], edgecolor="white", linewidth=0.6,
+                   zorder=3, label=VARIANTE[sg])
+    lim = max(1.0, float(-mins.delta_logL_pares.min()), float(-mins.delta_logL_impares.min()))
+    ax.plot([0, lim], [0, lim], "-", color=COLOR["gris"], lw=0.7)
+    ax.set_xscale("symlog", linthresh=100); ax.set_yscale("symlog", linthresh=100)
+    ax.set_xlabel("-log L - mejor (pares, ajuste)")
+    ax.set_ylabel("-log L - mejor (impares, validacion)")
+    ax.set_title("e) minimos distintos: pares frente a impares", fontsize=9)
+    ax.legend(frameon=False, fontsize=7)
+    # f) bootstrap de a40
+    ax = axes[1, 2]
+    for j, b in boots.items():
+        f = mins.set_index("minimo").loc[j]
+        sg = int(np.sign(f.a40))
+        ax.hist(b.a40 - f.a40, bins=15, color=COLOR[sg], alpha=0.6,
+                label=f"minimo {j} ({f.variante}, a40 {f.a40:+.3f}): ee {b.a40.std(ddof=1):.3f}")
+    ax.axvline(0, color=COLOR["gris"], lw=0.7)
+    ax.set_xlabel("a40 del remuestreo - a40 del minimo [rad]")
+    ax.set_ylabel("remuestreos")
+    ax.set_title("f) bootstrap de bloques de a40", fontsize=9)
+    ax.legend(frameon=False, fontsize=6.5)
+    for ax in axes.flat:
+        ax.grid(True, color=COLOR["rejilla"], lw=0.6)
+    fig.suptitle("Yeast6_1, canal derecho: el modelo que se simula (fase a40 Z4^0 sola, beta y linea compartidos)",
+                 fontsize=10)
     fig.tight_layout()
     fig.savefig(ruta, dpi=300)
     plt.close(fig)
