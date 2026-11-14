@@ -10,7 +10,8 @@ Partes:
     linea_base metricas de la red sobre el test v1, el test v2 y el control v2
                con la PSF fija (misma semilla: mismas posiciones, fotones y
                fondo; solo cambia la pupila), por rango de z, de amp_esferica,
-               de astigmatismo, de coma, de fotones y de fondo
+               de astigmatismo, de coma, de fotones y de fondo, y FP por imagen
+               por amp_esferica y por contraste de la autofluorescencia
                -> simulador_v2_linea_base.csv, fig_simulador_v2_linea_base.png
 
 Uso:
@@ -35,6 +36,10 @@ TESTS = {"v1": "test_celula_b45_cerca", "v2": "test_celula_v2_b45_cerca", "v2_ps
 COLOR = {"v1": "#2a78d6", "v2": "#eb6834", "v2_psf_fija": "#52514e"}
 NOMBRE = {"v1": "test v1 (celula.yaml)", "v2": "test v2", "v2_psf_fija": "test v2 con la PSF fija (4.71 rad)"}
 R_XY, R_Z = 150.0, 300.0
+_V2 = cargar_config(RAIZ / "localizacion" / "configs" / "celula_v2.yaml").datos
+BINS_PSF = {"amp_esferica": np.linspace(*_V2.psf_amp_esferica_rango, 6), "amp_astig": np.linspace(*_V2.psf_astig_rango, 6),
+            "amp_coma": np.linspace(*_V2.psf_coma_rango, 7)}
+BINS_CONTRASTE = [0, 0.25, 0.5, 1, 2, 4, 10]       # fondo_celula / fondo medio de la imagen
 
 
 def leer_test(nombre):
@@ -98,7 +103,8 @@ def parte_datos(salida):
     cs = config_simulador(cd, 3)
     zs = (-2500.0, 0.0, 2500.0)
     casos = [("4.0 rad", dict(amp_esferica=4.0)), ("6.5 rad", dict(amp_esferica=6.5)),
-             ("4.0 + astig 1.3 + coma 0.9", dict(amp_esferica=4.0, amp_astig=1.3, amp_coma=0.9, angulo_coma_deg=90.0)),
+             (f"4.0 + astig {_V2.psf_astig_rango[1]:.1f} + coma {_V2.psf_coma_rango[1]:.1f}",
+              dict(amp_esferica=4.0, amp_astig=_V2.psf_astig_rango[1], amp_coma=_V2.psf_coma_rango[1], angulo_coma_deg=90.0)),
              ("v1: 4.71 rad", dict(amp_esferica=1.5 * np.pi))]
     from dataclasses import replace
     sub = gs[1, :].subgridspec(1, 12, wspace=0.08)
@@ -177,8 +183,7 @@ def parte_linea_base(corrida, salida):
         cortes = {"z_nm": np.arange(-3000, 3001, 500), "photons": [1000, 2000, 5000, 10000, 20000, 30000, 50000],
                   "fondo_medio": [0, 3, 6, 12, 25, 50, 200]}
         if "amp_esferica" in gt:
-            cortes.update(amp_esferica=np.arange(4.0, 6.51, 0.5), amp_astig=np.linspace(0, 1.3, 6),
-                          amp_coma=np.linspace(0, 0.9, 6))
+            cortes.update(BINS_PSF)
         if "fondo_celula" in gt:
             gt = gt.assign(contraste_celula=gt.fondo_celula / np.maximum(gt.fondo_medio, 1e-9))
         for f, b in cortes.items():
@@ -186,6 +191,21 @@ def parte_linea_base(corrida, salida):
                 s = gt[(gt[f] >= lo) & (gt[f] < hi)]
                 if len(s) >= 20:
                     filas.append(dict(test=k, factor=f, desde=lo, hasta=hi, **metricas(s)))
+    # FP por imagen segun factores de la imagen (muestras.csv del test v2: el control comparte los
+    # video_id, el fondo y la autofluorescencia, y la PSF del v2 se usa para agrupar)
+    if "v2" in ev:
+        mv2 = ev["v2"][2].assign(contraste_celula=lambda d: d.fondo_celula / np.maximum(d.fondo_medio, 1e-9))
+        for k, (gt, pred, m) in ev.items():
+            if k == "v1":
+                continue
+            fp = pred[~pred.tp & ~pred.fuera_fov].groupby("video_id").size()
+            mm = mv2.assign(fp=mv2.video_id.map(fp).fillna(0))
+            for f, b in ({"amp_esferica": BINS_PSF["amp_esferica"], "contraste_celula": BINS_CONTRASTE}).items():
+                for lo, hi in zip(b[:-1], b[1:]):
+                    s = mm[(mm[f] >= lo) & (mm[f] < hi)]
+                    if len(s):
+                        filas.append(dict(test=k, factor=f"fp_por_imagen:{f}", desde=lo, hasta=hi, n=len(s),
+                                          fp=float(s.fp.mean())))
     t = pd.DataFrame(filas)
     t.to_csv(salida / "simulador_v2_linea_base.csv", index=False)
     with pd.option_context("display.width", 250, "display.max_rows", 500):
@@ -202,8 +222,7 @@ def parte_linea_base(corrida, salida):
               f"{p.detectado_fija.mean():.3f}; detectados solo con la PSF fija {np.mean(~p.detectado & p.detectado_fija):.3f}, "
               f"solo con la v2 {np.mean(p.detectado & ~p.detectado_fija):.3f}; RMSE z de los detectados por las dos "
               f"{np.sqrt(np.mean(ambos.dz_nm ** 2)):.1f} / {np.sqrt(np.mean(ambos.dz_nm_fija ** 2)):.1f} nm ({len(ambos)})")
-        for f, b in (("amp_esferica", np.arange(4.0, 6.51, 0.5)), ("amp_astig", np.linspace(0, 1.3, 6)),
-                     ("amp_coma", np.linspace(0, 0.9, 6))):
+        for f, b in BINS_PSF.items():
             for lo, hi in zip(b[:-1], b[1:]):
                 s = p[(p[f] >= lo) & (p[f] < hi)]
                 sa = s[s.detectado & s.detectado_fija]

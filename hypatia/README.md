@@ -72,8 +72,8 @@ CONFIG=localizacion/configs/celula.yaml PREFIJO=celula EPOCAS=100 TIEMPO=1-06:00
 **Simulador v2** (`configs/celula_v2.yaml`, `resultados_simulador_v2.md`): camara medida, fondo log-uniforme en [1, 40] e-/px con autofluorescencia de la celula, fotones hasta 50000, z +-3000 nm y PSF aleatorizada por muestra, solo con `cerca`. La config ya trae `checkpoint_cada: 10` y `metricas_val: true`. Se lanzan dos semillas (`SEMILLA` cambia `entrenamiento.semilla` y agrega `_s<SEMILLA>` al nombre; los datos son los mismos). El test `localizacion/datos/test_celula_v2_b45_cerca` es el mismo para las dos: copiarlo antes con rsync desde el computador local, o lanzar la segunda cuando la primera ya lo genero, para que no lo escriban a la vez. Cada muestra cuesta ~80 ms localmente (frente a ~53 con `celula.yaml`): con `CPUS=8` la simulacion da ~100 muestras/s.
 
 ```bash
-CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=100 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=0 bash hypatia/lanzar_espejo.sh cerca
-CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=100 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=1 bash hypatia/lanzar_espejo.sh cerca
+CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=0 bash hypatia/lanzar_espejo.sh cerca
+CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=1 bash hypatia/lanzar_espejo.sh cerca
 ```
 
 A 45 grados los reflejos quedan hasta z' = -6.9 um (mas lejos del objetivo). Con `cerca` ese lado es el de la PSF ancha: el banco usa K = 256 y cada muestra cuesta ~16 ms localmente, frente a K = 144 y ~7 ms con `lejos`, asi que con `cerca` conviene `CPUS=8`.

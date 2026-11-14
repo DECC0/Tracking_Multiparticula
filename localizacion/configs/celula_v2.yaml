@@ -3,11 +3,11 @@
 #   - camara: gain 0.45 e-/ADU (transferencia de fotones), offset 97.75 ADU (nivel oscuro) y ruido de
 #     lectura uniforme en [2.18, 2.90] ADU (mediana y rms) por muestra (resultados_psf_real.md, seccion 4)
 #   - fondo log-uniforme en [1, 40] e-/px (el real: 1.3-2.3 lejos de la celula) + autofluorescencia de la
-#     celula, contraste en [0, 2.5] x el fondo base (medido: 0.46 izq, 1.83 der; autofluorescencia_celula.py)
+#     celula, contraste en [0, 4.0] x el fondo base (medido: 0.46 izq, 1.83 der; autofluorescencia_celula.py)
 #   - fotones hasta 50000 (el real del canal derecho: 35000-68000 en total)
 #   - z de la red +-3000 nm, con peso en los polos de la celula (celula_peso_polos 0.5)
 #   - PSF por muestra: esferica uniforme en [4.0, 6.5] rad (calibracion: 4.11 a 6.40, seccion 7 de
-#     resultados_calibracion_pupila.md), astigmatismo y coma con magnitud uniforme en [0, 1.3] y [0, 0.9] rad
+#     resultados_calibracion_pupila.md), astigmatismo y coma con magnitud uniforme en [0, 1.3] y [0, 1.2] rad
 #     y orientacion uniforme; el real y su reflejo comparten la pupila de la muestra
 # El resto (geometria, celula, ratio, red, entrenamiento) es el de celula.yaml.
 #
@@ -21,7 +21,7 @@ datos:
     fotones_rango: [1000.0, 50000.0]
     fondo_rango: [1.0, 40.0]
     muestreo_fondo: log           # log-uniforme: la mitad de las muestras con fondo base < 6.3 e-/px
-    fondo_celula_contraste_rango: [0.0, 2.5]   # autofluorescencia: exceso en el centro / fondo base
+    fondo_celula_contraste_rango: [0.0, 4.0]   # autofluorescencia: exceso en el centro / fondo base
     fondo_celula_sigma_px: 5.0    # blur del perfil de la celula (ajuste: 4.8-5.6 px)
     gain: 0.45                    # e-/ADU, medido (transferencia de fotones)
     offset: 97.75                 # ADU, nivel oscuro medido
@@ -64,7 +64,7 @@ datos:
   celula_desplazamiento_px: 10.0          # ... +- 10 px por eje
   psf_amp_esferica_rango: [4.0, 6.5]      # amp_esferica [rad] por muestra
   psf_astig_rango: [0.0, 1.3]             # magnitud de Z2^+-2 [rad], orientacion uniforme
-  psf_coma_rango: [0.0, 0.9]              # magnitud de Z3^+-1 [rad], orientacion uniforme
+  psf_coma_rango: [0.0, 1.2]              # magnitud de Z3^+-1 [rad], orientacion uniforme
 
 target:
   upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y

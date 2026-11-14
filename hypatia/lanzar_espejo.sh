@@ -8,8 +8,8 @@
 # Con celula: CONFIG=localizacion/configs/celula.yaml PREFIJO=celula bash hypatia/lanzar_espejo.sh lejos
 # Simulador v2 (resultados_simulador_v2.md), dos semillas (el test se comparte: copiar antes
 # localizacion/datos/test_celula_v2_b45_cerca, o lanzar la segunda cuando la primera ya lo genero):
-#     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=100 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=0 bash hypatia/lanzar_espejo.sh cerca
-#     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=100 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=1 bash hypatia/lanzar_espejo.sh cerca
+#     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=0 bash hypatia/lanzar_espejo.sh cerca
+#     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=1 bash hypatia/lanzar_espejo.sh cerca
 # Cualquier variable de abajo se puede cambiar asi, en la linea de comandos.
 
 # ---------------- variables ----------------

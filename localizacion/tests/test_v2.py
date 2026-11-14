@@ -107,10 +107,10 @@ def test_config_celula_v2():
     s, d = c.datos.simulador, c.datos
     assert (s["gain"], s["offset"]) == (0.45, 97.75) and d.read_noise_rango == (2.18, 2.90)
     assert tuple(s["fondo_rango"]) == (1.0, 40.0) and s["muestreo_fondo"] == "log"
-    assert tuple(s["fondo_celula_contraste_rango"]) == (0.0, 2.5)
+    assert tuple(s["fondo_celula_contraste_rango"]) == (0.0, 4.0)
     assert tuple(s["fotones_rango"]) == (1000.0, 50000.0) and tuple(s["z_rango_nm"]) == (-3000.0, 3000.0)
     assert s["celula_peso_polos"] == 0.5 and s["anillos_hacia_objetivo"] is True
-    assert (d.psf_amp_esferica_rango, d.psf_astig_rango, d.psf_coma_rango) == ((4.0, 6.5), (0.0, 1.3), (0.0, 0.9))
+    assert (d.psf_amp_esferica_rango, d.psf_astig_rango, d.psf_coma_rango) == ((4.0, 6.5), (0.0, 1.3), (0.0, 1.2))
     assert c.entrenamiento.checkpoint_cada == 10 and c.entrenamiento.metricas_val
     assert c.target.dz_nm == 100.0
     cs = config_simulador(d, 1)
