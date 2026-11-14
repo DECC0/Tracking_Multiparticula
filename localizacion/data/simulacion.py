@@ -27,6 +27,15 @@ z' de cualquier geometria (z_banco_espejo). Si aun asi algun reflejo queda
 sin dibujar (reflejo_en_banco = False), la muestra se regenera con otro
 video_id del simulador y otra geometria (intento 1, 2, ...) y se cuenta en
 meta["reintentos"]: en los datos de entrenamiento no hay reflejos sin dibujar.
+
+PSF aleatorizada (datos.psf_amp_esferica_rango, psf_astig_rango,
+psf_coma_rango; simulador v2): la pupila de cada muestra (amp_esferica,
+magnitud y angulo del astigmatismo y de la coma) se sortea con su propio flujo
+(spawn_key (idx, 1004), siempre 5 uniformes; no depende del intento) y la
+comparten el real y su reflejo. El banco sigue siendo el de la pupila base: el
+simulador dibuja con la PSF directa de la pupila de la muestra, y la SNR de la
+GT tambien la usa. Con los rangos en None las muestras son las de antes, bit a
+bit (tests/test_regresion_celula.py).
 """
 import sys
 from dataclasses import replace
@@ -43,13 +52,16 @@ CLAVE_RNG = 1000                        # spawn_key del flujo de randomizacion; 
 CLAVE_RNG_ESPEJO = 1001                 # spawn_key del flujo de la geometria del espejo
 CLAVE_RNG_CELULA = 1002                 # spawn_key del flujo de la celula
 CLAVE_RNG_RATIO = 1003                  # spawn_key del flujo de ratio_reflejo (un uniforme por muestra)
+CLAVE_RNG_PSF = 1004                    # spawn_key del flujo de la pupila de la muestra (siempre 5 uniformes)
 DESFASE_REINTENTO = 2 ** 40             # video_id del simulador en el intento k: idx + k * DESFASE_REINTENTO
 CAMPOS_RESERVADOS = ("n_frames", "n_videos", "seed")
 COLUMNAS_GT = sim.COLUMNAS_GT + ["snr"]
 # campos de simulador.Config que definen el banco de PSF
 CAMPOS_PSF = ("NA", "n_medio", "lambda_nm", "pixel_camara_um", "magnificacion", "mascara",
               "anillos_corkscrew", "amp_esferica", "M_pupila", "K_psf", "energia_max_recortada",
-              "z_paso_nm", "blur_extra_px", "integrar_pixel", "z_rango_nm", "anillos_hacia_objetivo")
+              "z_paso_nm", "blur_extra_px", "integrar_pixel", "z_rango_nm", "anillos_hacia_objetivo",
+              "amp_astig", "angulo_astig_deg", "amp_coma", "angulo_coma_deg")
+CAMPOS_PUPILA = ("amp_esferica", "amp_astig", "angulo_astig_deg", "amp_coma", "angulo_coma_deg")
 COLUMNAS_GEOMETRIA = ["espejo_angulo_eje_deg", "espejo_orientacion_deg", "espejo_punto_x_px", "espejo_punto_y_px"]
 COLUMNAS_CELULA = ["celula_diametro_um", "celula_altura_nm", "celula_centro_x_px", "celula_centro_y_px"]
 
@@ -227,6 +239,26 @@ def celula_muestra(cfg_datos, cfg_sim, idx, geometria, intento=0):
     return c
 
 
+def pupila_muestra(cfg_datos, cfg_sim, idx):
+    """Campos de la pupila de la muestra idx (amp_esferica y aberraciones), con
+    su propio flujo: siempre 5 uniformes (esferica, magnitud y angulo del
+    astigmatismo, magnitud y angulo de la coma), asi activar un rango no cambia
+    los demas sorteos. Solo devuelve los campos con rango."""
+    rng = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG_PSF)))
+    u_e, u_a, u_ta, u_c, u_tc = rng.uniform(size=5)
+    p = {}
+    if cfg_datos.psf_amp_esferica_rango is not None:
+        lo, hi = cfg_datos.psf_amp_esferica_rango
+        p["amp_esferica"] = float(lo + u_e * (hi - lo))
+    if cfg_datos.psf_astig_rango is not None:
+        lo, hi = cfg_datos.psf_astig_rango
+        p.update(amp_astig=float(lo + u_a * (hi - lo)), angulo_astig_deg=float(180.0 * u_ta))
+    if cfg_datos.psf_coma_rango is not None:
+        lo, hi = cfg_datos.psf_coma_rango
+        p.update(amp_coma=float(lo + u_c * (hi - lo)), angulo_coma_deg=float(360.0 * u_tc))
+    return p
+
+
 def config_muestra(cfg_datos, cfg_sim, idx, intento=0):
     """simulador.Config de la muestra idx, con la randomizacion extra (y, con
     espejo, la geometria del intento; con celula, la celula)."""
@@ -238,6 +270,8 @@ def config_muestra(cfg_datos, cfg_sim, idx, intento=0):
         u = np.random.default_rng(np.random.SeedSequence(cfg_sim.seed, spawn_key=(idx, CLAVE_RNG_RATIO))).uniform()
         lo, hi = cfg_datos.ratio_reflejo_rango
         cambios["ratio_reflejo"] = float(lo + u * (hi - lo))
+    if cfg_datos.psf_aleatoria:                                # su propio flujo; no depende del intento
+        cambios.update(pupila_muestra(cfg_datos, cfg_sim, idx))
     d = cfg_datos.fotones_dispersion
     if not usa_rango_completo(cfg_datos, cfg_sim, idx):
         Nmin, Nmax = cfg_sim.fotones_rango
@@ -256,10 +290,15 @@ def snr_emisores(cfg, banco, gt, fondo):
     """SNR del pixel pico de cada emisor, como simulador.snr_pico (emisor
     centrado en un pixel): senal = N p_max(z), snr = senal / sqrt(senal + b +
     var_lectura), con b el fondo en el pixel del emisor (el mas cercano dentro
-    de la imagen)."""
+    de la imagen). p_max es el de la PSF sin recorte; con la pupila sorteada
+    por muestra, el de la pupila de la muestra (PSF directa)."""
     if len(gt) == 0:
         return np.zeros(0)
-    p_max = np.array([banco.psf_en_z(z).max() for z in gt.z_nm])
+    if sim.pupila_del_banco(cfg, banco):
+        p_max = np.array([banco.psf_en_z(z).max() for z in gt.z_nm])
+    else:
+        psf = sim.PSFRecortada(cfg, banco.K, recortar=False)
+        p_max = np.array([psf.psf(z).max() for z in gt.z_nm])
     i = np.clip(np.round(gt.y_px.to_numpy()).astype(int), 0, cfg.H - 1)
     j = np.clip(np.round(gt.x_px.to_numpy()).astype(int), 0, cfg.W - 1)
     senal = gt.photons.to_numpy() * p_max
@@ -297,6 +336,10 @@ def generar_muestra(cfg_datos, cfg_sim, banco, idx):
                     espejo_punto_x_px=cfg_m.espejo_punto_px[0], espejo_punto_y_px=cfg_m.espejo_punto_px[1],
                     reintentos=intento, n_reflejos_en_fov=int(gt.reflejo_en_fov.sum()),
                     ratio_reflejo=cfg_m.ratio_reflejo)
+    if cfg_datos.psf_aleatoria:
+        meta.update({c: getattr(cfg_m, c) for c in CAMPOS_PUPILA})
+    if "fondo_celula" in extra:
+        meta["fondo_celula"] = extra["fondo_celula"]
     if cfg_sim.usar_celula:
         meta.update(celula_diametro_um=cfg_m.diametro_celula_um, celula_altura_nm=cfg_m.altura_celula_nm,
                     celula_centro_x_px=cfg_m.celula_centro_px[0], celula_centro_y_px=cfg_m.celula_centro_px[1],

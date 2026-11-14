@@ -71,6 +71,12 @@ class ConfigDatos:
                                             # fija espejo_punto_px y celula_centro_px de cada muestra
     celula_desplazamiento_px: float = 0.0
 
+    # PSF aleatorizada por muestra (simulador v2), con su propio flujo: la pupila de la muestra la comparten
+    # el real y su reflejo. None -> el valor de datos.simulador (sin aleatorizar)
+    psf_amp_esferica_rango: tuple = None    # amp_esferica [rad] uniforme en [min, max] (mascara esferica)
+    psf_astig_rango: tuple = None           # amp_astig [rad] uniforme en [min, max], angulo uniforme en [0, 180)
+    psf_coma_rango: tuple = None            # amp_coma [rad] uniforme en [min, max], angulo uniforme en [0, 360)
+
     def __post_init__(self):
         if self.read_noise_rango is not None:
             self.read_noise_rango = tuple(float(v) for v in self.read_noise_rango)
@@ -78,7 +84,8 @@ class ConfigDatos:
             self.espejo_angulo_eje_rango_deg = tuple(float(v) for v in self.espejo_angulo_eje_rango_deg)
         if self.espejo_linea_rango_fov is not None:
             self.espejo_linea_rango_fov = tuple(float(v) for v in self.espejo_linea_rango_fov)
-        for c in ("celula_diametro_rango_um", "celula_altura_rango_nm", "ratio_reflejo_rango"):
+        for c in ("celula_diametro_rango_um", "celula_altura_rango_nm", "ratio_reflejo_rango",
+                  "psf_amp_esferica_rango", "psf_astig_rango", "psf_coma_rango"):
             if getattr(self, c) is not None:
                 setattr(self, c, tuple(float(v) for v in getattr(self, c)))
         self.validar()
@@ -94,6 +101,11 @@ class ConfigDatos:
         """True si la celula se sortea o se ubica por muestra."""
         return (self.celula_diametro_rango_um is not None or self.celula_altura_rango_nm is not None
                 or self.celula_contacto_centrado)
+
+    @property
+    def psf_aleatoria(self):
+        """True si la pupila se sortea por muestra."""
+        return any(r is not None for r in (self.psf_amp_esferica_rango, self.psf_astig_rango, self.psf_coma_rango))
 
     @property
     def canales_entrada(self):
@@ -143,6 +155,13 @@ class ConfigDatos:
             _exige(self.simulador.get("usar_espejo", False) and not self.espejo_punto_aleatorio,
                    "datos.celula_contacto_centrado requiere el espejo y espejo_punto_aleatorio: false "
                    "(el contacto fija la linea del espejo)")
+        for c in ("psf_amp_esferica_rango", "psf_astig_rango", "psf_coma_rango"):
+            if getattr(self, c) is not None:
+                lo, hi = getattr(self, c)
+                _exige(0 <= lo <= hi, f"datos.{c}: se requiere 0 <= min <= max")
+        if self.psf_amp_esferica_rango is not None:
+            _exige(self.simulador.get("mascara", "esferica") == "esferica",
+                   "datos.psf_amp_esferica_rango requiere datos.simulador.mascara: esferica")
 
 
 @dataclass

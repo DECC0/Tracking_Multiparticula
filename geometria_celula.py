@@ -74,6 +74,23 @@ class GeometriaCelula:
         d = np.stack([sin_t * np.cos(phi), sin_t * np.sin(phi), cos_t], axis=-1)
         return self.c + r[:, None] * d
 
+    def peso_polos(self, u_r, u_z, u_phi, w):
+        """Puntos (n, 3) [nm] con densidad en z, s = (z - c_z) / R en [-1, 1],
+            f(s) = (1 - w) 3/4 (1 - s^2) + w 3/2 s^2
+        (w = 0: la de uniforme en el volumen; 1/3: uniforme en z; > 1/3: mas
+        hacia los polos) y, a cada z, uniformes en el disco de la celula. s se
+        obtiene invirtiendo la CDF (cubica monotona) por biseccion."""
+        u_z = np.asarray(u_z, dtype=float)
+        lo, hi = -np.ones_like(u_z), np.ones_like(u_z)
+        for _ in range(60):                                      # 2^-60: exacto en doble precision
+            s = 0.5 * (lo + hi)
+            F = (1 - w) * (2 + 3 * s - s ** 3) / 4 + w * (s ** 3 + 1) / 2
+            lo, hi = np.where(F < u_z, s, lo), np.where(F < u_z, hi, s)
+        s = 0.5 * (lo + hi)
+        r = self.R * np.sqrt(np.clip(1.0 - s ** 2, 0.0, None)) * np.sqrt(np.asarray(u_r, dtype=float))
+        phi = 2.0 * np.pi * np.asarray(u_phi, dtype=float)
+        return self.c + np.stack([r * np.cos(phi), r * np.sin(phi), self.R * s], axis=-1)
+
     def mover_nm(self, p_nm, paso_nm):
         """p + paso (n, 3) [nm] con reflexion especular en la superficie. p debe
         estar dentro (|p - c| <= R): el segmento p -> p + paso sale de la esfera a

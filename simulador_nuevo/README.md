@@ -20,7 +20,7 @@ simulador_nuevo/
 ```bash
 PY=~/miniforge3/envs/tesis/bin/python
 $PY simulador_nuevo/simulador.py                     # dataset -> simulador_nuevo/salida/
-$PY simulador_nuevo/tests/correr_tests.py            # 81 tests, ~9 s
+$PY simulador_nuevo/tests/correr_tests.py            # 114 tests, ~19 s
 $PY simulador_nuevo/tests/correr_tests.py psf        # solo los tests cuyo nombre contiene "psf"
 $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace ajustes MLE)
 ```
@@ -39,6 +39,7 @@ $PY simulador_nuevo/checks/run_all_checks.py         # ~2 min (check_crlb hace a
 | `test_espejo.py` | validacion y JSON de los campos del espejo, misma geometria que `simulador_psf`, banco ampliado con los planos de `z_rango_nm` intactos, ningun real cruza el espejo (tambien en los subpasos), `dist_max_espejo_um`, espejo lejano = sin espejo, GT del reflejo, desenfoque ligado, imagen limpia reconstruible (con subpasos y desde el GT), el espejo no cambia los otros flujos, regeneracion por video, convencion (reflejo del lado correcto, `anillos_hacia_objetivo` solo cambia la PSF, `config.json` de la convencion anterior rechazado), `ratio_reflejo = 0` sin luz del reflejo, espejo apagado |
 | `test_celula.py` | celula (`usar_celula`): validacion y JSON, tangente al espejo, posiciones uniformes en el volumen con los mismos sorteos que sin celula, reflexion especular exacta, ningun emisor sale ni cruza el espejo (tambien en los subpasos), MSD que se satura en 6 R^2 / 5, reflejos dentro de la celula virtual, `en_rango_z` y banco, celula apagada |
 | `test_recorte.py` | recorte de pupila del reflejo: fraccion = integral de la mascara (y la geometrica), beta = 0 -> la mitad, beta >= 55.6 -> nada, fraccion(-beta) = 1 - fraccion(beta), PSF sin renormalizar (suma la fraccion), phi = 90 = rotacion exacta, misma geometria con las dos variantes de anillos, corrimiento del centroide hacia +m con z' < 0 (optica geometrica), real/GT/flujos sin cambio, imagen reconstruible, sin recorte efectivo bit a bit; recorte del real: pierde lo mismo que el reflejo a 45 grados (4.67%), GT sin cambio, imagen reconstruible, bit a bit sin efecto |
+| `test_v2.py` | simulador v2: opciones apagadas por defecto (JSON y resumen de antes), fase de astigmatismo y coma (la convencion de `calibracion_pupila.py`) y bit a bit sin ellas, el astigmatismo alarga la PSF en su eje, PSF directa sin recorte = plano del banco, pupila de la muestra distinta de la del banco -> PSF directa (= banco de esa pupila), real y reflejo con la misma pupila (imagen reconstruible), fondo log-uniforme con los mismos sorteos, autofluorescencia = fondo + amplitud x `perfil_celula` (amplitud / base en el rango; 1 en la celula, ratio en la virtual, 0 lejos), densidad en z con peso en los polos (histograma, uniforme en el disco, dentro de la esfera) y en `generar_video` (mismos sorteos) |
 | `test_regresion.py` | con el espejo apagado, salidas bit a bit iguales a las de antes del espejo (`referencia_regresion.json`; se salta si cambia la version de numpy; `--generar` la reescribe) |
 | `test_diagnosticos.py` | SNR del pixel pico vs simulacion, escalamiento de la CRLB; CRLB 3D (`crlb_3d`, z desconocido) vs la PSF exacta de `psf_directa`, vs la 2D y escalamiento con N |
 

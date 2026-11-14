@@ -1,0 +1,6 @@
+{
+ "numpy": "2.4.6",
+ "celula_cerca": "4e83a25ecdac2142d8ebbfc8470300b4316701c8262f6f534e7c275f1ed215c2",
+ "celula_lejos": "2585bb18d4b7607cc0c22893c51e5b3cbe72cb40722863be54ce27630bb97a36",
+ "espejo_cerca": "94f129e9aedf6700ff1ba12b284450d4f03886ca5b058b62575d5fd67c4e254d"
+}

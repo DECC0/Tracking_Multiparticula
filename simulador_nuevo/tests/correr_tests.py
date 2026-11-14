@@ -28,6 +28,7 @@ MODULOS = [
     "test_espejo",
     "test_celula",
     "test_recorte",
+    "test_v2",
     "test_regresion",
 ]
 

@@ -32,6 +32,7 @@ CONFIG=${CONFIG:-localizacion/configs/espejo.yaml}
 VENV=${VENV:-$HOME/envs/tracking}
 DATOS=${DATOS:-localizacion/datos}
 N_TEST=${N_TEST:-2000}
+SEMILLA=${SEMILLA:-}                      # vacia: entrenamiento.semilla de la config
 EXTRA_SET=${EXTRA_SET:-}
 
 module purge
@@ -47,7 +48,9 @@ set -e
 
 if [ "$ANILLOS" = "cerca" ]; then BANDERA=true; OPCION=--anillos-hacia-objetivo; else BANDERA=false; OPCION=; fi
 NOMBRE=hypatia_${PREFIJO}_b45_${ANILLOS}
-TEST=$DATOS/test_${PREFIJO}_b45_${ANILLOS}
+TEST=$DATOS/test_${PREFIJO}_b45_${ANILLOS}           # el mismo para todas las semillas
+SET_SEMILLA=
+if [ -n "$SEMILLA" ]; then NOMBRE=${NOMBRE}_s$SEMILLA; SET_SEMILLA=entrenamiento.semilla=$SEMILLA; fi
 WORKERS=${SLURM_CPUS_PER_TASK:-4}
 
 echo "Corri en la maquina: $(/bin/hostname)  el: $(/bin/date)"
@@ -63,7 +66,7 @@ fi
 # 2. entrenamiento: la carpeta de la corrida es localizacion/corridas/<NOMBRE>_<fecha-hora>/
 python -u localizacion/train.py --config "$CONFIG" \
     --set datos.simulador.anillos_hacia_objetivo=$BANDERA entrenamiento.epocas=$EPOCAS \
-          entrenamiento.workers=$WORKERS entrenamiento.nombre=$NOMBRE $EXTRA_SET
+          entrenamiento.workers=$WORKERS entrenamiento.nombre=$NOMBRE $SET_SEMILLA $EXTRA_SET
 CORRIDA=$(ls -td localizacion/corridas/${NOMBRE}_*/ | head -1)
 
 # 3. evaluacion de la mejor epoca sobre el test de esta PSF

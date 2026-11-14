@@ -70,6 +70,15 @@ iniciales uniformes en su volumen y browniano con frontera reflectante; z_rango_
 deja de limitarlos (solo define el rango axial de la red y la base del
 banco) y el GT agrega en_rango_z. Con la celula apagada todo es bit a bit igual.
 
+Simulador v2 (opciones apagadas por defecto: con ellas apagadas todo es bit
+a bit lo de antes; configs/celula_v2.yaml las enciende): aberraciones de la
+pupila (amp_astig, amp_coma y sus angulos; fase_aberraciones), fondo
+log-uniforme (muestreo_fondo), autofluorescencia de la celula
+(fondo_celula_contraste_rango; perfil_celula) y densidad en z con peso en los
+polos de la celula (celula_peso_polos; GeometriaCelula.peso_polos). Si la
+pupila de una muestra no es la del banco (localizacion la sortea por muestra),
+el real y el reflejo se dibujan con la PSF directa de esa pupila.
+
 Aleatoriedad: cada video tiene flujos independientes por componente (muestra,
 trayectorias, fotones, fondo, camara) derivados de (seed, video_id). Asi un
 video se puede regenerar solo, y cambiar el ruido, el fondo o los fotones no
@@ -121,6 +130,14 @@ CAMPOS_ESPEJO = ("usar_espejo", "angulo_espejo_eje_deg", "orientacion_espejo_deg
 CONVENCION_Z = "hacia_objetivo"
 # campos de la celula: con usar_celula=False no se escriben en config.json
 CAMPOS_CELULA = ("usar_celula", "diametro_celula_um", "altura_celula_nm", "celula_centro_px")
+# opciones del simulador v2 y su valor por defecto (apagadas): con ese valor no se escriben en config.json
+# y no cambian ninguna salida
+DEFECTO_V2 = {"amp_astig": 0.0, "angulo_astig_deg": 0.0, "amp_coma": 0.0, "angulo_coma_deg": 0.0,
+              "muestreo_fondo": "uniforme", "celula_peso_polos": 0.0, "fondo_celula_contraste_rango": None,
+              "fondo_celula_sigma_px": 4.0}
+# campos de la pupila que pueden cambiar por muestra (localizacion los sortea): si difieren de los del banco,
+# generar_video calcula la PSF directa en la pupila de la muestra (PSFRecortada sin recorte)
+CAMPOS_PUPILA_MUESTRA = ("amp_esferica", "amp_astig", "angulo_astig_deg", "amp_coma", "angulo_coma_deg")
 TOL_BANCO_NM = 1e-6     # [nm] redondeo de z' en el borde del banco
 _RANGOS = {"n_emisores_rango": int, "z_rango_nm": float, "fotones_rango": float,
            "fondo_rango": float, "D_rango_um2_s": float}
@@ -164,6 +181,14 @@ class Config:
     anillos_hacia_objetivo: bool = False  # lado del foco donde la esferica gana anillos: False -> al alejarse
                                           # del objetivo (-z), True -> al acercarse (+z); pendiente: z-stack de
                                           # beads. Equivale al signo_z viejo (+1 <-> False, -1 <-> True)
+    # aberraciones de la pupila (simulador v2; 0 = sin ellas, la PSF de antes bit a bit), en rad, con la
+    # normalizacion de fase_esferica (valor maximo en el disco unidad = amp): astigmatismo
+    # amp_astig rho^2 cos 2(t - angulo_astig) (Z2^+-2) y coma amp_coma (3 rho^3 - 2 rho) cos(t - angulo_coma)
+    # (Z3^+-1), t = azimut de la frecuencia (fx, fy) de la pupila
+    amp_astig: float = 0.0
+    angulo_astig_deg: float = 0.0
+    amp_coma: float = 0.0
+    angulo_coma_deg: float = 0.0
 
     # --- muestra (rangos: se muestrean por video / por particula) ---
     n_emisores_rango: tuple = (1, 12)
@@ -172,6 +197,7 @@ class Config:
     muestreo_fotones: str = "log"   # "log" (log-uniforme en fotones_rango) o "uniforme"
     fondo_rango: tuple = (5.0, 40.0)
     fondo_no_uniforme: bool = True
+    muestreo_fondo: str = "uniforme"   # "uniforme" en fondo_rango o "log" (log-uniforme: mas peso a fondos bajos)
     D_rango_um2_s: tuple = (0.01, 0.3)
     margen_px: float = 3.0          # las posiciones iniciales pueden caer hasta margen_px fuera del FOV
 
@@ -198,6 +224,14 @@ class Config:
     altura_celula_nm: float = 0.0   # z del centro respecto del foco (+ hacia el objetivo)
     celula_centro_px: tuple = (32.0, 32.0)  # (x, y) [px] del centro; con espejo solo fija su posicion a lo
                                             # largo de la linea del espejo: la celula toca el espejo
+    celula_peso_polos: float = 0.0  # densidad en z de las posiciones iniciales, s = (z - z_c) / R:
+                                    # (1 - w) 3/4 (1 - s^2) + w 3/2 s^2. 0: uniforme en el volumen (bit a bit
+                                    # lo de antes); 1/3: uniforme en z; > 1/3: mas emisores hacia los polos.
+                                    # A cada z, uniforme en el disco de la celula
+    fondo_celula_contraste_rango: tuple = None  # autofluorescencia de la celula: exceso de fondo en el centro de
+                                                # la celula / fondo base, uniforme en [min, max] por video; con espejo
+                                                # tambien la celula virtual (x ratio_reflejo). None: sin ella
+    fondo_celula_sigma_px: float = 4.0  # blur gaussiano del perfil de la celula (cuerda de la esfera) [px]
 
     seed: int = 0
 
@@ -209,6 +243,8 @@ class Config:
         self.celula_centro_px = tuple(float(v) for v in self.celula_centro_px)
         if self.z_banco_nm is not None:
             self.z_banco_nm = tuple(float(v) for v in self.z_banco_nm)
+        if self.fondo_celula_contraste_rango is not None:
+            self.fondo_celula_contraste_rango = tuple(float(v) for v in self.fondo_celula_contraste_rango)
         self.validar()
 
     def validar(self):
@@ -263,6 +299,17 @@ class Config:
         exige(len(self.celula_centro_px) == 2, "celula_centro_px debe ser (x, y) en px")
         exige(not (self.usar_celula and self.usar_espejo and self.dist_max_espejo_um is not None),
               "con usar_celula la region de los emisores es la celula: dist_max_espejo_um debe ser None")
+        # simulador v2 (con los valores por defecto no cambia ninguna salida)
+        exige(self.amp_astig >= 0 and self.amp_coma >= 0, "amp_astig y amp_coma deben ser >= 0 (el angulo da el signo)")
+        exige(self.muestreo_fondo in ("uniforme", "log"), f"muestreo_fondo desconocido: {self.muestreo_fondo}")
+        exige(self.muestreo_fondo != "log" or self.fondo_rango[0] > 0, "el muestreo log del fondo requiere fondo_rango > 0")
+        exige(0.0 <= self.celula_peso_polos <= 1.0, "celula_peso_polos debe estar en [0, 1]")
+        exige(self.celula_peso_polos == 0.0 or self.usar_celula, "celula_peso_polos requiere usar_celula")
+        if self.fondo_celula_contraste_rango is not None:
+            lo, hi = self.fondo_celula_contraste_rango
+            exige(0 <= lo <= hi, "fondo_celula_contraste_rango: se requiere 0 <= min <= max")
+            exige(self.usar_celula, "fondo_celula_contraste_rango requiere usar_celula")
+        exige(self.fondo_celula_sigma_px >= 0, "fondo_celula_sigma_px debe ser >= 0")
 
     @property
     def pixel_nm(self):
@@ -306,6 +353,9 @@ class Config:
         for c in ("recorte_pupila_reflejo", "recorte_pupila_real"):
             if not d.get(c, True):                                 # sin recorte: el JSON de antes del recorte
                 d.pop(c)
+        for c, v in DEFECTO_V2.items():                            # opciones v2 apagadas: el JSON de antes
+            if d[c] == v:
+                d.pop(c)
         return d
 
     @classmethod
@@ -335,7 +385,15 @@ class Config:
                    if self.usar_espejo else "")
                 + (f"\ncelula           : {self.diametro_celula_um:.1f} um de diametro, centro a z = "
                    f"{self.altura_celula_nm:.0f} nm" + (" (toca el espejo)" if self.usar_espejo else "")
-                   if self.usar_celula else ""))
+                   if self.usar_celula else "")
+                + (f"\naberraciones     : astigmatismo {self.amp_astig:.2f} rad a {self.angulo_astig_deg:.0f} deg, "
+                   f"coma {self.amp_coma:.2f} rad a {self.angulo_coma_deg:.0f} deg"
+                   if self.amp_astig or self.amp_coma else "")
+                + (f"\nfondo            : muestreo {self.muestreo_fondo}" if self.muestreo_fondo != "uniforme" else "")
+                + (f"\nautofluorescencia: contraste {self.fondo_celula_contraste_rango[0]:.2f}-"
+                   f"{self.fondo_celula_contraste_rango[1]:.2f} x el fondo base, blur {self.fondo_celula_sigma_px:.1f} px"
+                   if self.fondo_celula_contraste_rango is not None else "")
+                + (f"\nz en la celula   : peso de los polos {self.celula_peso_polos:.2f}" if self.celula_peso_polos else ""))
 
 
 def guardar_config(cfg: Config, ruta, banco=None):
@@ -374,6 +432,30 @@ def fase_esferica(rho, amp):
     valor maximo de la fase sea amp. Mascara suave, no codifica z."""
     z40 = np.sqrt(5.0) * (6 * rho**4 - 6 * rho**2 + 1)
     return amp * z40 / np.sqrt(5.0)  # max |Z4^0| = sqrt(5) en rho = 0 y rho = 1
+
+
+def fase_aberraciones(rho, t, cfg: Config):
+    """Astigmatismo y coma [rad] con la normalizacion de fase_esferica (valor
+    maximo amp en el disco unidad; la misma de figuras/calibracion_pupila.py):
+        amp_astig rho^2 cos 2(t - angulo_astig) + amp_coma (3 rho^3 - 2 rho) cos(t - angulo_coma)
+    = a22 Z2^2 + a2m2 Z2^-2 + a31 Z3^1 + a3m1 Z3^-1 con amp = hypot de cada par.
+    t es el azimut de la frecuencia de la pupila. Con anillos_hacia_objetivo
+    True el modelo calcula la PSF conjugada (mascara_recorte): el mismo
+    sorteo de orientacion uniforme describe la misma familia de PSF."""
+    ta, tc = np.radians(cfg.angulo_astig_deg), np.radians(cfg.angulo_coma_deg)
+    return (cfg.amp_astig * rho ** 2 * np.cos(2 * (t - ta))
+            + cfg.amp_coma * (3 * rho ** 3 - 2 * rho) * np.cos(t - tc))
+
+
+def _pupila_efectiva(cfg: Config):
+    """Campos de CAMPOS_PUPILA_MUESTRA que cambian la fase: el angulo de una aberracion de amplitud 0 no cuenta."""
+    return (cfg.amp_esferica, cfg.amp_astig, cfg.angulo_astig_deg if cfg.amp_astig else 0.0,
+            cfg.amp_coma, cfg.angulo_coma_deg if cfg.amp_coma else 0.0)
+
+
+def pupila_del_banco(cfg: Config, banco):
+    """True si la pupila de cfg es la del banco (CAMPOS_PUPILA_MUESTRA): la PSF del banco vale para cfg."""
+    return _pupila_efectiva(cfg) == _pupila_efectiva(banco.cfg)
 
 
 def a_q(cfg: Config, rango):
@@ -424,6 +506,8 @@ def _rejilla_pupila(cfg: Config, S=1):
         fase = fase_esferica(np.clip(rho, 0.0, 1.0), cfg.amp_esferica)
     else:
         fase = np.zeros_like(rho)
+    if cfg.amp_astig or cfg.amp_coma:                            # sin aberraciones: la fase de antes, bit a bit
+        fase = fase + fase_aberraciones(np.clip(rho, 0.0, 1.0), np.arctan2(fy, fx), cfg)
 
     sigma_nm = cfg.blur_extra_px * px
     filtro = np.exp(-2 * (np.pi * sigma_nm)**2 * (fx**2 + fy**2))   # OTF del blur gaussiano
@@ -522,12 +606,16 @@ class PSFRecortada:
     en la imagen son ratio_reflejo * fraccion * fotones del real, y
     ratio_reflejo queda como la reflectividad del espejo. completa es True si
     pasa toda la pupila: entonces generar_video usa el banco, y la imagen es la
-    de sin recorte bit a bit."""
+    de sin recorte bit a bit.
 
-    def __init__(self, cfg: Config, K):
+    Con recortar=False es la PSF directa de la pupila de cfg, sin mascara (suma
+    1 en M x M): generar_video la usa cuando la pupila de la muestra no es la
+    del banco (pupila_del_banco; PSF aleatorizada por muestra)."""
+
+    def __init__(self, cfg: Config, K, recortar=True):
         self.cfg, self.K = cfg, int(K)
         rej = _rejilla_pupila(cfg)
-        masc = mascara_recorte(cfg, rej)
+        masc = mascara_recorte(cfg, rej) if recortar else np.ones(rej["P0"].shape)
         self.mascara = masc
         self.fraccion = _fraccion_pupila(rej, masc)
         self.completa = bool((masc[np.abs(rej["P0"]) > 0] == 1.0).all())
@@ -794,7 +882,10 @@ def generar_trayectorias(cfg: Config, n, rng):
     if cfg.usar_celula:
         cel = Celula(cfg)
         u = [rng.uniform(0.0, 1.0, n) for _ in range(3)]         # los 3 sorteos de x, y, z
-        pos0 = cel.a_gt(cel.uniforme(*u))
+        if cfg.celula_peso_polos:                                # z con peso en los polos (mismos 3 sorteos)
+            pos0 = cel.a_gt(cel.peso_polos(*u, cfg.celula_peso_polos))
+        else:
+            pos0 = cel.a_gt(cel.uniforme(*u))
     elif cfg.usar_espejo:
         pos0 = _posiciones_iniciales_espejo(cfg, n, rng)         # (n, 3) en px, px, nm
     else:
@@ -842,14 +933,60 @@ def generar_trayectorias(cfg: Config, n, rng):
 # ----------------------------------------------------------------------------
 
 def generar_fondo(cfg: Config, rng):
-    base = rng.uniform(*cfg.fondo_rango)
+    """Fondo (H, W) [fotones/px], fijo por video: base + (si fondo_no_uniforme)
+    una gaussiana ancha de pico sorteado + (con fondo_celula_contraste_rango)
+    la autofluorescencia de la celula."""
+    return _generar_fondo(cfg, rng)[0]
+
+
+def _generar_fondo(cfg: Config, rng):
+    """(fondo, amplitud de la autofluorescencia [fotones/px] o None). Los sorteos
+    de base, pico, centro y anchos van en el mismo orden de siempre; el de la
+    celula, al final (solo si esta activa)."""
+    if cfg.muestreo_fondo == "log":
+        lo, hi = np.log(cfg.fondo_rango[0]), np.log(cfg.fondo_rango[1])
+        sortear = lambda: float(np.exp(rng.uniform(lo, hi)))  # noqa: E731
+    else:
+        sortear = lambda: rng.uniform(*cfg.fondo_rango)       # noqa: E731
+    base = sortear()
     if not cfg.fondo_no_uniforme:
-        return np.full((cfg.H, cfg.W), base)
-    pico = rng.uniform(*cfg.fondo_rango)
-    x0, y0 = rng.uniform(0.3, 0.7) * cfg.W, rng.uniform(0.3, 0.7) * cfg.H
-    sx, sy = rng.uniform(0.3, 0.8) * cfg.W, rng.uniform(0.3, 0.8) * cfg.H
-    yy, xx = np.mgrid[0:cfg.H, 0:cfg.W]
-    return base + pico * np.exp(-(((xx - x0) / sx)**2 + ((yy - y0) / sy)**2) / 2.0)
+        fondo = np.full((cfg.H, cfg.W), base)
+    else:
+        pico = sortear()
+        x0, y0 = rng.uniform(0.3, 0.7) * cfg.W, rng.uniform(0.3, 0.7) * cfg.H
+        sx, sy = rng.uniform(0.3, 0.8) * cfg.W, rng.uniform(0.3, 0.8) * cfg.H
+        yy, xx = np.mgrid[0:cfg.H, 0:cfg.W]
+        fondo = base + pico * np.exp(-(((xx - x0) / sx)**2 + ((yy - y0) / sy)**2) / 2.0)
+    if cfg.fondo_celula_contraste_rango is None:
+        return fondo, None
+    amp = rng.uniform(*cfg.fondo_celula_contraste_rango) * base
+    return fondo + amp * perfil_celula(cfg), float(amp)
+
+
+def perfil_celula(cfg: Config):
+    """Perfil (H, W) de la autofluorescencia de la celula: cuerda de la esfera
+    proyectada sqrt(1 - (r / R)^2) (1 en el centro: fluorescencia uniforme en
+    el volumen, sin desenfoque) alrededor del centro lateral de la celula y,
+    con espejo, ratio_reflejo veces la de la celula virtual (el reflejo de la
+    celula), con un blur gaussiano de fondo_celula_sigma_px (FFT con un margen
+    de 4 sigma). Sin modelo de la PSF 3D: un perfil fenomenologico."""
+    px, R = cfg.pixel_nm, cfg.diametro_celula_um * 500.0 / cfg.pixel_nm
+    cel = Celula(cfg)
+    centros = [(cel.c[:2] / px, 1.0)]
+    if cfg.usar_espejo:
+        centros.append((cel.reflejada(Espejo(cfg)).c[:2] / px, cfg.ratio_reflejo))
+    sg = cfg.fondo_celula_sigma_px
+    m = int(np.ceil(4 * sg))
+    yy, xx = np.mgrid[-m:cfg.H + m, -m:cfg.W + m]
+    perfil = np.zeros(yy.shape)
+    for (cx, cy), w in centros:
+        perfil += w * np.sqrt(np.clip(1.0 - ((xx - cx) ** 2 + (yy - cy) ** 2) / R ** 2, 0.0, None))
+    if sg > 0:
+        fy = np.fft.fftfreq(perfil.shape[0])[:, None]
+        fx = np.fft.rfftfreq(perfil.shape[1])[None, :]
+        perfil = np.fft.irfft2(np.fft.rfft2(perfil) * np.exp(-2 * (np.pi * sg) ** 2 * (fx ** 2 + fy ** 2)),
+                               s=perfil.shape)
+    return np.clip(perfil[m:m + cfg.H, m:m + cfg.W], 0.0, None)
 
 
 def aplicar_camara(fotones, cfg: Config, rng):
@@ -895,7 +1032,8 @@ def _tabla_gt(cfg: Config, video_id, tray, Ns, D, reflejo=None):
     pos = tray.transpose(1, 0, 2).reshape(-1, 3)
     x, y = pos[:, 0], pos[:, 1]
     if cfg.usar_celula:                                          # z dentro del rango axial de la red
-        gt = _tabla_gt(replace(cfg, usar_celula=False), video_id, tray, Ns, D, reflejo)
+        gt = _tabla_gt(replace(cfg, usar_celula=False, celula_peso_polos=0.0, fondo_celula_contraste_rango=None),
+                       video_id, tray, Ns, D, reflejo)
         gt["en_rango_z"] = (gt.z_nm >= cfg.z_rango_nm[0]) & (gt.z_nm <= cfg.z_rango_nm[1])
         return gt
     if reflejo is not None:
@@ -919,8 +1057,14 @@ def _tabla_gt(cfg: Config, video_id, tray, Ns, D, reflejo=None):
 def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     """Un video (T, H, W) uint16 y su ground truth (DataFrame).
     Con extra=True devuelve ademas {"limpio": fotones esperados por pixel
-    (T, H, W), "fondo": (H, W), "sub": subposiciones (n, T, S, 3)}, y con
-    espejo "sub_reflejo" (n, T, S, 3).
+    (T, H, W), "fondo": (H, W), "sub": subposiciones (n, T, S, 3)}, con
+    espejo "sub_reflejo" (n, T, S, 3) y con autofluorescencia de la celula
+    "fondo_celula" (su amplitud en el centro, fotones/px).
+
+    Si la pupila de cfg no es la del banco (amp_esferica o aberraciones
+    sorteadas por muestra, pupila_del_banco), el real y el reflejo se dibujan
+    con la PSF directa de esa pupila (PSFRecortada, recortada o no): el real y
+    su reflejo comparten la pupila; el banco solo da K.
 
     Con cfg.usar_espejo cada subposicion del reflejo (el reflejo de la del
     real) se dibuja con ratio_reflejo * fotones / S en la misma imagen de
@@ -940,7 +1084,7 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     n = int(r["muestra"].integers(cfg.n_emisores_rango[0], cfg.n_emisores_rango[1] + 1))
     tray, sub, D = generar_trayectorias(cfg, n, r["trayectorias"])
     Ns = muestrear_fotones(cfg, n, r["fotones"])                 # fijo por particula en todo el video
-    fondo = generar_fondo(cfg, r["fondo"])                       # fijo en el video
+    fondo, amp_celula = _generar_fondo(cfg, r["fondo"])          # fijo en el video
 
     T, S = cfg.n_frames, cfg.n_subpasos
     if cfg.usar_espejo:
@@ -948,6 +1092,8 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
         dibujar_r = (sub_r[..., 2] >= zg[0] - TOL_BANCO_NM) & (sub_r[..., 2] <= zg[-1] + TOL_BANCO_NM)
         Ns_r = cfg.ratio_reflejo * Ns
     colocar, colocar_r = banco.colocar, banco.colocar
+    if not pupila_del_banco(cfg, banco):                         # pupila de la muestra (PSF aleatorizada)
+        colocar = colocar_r = PSFRecortada(cfg, banco.K, recortar=False).colocar
     if cfg.usar_espejo and (cfg.recorte_pupila_reflejo or cfg.recorte_pupila_real):
         psf_rec = PSFRecortada(cfg, banco.K)
         if not psf_rec.completa:                                 # si pasa toda la pupila, el banco (bit a bit)
@@ -977,6 +1123,8 @@ def generar_video(cfg: Config, banco: BancoPSF, video_id=0, extra=False):
     gt = _tabla_gt(cfg, video_id, tray, Ns, D, reflejo)
     if extra:
         ex = dict(limpio=limpio, fondo=fondo, sub=sub)
+        if amp_celula is not None:
+            ex["fondo_celula"] = amp_celula
         if cfg.usar_espejo:
             ex["sub_reflejo"] = sub_r
         return video, gt, ex
