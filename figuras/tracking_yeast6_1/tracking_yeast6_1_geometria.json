@@ -1,0 +1,9 @@
+{
+ "phi_franja_deg": -169.94500069880934,
+ "angulo_borde_franja_deg": 6.511919108623723,
+ "phi_final_deg": -168.2901951751196,
+ "sigma_dt_final_nm": 159.68886772937984,
+ "D_enlace_final": 0.059681941909036126,
+ "sigma_z_red_enlace_3d": 99.57441962043126,
+ "efecto_giro_z45_rms_nm": 9.279514354752026
+}

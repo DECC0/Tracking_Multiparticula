@@ -9,17 +9,19 @@ Partes (en orden; analisis lee lo que escribio localizar):
                en la ventana de 96 px centrada en el punto medio del par (umbral
                0.2: superconjunto del 0.4) y las manchas candidatas a reflejo
                (tracking/reflejos.py) en la misma ventana -> CACHE (no versionado)
-    analisis   1. x, y del real: red frente a la deteccion clasica, por cuadro
-               2. pistas de la red (enlace 2D elegido en tracking_3d), pistas de
-                  reflejo y emparejamiento real <-> reflejo, con D y sigma_dt
-                  auto-calibrados en dos pases, en tres variantes: tal_cual (la de
-                  tracking_3d), adaptada (umbral 0.2, anillos de la PSF real
-                  suprimidos, sin las detecciones que parecen el reflejo) y
-                  adaptada_ancha (sigma_dt x 2); comparacion con el par clasico
-               3. z triangulada por cuadro (beta 45 y 40-50) y rechazo de atipicos
-                  por consistencia temporal (mediana movil), no por la z de la red
-               4. trayectoria 3D y D por MSD (lags 1-4 con ordenada) en 3D, lateral
-                  y z, IC por bootstrap de bloques de cuadros; D_z(beta)
+    analisis   1. modelo del desfase real - reflejo a lo largo de la linea: dt lineal en
+                  la separacion L (un giro delta de m), ajustado en los pares del
+                  primer pase y aplicado a todos los cuadros; sigma_dt = residuo
+               2. pipeline final (umbral 0.2, anillos de la PSF real suprimidos en
+                  16 px, sin las detecciones que parecen el reflejo, enlace 2D, D
+                  lateral auto-calibrado) en dos pases, la variante tal_cual de
+                  tracking_3d y ablaciones de cada eleccion; comparacion con el par
+                  clasico de analisis_datos_reales.py
+               3. x, y: red y clasico, ruido de localizacion (ordenada del MSD y
+                  pasos - 2 D dt) y sesgo red - clasico en el tiempo
+               4. z triangulada (beta 40-50), atipicos por consistencia temporal
+                  (k = 3 fijo; 2.5 y 3.5 de sensibilidad) y D por MSD (lags 1-4 con
+                  ordenada) en 3D, lateral y z con IC por bootstrap de bloques
                -> figuras/tracking_yeast6_1/ (CSV y PNG 300 dpi)
 
 Uso:
@@ -47,7 +49,8 @@ CORRIDA = RAIZ / "localizacion" / "corridas" / "hypatia_celula_v2_b45_cerca_s1_2
 CACHE = RAIZ / "localizacion" / "datos" / "yeast6_1"
 SALIDA = AQUI / "tracking_yeast6_1"
 TIF_DEF = "/home/decar/Datos Alex/Yeast6_1_MMStack_Pos0.ome.tif"
-DT = 0.1                          # s (10 Hz, exposicion 100 ms)
+DT = 0.1                          # s (10 Hz)
+T_E = 0.1                         # s, exposicion (= periodo: desenfoque de movimiento en todo el cuadro)
 VENTANA = 96                      # px, la de entrenamiento
 UMBRAL_MIN = 0.2
 UMBRAL = 0.4                      # el del checkpoint y el elegido en tracking_3d (B1)
@@ -95,7 +98,8 @@ def localizar(a):
     pd.DataFrame(dict(frame=np.arange(T), x_real=real[:, 0], y_real=real[:, 1], x_refl=refl[:, 0], y_refl=refl[:, 1],
                       senal_real=pares[0]["s_real"], senal_refl=pares[0]["s_refl"])).to_csv(CACHE / "clasico.csv", index=False)
     geo = dict(tif=str(a.tif), T=T, corte=int(corte), px=px, phi_deg=phi, q_px=q.tolist(), m=m.tolist(),
-               v_borde_px=float(fr["v_borde"]), ventana_x0=x0, ventana_y0=y0, ventana=VENTANA)
+               v_borde_px=float(fr["v_borde"]), angulo_borde_deg=float(fr["angulo_vs_t_deg"]),
+               ventana_x0=x0, ventana_y0=y0, ventana=VENTANA)
     (CACHE / "geometria.json").write_text(json.dumps(geo, indent=1))
 
     disp = elegir_dispositivo("auto")
@@ -132,14 +136,14 @@ BETAS = np.round(np.arange(40.0, 50.01, 0.5), 2)
 BETA_REF = 45.0
 VENT_MED = 9                      # cuadros de la mediana movil (centrada)
 K_ATIP = 3.0                      # atipico: |z - mediana movil| > K_ATIP sigma (sigma = 1.4826 MAD de los residuos)
-KS_ATIP = (2.5, 3.0, 4.0)
+KS_ATIP = (2.5, 3.0, 3.5)       # k = 3 fijo; 2.5 y 3.5 solo como sensibilidad
 N_LAGS = 4
 BLOQUE = 10                       # cuadros por bloque del bootstrap
 N_BOOT = 2000
 D_INI = 0.2                       # um^2/s: D del primer enlace (despues se usa el medido)
 D_MIN = 0.01                      # um^2/s: piso del D medido para el enlace
-N_ITER = 6                        # pases de la auto-calibracion (se usa el segundo; el resto es diagnostico)
-SIG_DT_INI = 200.0                # nm: sigma_dt del primer emparejamiento (despues el medido)
+SIG_DT_INI = 200.0                # nm: sigma_dt del primer emparejamiento (despues el residuo del modelo del desfase)
+SIG_Z_RED = np.nan                # nm: sigma_z de la red (tracking_3d) para la ablacion con enlace 3D; se lee en analisis
 COLOR = {"red": "#2a78d6", "clasico": "#52514e", "reflejo": "#eda100", "tri": "#1baf7a", "atipico": "#d62a4a",
          "lat": "#2a78d6", "z": "#1baf7a", "3d": "#52514e", "gris": "#8a8984"}
 
@@ -248,11 +252,6 @@ def d_por_msd(r, rng, ejes=EJES, n_boot=N_BOOT, bloque=BLOQUE):
 # ----------------------------------------------------------------------------
 
 R_ANILLO_PX = 16.0                # variante adaptada: radio de los anillos de la PSF real (detecciones 6-20 px)
-VARIANTES = {"tal_cual": dict(umbral=UMBRAL, anillos=False),
-             "adaptada": dict(umbral=UMBRAL_MIN, anillos=True),
-             "adaptada_ancha": dict(umbral=UMBRAL_MIN, anillos=True, factor_sigma=2.0)}   # sigma_dt x 2 (sensibilidad)
-NOMBRE_VAR = {"tal_cual": "tal cual (tracking_3d)", "adaptada": "adaptada (anillos suprimidos)",
-              "adaptada_ancha": "adaptada, sigma_dt x 2", "clasico": "par clasico"}
 
 
 def suprimir_anillos(det, r=R_ANILLO_PX):
@@ -296,168 +295,347 @@ def parece_reflejo(det, phi, q, px, t3):
     return out
 
 
-def pipeline(var, det_todo, man, cl, geo, t3, filas):
-    """Pistas de la red y de reflejos, emparejamiento y trayectoria de la particula para una variante."""
-    from enlace import CostoNormalizado, enlazar, filtrar_cortas, _renumerar
-    from espejo import coordenadas_espejo, triangular_z, emparejar_pistas
-    from metricas import a_arreglo
-    T, px, phi, q = geo["T"], geo["px"], geo["phi_deg"], np.array(geo["q_px"])
-    cfg = VARIANTES[var]
-    R = lambda k, v: filas.append(dict(variante=var, seccion="2", magnitud=k, valor=v))  # noqa: E731
+def ajuste_robusto(x, y, iters=10, k=3.0):
+    """y ~ a + b x por minimos cuadrados con recorte iterativo (|residuo| > k 1.4826 MAD). Devuelve a, b, mascara de
+    los que quedan y sigma robusta del residuo."""
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    dentro = ok.copy()
+    for _ in range(iters):
+        if dentro.sum() < 5:
+            break
+        b, a = np.polyfit(x[dentro], y[dentro], 1)
+        r = y - (a + b * x)
+        sg = 1.4826 * np.median(np.abs(r[dentro] - np.median(r[dentro])))
+        nuevo = ok & (np.abs(r) <= k * sg)
+        if (nuevo == dentro).all():
+            break
+        dentro = nuevo
+    b, a = np.polyfit(x[dentro], y[dentro], 1)
+    r = y - (a + b * x)
+    return a, b, dentro, 1.4826 * np.median(np.abs(r[dentro] - np.median(r[dentro])))
+
+
+def bootstrap_bloques(T, rng, n_boot, bloque=BLOQUE):
+    """Indices de cuadros de cada remuestreo (bloques moviles de `bloque` cuadros, T / bloque bloques)."""
+    nb = int(np.ceil(T / bloque))
+    for _ in range(n_boot):
+        ini = rng.integers(0, T - bloque + 1, nb)
+        yield (ini[:, None] + np.arange(bloque)).ravel()
+
+
+def ic(v):
+    v = np.asarray(v, float)
+    v = v[np.isfinite(v)]
+    return tuple(np.percentile(v, [2.5, 97.5])) if len(v) > 10 else (np.nan, np.nan)
+
+
+# ----------------------------------------------------------------------------
+# 1. modelo del desfase real - reflejo a lo largo de la linea
+# ----------------------------------------------------------------------------
+
+def modelo_desfase(tipo, L, dt, sF, rng=None, n_boot=0):
+    """Modelo del desfase dt = t_real - t_reflejo de un conjunto de cuadros (arreglos (T,) con nan).
+
+    'L'       dt = a + b L: el segmento real -> reflejo no es paralelo a m sino a m + b t, es decir la
+              direccion de m esta girada delta = atan(b) (hacia t). Se corrige girando el sistema (s, t)
+              en delta (phi + delta) y restando la mediana del dt girado (una constante para todo el video).
+    'sF'      dt = a + c s_reflejo (diagnostico, no es una geometria del espejo).
+    'cte'     dt = constante (la mediana; sin giro): separa el efecto de la constante del de la pendiente.
+    'ninguno' dt = 0.
+    sigma_dt = 1.4826 MAD del residuo (con recorte iterativo de los que se apartan mas de 3 sigma)."""
+    ok = np.isfinite(L) & np.isfinite(dt)
+    out = dict(tipo=tipo, n=int(ok.sum()), delta_deg=0.0, a=0.0, b=0.0, c=0.0, constante=0.0)
+    if tipo in ("ninguno", "cte"):
+        r = dt[ok]
+        cte = float(np.median(r)) if tipo == "cte" else 0.0
+        out.update(constante=cte, sigma_dt=1.4826 * np.median(np.abs(r - np.median(r))),
+                   corr=lambda s, c_=cte: np.full_like(s, c_))
+        return out
+    x = L if tipo == "L" else sF
+    a, b, dentro, sg = ajuste_robusto(x, dt)
+    out.update(a=a, n_dentro=int(dentro.sum()), r2=1 - np.var((dt - a - b * x)[dentro]) / np.var(dt[dentro]),
+               sigma_sin_modelo=1.4826 * np.median(np.abs(dt[ok] - np.median(dt[ok]))))
+    if tipo == "L":
+        d = np.arctan(b)
+        dtg = dt * np.cos(d) - L * np.sin(d)               # dt en el sistema girado en d
+        cte = float(np.median(dtg[dentro]))
+        r = dtg[dentro] - cte
+        out.update(b=b, delta_deg=float(np.degrees(d)), constante=cte,
+                   sigma_dt=1.4826 * np.median(np.abs(r - np.median(r))), corr=lambda s, c_=cte: np.full_like(s, c_))
+    else:
+        out.update(c=b, sigma_dt=sg, corr=lambda s, a_=a, c_=b: a_ + c_ * s)
+    if n_boot:
+        T = len(L)
+        bs = []
+        for idx in bootstrap_bloques(T, rng, n_boot):
+            xs, ys = x[idx], dt[idx]
+            if (np.isfinite(xs) & np.isfinite(ys)).sum() < 10:
+                continue
+            bb = ajuste_robusto(xs, ys)[1]
+            bs.append(np.degrees(np.arctan(bb)) if tipo == "L" else bb)
+        out["ic_lo"], out["ic_hi"] = ic(bs)
+    return out
+
+
+# ----------------------------------------------------------------------------
+# 2. pipeline (variantes)
+# ----------------------------------------------------------------------------
+
+FINAL = dict(umbral=UMBRAL_MIN, suprimir=True, descartar=True, excluir=True, enlace="2d", D_fijo=None, desfase="L")
+VARIANTES = {"tal_cual": dict(umbral=UMBRAL, suprimir=False, descartar=False, excluir=False, enlace="2d", D_fijo=None,
+                              desfase="ninguno"),
+             "final": FINAL}
+# cada una cambia una sola eleccion de la final (seccion "Elecciones hechas despues de ver los datos")
+ABLACIONES = {"sin_modelo_desfase": dict(desfase="ninguno"), "desfase_solo_constante": dict(desfase="cte"),
+              "desfase_en_s_reflejo": dict(desfase="sF"),
+              "sin_supresion_anillos": dict(suprimir=False), "sin_descartar_reflejos": dict(descartar=False),
+              "sin_exclusion_manchas_16px": dict(excluir=False), "umbral_0.4": dict(umbral=UMBRAL),
+              "enlace_3d": dict(enlace="3d"), "D_fijo_0.02": dict(D_fijo=0.02), "D_fijo_0.2": dict(D_fijo=0.2),
+              "D_fijo_1.5": dict(D_fijo=1.5)}
+NOMBRE_VAR = {"tal_cual": "tal cual (tracking_3d)", "final": "pipeline final", "clasico": "par clasico"}
+
+
+def preparar(cfg, det_todo, man, geo, t3):
+    """Detecciones candidatas a real y manchas candidatas a reflejo de una configuracion."""
+    px, phi, q = geo["px"], geo["phi_deg"], np.array(geo["q_px"])
     det = det_todo[det_todo.conf >= cfg["umbral"]].reset_index(drop=True)
-    n_refl = 0
-    if cfg["anillos"]:
+    if cfg["suprimir"]:
         det = suprimir_anillos(det)
+    n_refl = 0
+    if cfg["descartar"]:
         pr_ = parece_reflejo(det, phi, q, px, t3)       # el reflejo detectado como real: no es candidato a real
         n_refl = int(pr_.sum())
         det = det[~pr_].reset_index(drop=True)
     man = man.reset_index(drop=True)
     km = t3.filtrar_manchas(man, det, phi, q, px)
-    if cfg["anillos"]:
+    if cfg["excluir"]:
         km &= lejos_de(man, det, R_ANILLO_PX)
-    cand = man[km].reset_index(drop=True)
-    st = lambda x, y: coordenadas_espejo(x, y, px, phi, q)  # noqa: E731
-    xr, yr = cl.x_real.to_numpy(), cl.y_real.to_numpy()
+    return det, man[km].reset_index(drop=True), n_refl
 
-    def correr(D_um2, sig_dt):
-        s_lat = sig_dt / np.sqrt(2)                 # reparto igual entre real y reflejo (solo fija el costo)
-        c = CostoNormalizado([s_lat, s_lat], D_um2 * 1e6, DT, t3.R_CHI, c_loc=2.0)
-        p = enlazar(det.frame.to_numpy(), np.c_[det.x_px * px, det.y_px * px], max_hueco=HUECO, costo=c)
+
+def correr(det, cand, geo, cl, t3, D_um2, sig_dt, enlace, phi_, corr=None):
+    """Enlace (real y reflejo), emparejamiento en el sistema (s, t) de phi_ (corr(s_F) se suma a t_F) y
+    trayectoria de la particula: el componente conexo de pistas unidas por pares con mas cuadros triangulados."""
+    from enlace import CostoNormalizado, enlazar, filtrar_cortas, _renumerar
+    from espejo import coordenadas_espejo, triangular_z, emparejar_pistas
+    from metricas import a_arreglo
+    T, px, q = geo["T"], geo["px"], np.array(geo["q_px"])
+    st = lambda x, y: coordenadas_espejo(x, y, px, phi_, q)  # noqa: E731
+    s_lat = sig_dt / np.sqrt(2)                     # reparto igual entre real y reflejo (solo fija el costo)
+    c2 = CostoNormalizado([s_lat, s_lat], D_um2 * 1e6, DT, t3.R_CHI, c_loc=2.0)
+    if enlace == "3d":
+        c = CostoNormalizado([s_lat, s_lat, SIG_Z_RED], D_um2 * 1e6, DT, t3.R_CHI, c_loc=2.0)
+        pos = np.c_[det.x_px * px, det.y_px * px, det.z_nm]
+    else:
+        c, pos = c2, np.c_[det.x_px * px, det.y_px * px]
+
+    def pistas(d, p_, costo):
+        if len(d) == 0:
+            return d, np.zeros(0, int)
+        p = enlazar(d.frame.to_numpy(), p_, max_hueco=HUECO, costo=costo)
         k = filtrar_cortas(p, LARGO)
-        dr, p = det[k].reset_index(drop=True), _renumerar(p[k])
-        pf = enlazar(cand.frame.to_numpy(), np.c_[cand.x_px * px, cand.y_px * px], max_hueco=HUECO, costo=c)
-        kf = filtrar_cortas(pf, LARGO)
-        dfc, pf = cand[kf].reset_index(drop=True), _renumerar(pf[kf])
-        Rr, _ = a_arreglo(p, dr.frame.to_numpy(), np.c_[st(dr.x_px, dr.y_px)], T)
-        Ff, _ = a_arreglo(pf, dfc.frame.to_numpy(), np.c_[st(dfc.x_px, dfc.y_px)], T)
-        X, _ = a_arreglo(p, dr.frame.to_numpy(), np.c_[dr.x_px, dr.y_px], T)
-        Xf, _ = a_arreglo(pf, dfc.frame.to_numpy(), np.c_[dfc.x_px, dfc.y_px], T)
+        return d[k].reset_index(drop=True), (_renumerar(p[k]) if k.any() else np.zeros(0, int))
+    dr, p = pistas(det, pos, c)
+    dfc, pf = pistas(cand, np.c_[cand.x_px * px, cand.y_px * px], c2)
+    vacio = lambda d: np.zeros((0, T, d))  # noqa: E731
+    sR, tR = st(dr.x_px, dr.y_px)
+    sF, tF = st(dfc.x_px, dfc.y_px)
+    if corr is not None and len(dfc):
+        tF = tF + corr(np.asarray(sF))
+    Rr = a_arreglo(p, dr.frame.to_numpy(), np.c_[sR, tR], T)[0] if len(dr) else vacio(2)
+    Ff = a_arreglo(pf, dfc.frame.to_numpy(), np.c_[sF, tF], T)[0] if len(dfc) else vacio(2)
+    X = a_arreglo(p, dr.frame.to_numpy(), np.c_[dr.x_px, dr.y_px], T)[0] if len(dr) else vacio(2)
+    Xf = a_arreglo(pf, dfc.frame.to_numpy(), np.c_[dfc.x_px, dfc.y_px], T)[0] if len(dfc) else vacio(2)
 
-        def z_par(i, j, ok):
-            return t3.Z_POSIBLE[0] <= np.median(triangular_z(Rr[i, ok, 0], Ff[j, ok, 0], BETA_REF)) <= t3.Z_POSIBLE[1]
-        pares, _ = emparejar_pistas(Rr, Ff, sig_dt, z_par=z_par)
-        # particula = componente conexo de pistas reales y de reflejo unidas por pares con mas cuadros
-        # triangulados (criterio del pipeline, sin el par clasico)
-        padre = {}
+    def z_par(i, j, ok):
+        return t3.Z_POSIBLE[0] <= np.median(triangular_z(Rr[i, ok, 0], Ff[j, ok, 0], BETA_REF)) <= t3.Z_POSIBLE[1]
+    pares = emparejar_pistas(Rr, Ff, sig_dt, z_par=z_par)[0] if len(Rr) and len(Ff) else []
+    padre = {}
 
-        def raiz(u):
-            while padre.setdefault(u, u) != u:
-                u = padre[u]
-            return u
-        for pr in pares:
-            padre[raiz(("r", pr["i"]))] = raiz(("f", pr["j"]))
-        peso = {}
-        for pr in pares:
-            peso[raiz(("r", pr["i"]))] = peso.get(raiz(("r", pr["i"])), 0) + int(pr["cuadros"].sum())
-        comp = max(peso, key=peso.get) if peso else None
-        reales_c = sorted({pr["i"] for pr in pares if raiz(("r", pr["i"])) == comp})
-        tray = {c: np.full(T, np.nan) for c in ("x_px", "y_px", "x_tri_px", "y_tri_px", "x_refl_px", "y_refl_px")}
-        for i in reales_c:                                  # lateral: todos los cuadros de las pistas reales
-            ok = np.isfinite(X[i, :, 0]) & np.isnan(tray["x_px"])
-            tray["x_px"][ok], tray["y_px"][ok] = X[i, ok, 0], X[i, ok, 1]
-        for pr in pares:
-            if raiz(("r", pr["i"])) == comp:
-                ok = pr["cuadros"]
-                tray["x_tri_px"][ok], tray["y_tri_px"][ok] = X[pr["i"], ok, 0], X[pr["i"], ok, 1]
-                tray["x_px"][ok], tray["y_px"][ok] = X[pr["i"], ok, 0], X[pr["i"], ok, 1]
-                tray["x_refl_px"][ok], tray["y_refl_px"][ok] = Xf[pr["j"], ok, 0], Xf[pr["j"], ok, 1]
-        for pr in pares:
-            pr["particula"] = raiz(("r", pr["i"])) == comp
-        cerca = np.hypot(X[..., 0] - xr, X[..., 1] - yr) <= R_ASOC_PX
-        i_p = reales_c
-        return dict(dr=dr, p=p, dfc=dfc, pf=pf, X=X, Xf=Xf, R=Rr, F=Ff, pares=pares, i_p=i_p, cerca=cerca,
-                    tray=pd.DataFrame(tray))
+    def raiz(u):
+        while padre.setdefault(u, u) != u:
+            u = padre[u]
+        return u
+    for pr in pares:
+        padre[raiz(("r", pr["i"]))] = raiz(("f", pr["j"]))
+    peso = {}
+    for pr in pares:
+        k_ = raiz(("r", pr["i"]))
+        peso[k_] = peso.get(k_, 0) + int(pr["cuadros"].sum())
+    comp = max(peso, key=peso.get) if peso else None
+    reales_c = sorted({pr["i"] for pr in pares if raiz(("r", pr["i"])) == comp})
+    tray = {k_: np.full(T, np.nan) for k_ in ("x_px", "y_px", "x_tri_px", "y_tri_px", "x_refl_px", "y_refl_px")}
+    for i in reales_c:                                  # lateral: todos los cuadros de las pistas reales
+        ok = np.isfinite(X[i, :, 0]) & np.isnan(tray["x_px"])
+        tray["x_px"][ok], tray["y_px"][ok] = X[i, ok, 0], X[i, ok, 1]
+    for pr in pares:
+        pr["particula"] = raiz(("r", pr["i"])) == comp
+        if pr["particula"]:
+            ok = pr["cuadros"]
+            for c_, A, i in (("tri", X, pr["i"]), ("refl", Xf, pr["j"])):
+                tray[f"x_{c_}_px"][ok], tray[f"y_{c_}_px"][ok] = A[i, ok, 0], A[i, ok, 1]
+            tray["x_px"][ok], tray["y_px"][ok] = X[pr["i"], ok, 0], X[pr["i"], ok, 1]
+    return dict(dr=dr, dfc=dfc, X=X, Xf=Xf, R=Rr, F=Ff, pares=pares, reales=reales_c, tray=pd.DataFrame(tray))
 
-    def medir(o):
-        """D lateral de la particula (sin atipicos laterales, >= D_MIN) y sigma_dt = 1.4826 MAD de t_R - t_F en
-        todos los cuadros comunes de sus pares: no solo los consistentes (el corte |dt| < 3 sigma lo encogeria en
-        cada iteracion) y robusta (los cuadros en que la pista real esta sobre un anillo lo inflarian)."""
-        tr = o["tray"]
-        xy = np.c_[tr.x_px, tr.y_px] * px
-        at = atipicos(xy[:, 0])[0] | atipicos(xy[:, 1])[0] if np.isfinite(xy[:, 0]).sum() > 5 else np.zeros(T, bool)
-        D = ajuste_msd(*sumas_msd(np.where(at[:, None], np.nan, xy)), [0, 1])[0]
-        dts = []
-        for pr in o["pares"]:
-            if pr["particula"]:
-                ok = np.isfinite(o["R"][pr["i"], :, 1]) & np.isfinite(o["F"][pr["j"], :, 1])
-                dts.append(o["R"][pr["i"], ok, 1] - o["F"][pr["j"], ok, 1])
-        dt = np.concatenate(dts) if dts else np.zeros(0)
-        return (max(D, D_MIN) if np.isfinite(D) else np.nan), (estad(dt)["std_robusta"] if len(dt) > 5 else np.nan)
 
-    # auto-calibracion sin el par clasico, en dos pases: el primero con D_INI y SIG_DT_INI, el segundo con el D
-    # lateral y el sigma_dt medidos en el primero (es el que se usa). Las iteraciones siguientes son diagnostico:
-    # cada emparejamiento elige los cuadros con dt chico, asi que sigma_dt se estrecha o oscila.
-    it_f, D_e, sig_dt, usado = [], D_INI, SIG_DT_INI, None
-    for it in range(N_ITER):
-        o = correr(D_e, sig_dt)
-        D_n, s_n = medir(o)
-        it_f.append(dict(variante=var, iteracion=it, usada=it == 1, D_enlace=D_e, sigma_dt_enlace=sig_dt, pistas_real=len(o["X"]),
-                         pistas_reflejo=len(o["Xf"]), pares=len(o["pares"]), cuadros_pista=int(o["tray"].x_px.notna().sum()),
-                         cuadros_con_reflejo=int(o["tray"].x_refl_px.notna().sum()), D_lat_medido=D_n, sigma_dt_medido=s_n))
-        if it == 1:
-            usado = (o, D_e, sig_dt)
-        if not (np.isfinite(s_n) and np.isfinite(D_n)):
-            break
-        D_e, sig_dt = D_n, s_n
-    o, D_e, sig_dt = usado
-    if cfg.get("factor_sigma"):
-        sig_dt *= cfg["factor_sigma"]
-        o = correr(D_e, sig_dt)
-    sens = []
-    for Dx in (0.02, 0.2, 1.5):
-        for sx in (0.5 * sig_dt, sig_dt, 2 * sig_dt):
-            oo = correr(Dx, sx)
-            sens.append(dict(variante=var, D_enlace=Dx, sigma_dt=sx, pistas_real=len(oo["X"]), pistas_reflejo=len(oo["Xf"]),
-                             pares=len(oo["pares"]), cuadros_pista=int(oo["tray"].x_px.notna().sum()),
-                             cuadros_con_reflejo=int(oo["tray"].x_refl_px.notna().sum()),
-                             reflejo_sobre_clasico=int((np.hypot(oo["tray"].x_refl_px - cl.x_refl, oo["tray"].y_refl_px - cl.y_refl)
-                                                        <= R_REFL_PX).sum()),
-                             real_tri_sobre_clasico=int((np.hypot(oo["tray"].x_tri_px - xr, oo["tray"].y_tri_px - yr)
-                                                         <= R_ASOC_PX).sum())))
+def datos_desfase(o, geo, phi_):
+    """(L, dt, s_F) por cuadro (T,) en todos los cuadros comunes de los pares de la particula (sin corregir)."""
+    from espejo import coordenadas_espejo
+    T, px, q = geo["T"], geo["px"], np.array(geo["q_px"])
+    L, dt, sF = (np.full(T, np.nan) for _ in range(3))
+    for pr in o["pares"]:
+        if not pr["particula"]:
+            continue
+        xr, xf = o["X"][pr["i"]], o["Xf"][pr["j"]]
+        ok = np.isfinite(xr[:, 0]) & np.isfinite(xf[:, 0]) & np.isnan(L)
+        sr, tr = coordenadas_espejo(xr[ok, 0], xr[ok, 1], px, phi_, q)
+        sf, tf = coordenadas_espejo(xf[ok, 0], xf[ok, 1], px, phi_, q)
+        L[ok], dt[ok], sF[ok] = sr - sf, tr - tf, sf
+    return L, dt, sF
+
+
+def d_lateral(o, geo):
     tr = o["tray"]
-    R("detecciones usadas por cuadro", len(det) / T)
-    R("detecciones descartadas por parecer el reflejo, por cuadro", n_refl / T)
-    R("cuadros con una deteccion a <= 3 px del real clasico", int((mas_cercano(det, xr, yr, R_ASOC_PX) >= 0).sum()))
-    R("manchas candidatas por cuadro", len(cand) / T)
-    R("candidatas a <= 2 px del reflejo clasico: cuadros",
-      int((mas_cercano(cand, cl.x_refl.to_numpy(), cl.y_refl.to_numpy(), R_REFL_PX) >= 0).sum()))
-    R("D del enlace final [um^2/s]", D_e)
-    R("sigma_dt final [nm]", sig_dt)
-    R("pistas de la red (>= largo)", len(o["X"]))
-    R("pistas de reflejo (>= largo)", len(o["Xf"]))
-    R("pares", len(o["pares"]))
-    R("pistas reales de la particula (componente)", len(o["i_p"]))
-    R("cuadros de la particula (lateral)", int(tr.x_px.notna().sum()))
-    R("de ellos, a <= 3 px del real clasico", int((np.hypot(tr.x_px - xr, tr.y_px - yr) <= R_ASOC_PX).sum()))
-    con = tr.x_refl_px.notna()
-    R("cuadros triangulados (con reflejo emparejado)", int(con.sum()))
-    R("de ellos, real a <= 3 px del real clasico", int((np.hypot(tr.x_tri_px - xr, tr.y_tri_px - yr)[con] <= R_ASOC_PX).sum()))
-    R("de ellos, reflejo a <= 2 px del reflejo clasico",
-      int((np.hypot(tr.x_refl_px - cl.x_refl, tr.y_refl_px - cl.y_refl)[con] <= R_REFL_PX).sum()))
-    R("cuadros sin triangular", " ".join(map(str, np.flatnonzero(~con))) or "-")
-    pistas = []
-    for k in range(len(o["X"])):
-        ok = np.isfinite(o["X"][k, :, 0])
-        pistas.append(dict(variante=var, tipo="real", pista=k, cuadros=int(ok.sum()), es_particula=k in o["i_p"],
-                           dist_real_px=np.nanmedian(np.hypot(o["X"][k, ok, 0] - xr[ok], o["X"][k, ok, 1] - yr[ok])),
-                           dist_reflejo_px=np.nanmedian(np.hypot(o["X"][k, ok, 0] - cl.x_refl[ok], o["X"][k, ok, 1] - cl.y_refl[ok])),
-                           emparejada=any(pr["i"] == k for pr in o["pares"])))
-    for k in range(len(o["Xf"])):
-        ok = np.isfinite(o["Xf"][k, :, 0])
-        pistas.append(dict(variante=var, tipo="reflejo", pista=k, cuadros=int(ok.sum()),
-                           es_particula=any(pr["j"] == k and pr["particula"] for pr in o["pares"]),
-                           dist_real_px=np.nanmedian(np.hypot(o["Xf"][k, ok, 0] - xr[ok], o["Xf"][k, ok, 1] - yr[ok])),
-                           dist_reflejo_px=np.nanmedian(np.hypot(o["Xf"][k, ok, 0] - cl.x_refl[ok], o["Xf"][k, ok, 1] - cl.y_refl[ok])),
-                           emparejada=any(pr["j"] == k for pr in o["pares"])))
-    pares = pd.DataFrame([dict(variante=var, **{k: v for k, v in pr.items() if k != "cuadros"}) for pr in o["pares"]])
-    return dict(o=o, det=det, cand=cand, iter=pd.DataFrame(it_f), sens=pd.DataFrame(sens), pistas=pd.DataFrame(pistas),
-                pares=pares, sig_dt=sig_dt, D=D_e)
+    xy = np.c_[tr.x_px, tr.y_px] * geo["px"]
+    if np.isfinite(xy[:, 0]).sum() <= 5:
+        return np.nan
+    at = atipicos(xy[:, 0])[0] | atipicos(xy[:, 1])[0]
+    D = ajuste_msd(*sumas_msd(np.where(at[:, None], np.nan, xy)), [0, 1])[0]
+    return max(D, D_MIN) if np.isfinite(D) else np.nan
 
+
+def pipeline(nombre, cfg, det_todo, man, cl, geo, t3, rng, n_boot_desfase=0):
+    """Dos pases: el primero con D_INI (o D fijo), SIG_DT_INI y la geometria de la franja; de sus pares se miden
+    el D lateral y el modelo del desfase (que da phi, la correccion de t_F y sigma_dt), y el segundo pase es el
+    resultado."""
+    phi0 = geo["phi_deg"]
+    det, cand, n_refl = preparar(cfg, det_todo, man, geo, t3)
+    D0 = cfg["D_fijo"] or D_INI
+    o0 = correr(det, cand, geo, cl, t3, D0, SIG_DT_INI, cfg["enlace"], phi0)
+    D1 = cfg["D_fijo"] or d_lateral(o0, geo)
+    L, dt, sF = datos_desfase(o0, geo, phi0)
+    md = modelo_desfase(cfg["desfase"], L, dt, sF, rng, n_boot_desfase) if np.isfinite(L).sum() > 5 else None
+    if md is None or not np.isfinite(D1):
+        return dict(nombre=nombre, cfg=cfg, det=det, cand=cand, n_refl=n_refl, o=o0, D=D0, sig_dt=SIG_DT_INI, phi=phi0,
+                    modelo=md, datos_desfase=(L, dt, sF), corr=None)
+    phi1 = phi0 + md["delta_deg"]
+    o1 = correr(det, cand, geo, cl, t3, D1, md["sigma_dt"], cfg["enlace"], phi1, md["corr"])
+    return dict(nombre=nombre, cfg=cfg, det=det, cand=cand, n_refl=n_refl, o=o1, o0=o0, D=D1, sig_dt=md["sigma_dt"],
+                phi=phi1, modelo=md, datos_desfase=(L, dt, sF), corr=md["corr"])
+
+
+def z_de(r, geo, beta, phi_=None):
+    """z triangulada (T,) de la trayectoria de r (dict de pipeline) en su sistema (s, t)."""
+    from espejo import coordenadas_espejo, triangular_z
+    tr = r["o"]["tray"]
+    phi_ = r["phi"] if phi_ is None else phi_
+    sR, _ = coordenadas_espejo(tr.x_tri_px, tr.y_tri_px, geo["px"], phi_, np.array(geo["q_px"]))
+    sF, _ = coordenadas_espejo(tr.x_refl_px, tr.y_refl_px, geo["px"], phi_, np.array(geo["q_px"]))
+    return triangular_z(np.asarray(sR), np.asarray(sF), beta)
+
+
+def evaluar(r, cl, geo, z_cl45):
+    """Cuadros triangulados y correctos frente al par clasico y error de z (beta 45) frente a la z clasica."""
+    tr = r["o"]["tray"]
+    con = tr.x_refl_px.notna().to_numpy()
+    real_ok = (np.hypot(tr.x_tri_px - cl.x_real, tr.y_tri_px - cl.y_real) <= R_ASOC_PX).to_numpy() & con
+    refl_ok = (np.hypot(tr.x_refl_px - cl.x_refl, tr.y_refl_px - cl.y_refl) <= R_REFL_PX).to_numpy() & con
+    dz = z_de(r, geo, BETA_REF) - z_cl45
+    md = r["modelo"] or {}
+    return dict(variante=r["nombre"], D_enlace=r["D"], sigma_dt=r["sig_dt"], delta_deg=md.get("delta_deg", np.nan),
+                constante_nm=md.get("constante", np.nan), c_sF=md.get("c", np.nan),
+                detecciones_por_cuadro=len(r["det"]) / geo["T"], descartadas_reflejo=r["n_refl"] / geo["T"],
+                manchas_por_cuadro=len(r["cand"]) / geo["T"], pistas_real=len(r["o"]["X"]), pistas_reflejo=len(r["o"]["Xf"]),
+                pares=len(r["o"]["pares"]), pistas_particula=len(r["o"]["reales"]),
+                cuadros_lateral=int(tr.x_px.notna().sum()), cuadros_triangulados=int(con.sum()),
+                reflejo_correcto=int(refl_ok.sum()), real_correcto=int(real_ok.sum()),
+                cuadros_sin_triangular=" ".join(map(str, np.flatnonzero(~con))) or "-",
+                dz45_media=np.nanmean(dz) if np.isfinite(dz).any() else np.nan,
+                dz45_rms=np.sqrt(np.nanmean(dz ** 2)) if np.isfinite(dz).any() else np.nan)
+
+
+# ----------------------------------------------------------------------------
+# 3. ruido de localizacion y sesgo red - clasico
+# ----------------------------------------------------------------------------
+
+def ruido(x, rng, n_boot=N_BOOT):
+    """Ruido de localizacion de una coordenada x (T,) [nm] con nan.
+    msd:   ordenada b del ajuste MSD(tau) = 2 D tau + b, tau = 1..4: b = 2 sigma^2 - 2 D t_E / 3
+    pasos: var(paso entre cuadros consecutivos) - 2 D dt = 2 sigma^2 - 2 D t_E / 3
+    (desenfoque de movimiento con exposicion t_E = dt; D de la misma pendiente). Devuelve sigma con y sin el
+    termino de desenfoque e IC por bootstrap de bloques."""
+    def una(idx_bloques=None):
+        r = x[:, None]
+        if idx_bloques is None:
+            S, N = sumas_msd(r)
+            d = np.diff(x)
+        else:
+            S, N = sumas_msd(r, idx_bloques, BLOQUE)
+            d = np.concatenate([np.diff(x[i:i + BLOQUE]) for i in idx_bloques])
+        D, b, _ = ajuste_msd(S, N, [0])
+        d = d[np.isfinite(d)]
+        if not np.isfinite(D) or len(d) < 5:
+            return [np.nan] * 5
+        D_nm = D * 1e6
+        blur = 2 * D_nm * T_E / 3
+        v = np.var(d, ddof=1)
+        return [D, (b + blur) / 2, (v - 2 * D_nm * DT + blur) / 2, b / 2, (v - 2 * D_nm * DT) / 2]
+    D, s2m, s2p, s2m0, s2p0 = una()
+    T = len(x)
+    nb = int(np.ceil(T / BLOQUE))
+    bs = np.array([una(rng.integers(0, T - BLOQUE + 1, nb)) for _ in range(n_boot)])
+    raiz = lambda v: np.sign(v) * np.sqrt(np.abs(v))  # noqa: E731  (sigma con signo: negativo = varianza < 0)
+    out = dict(cuadros=int(np.isfinite(x).sum()), D_um2_s=D, sigma_msd=raiz(s2m), sigma_pasos=raiz(s2p),
+               sigma_msd_sin_desenfoque=raiz(s2m0), sigma_pasos_sin_desenfoque=raiz(s2p0))
+    for k, j in (("sigma_msd", 1), ("sigma_pasos", 2)):
+        out[f"{k}_lo"], out[f"{k}_hi"] = (raiz(v) for v in ic(bs[:, j]))
+    return out
+
+
+def sesgo_en_el_tiempo(b, z, senal, rng, n_boot=N_BOOT):
+    """Sesgo b (T,) [nm] con nan: medias por bloque de 10 cuadros, pendiente con el cuadro (nm / 100 cuadros) y
+    correlaciones con z y con la senal del real, con IC por bootstrap de bloques."""
+    T = len(b)
+    fr = np.arange(T)
+    ok = np.isfinite(b)
+
+    def stats(idx):
+        o = ok[idx]
+        bb, ff, zz, ss = b[idx][o], fr[idx][o], z[idx][o], senal[idx][o]
+        if len(bb) < 10:
+            return [np.nan] * 3
+        return [np.polyfit(ff, bb, 1)[0] * 100, np.corrcoef(bb, zz)[0, 1], np.corrcoef(bb, ss)[0, 1]]
+    p, rz, rs = stats(fr)
+    bs = np.array([stats(idx) for idx in bootstrap_bloques(T, rng, n_boot)])
+    bloques = [b[i:i + BLOQUE][np.isfinite(b[i:i + BLOQUE])] for i in range(0, T, BLOQUE)]
+    medias = np.array([v.mean() if len(v) else np.nan for v in bloques])
+    # medias por bloque frente a una constante: chi^2 con el error estandar de cada bloque (supone cuadros
+    # independientes dentro del bloque; la autocorrelacion de paso 1 dice si lo son)
+    from scipy.stats import chi2
+    se = np.array([v.std(ddof=1) / np.sqrt(len(v)) if len(v) > 2 else np.nan for v in bloques])
+    okb = np.isfinite(medias) & np.isfinite(se)
+    mp = np.average(medias[okb], weights=1 / se[okb] ** 2)
+    x2 = float(np.sum(((medias[okb] - mp) / se[okb]) ** 2))
+    par = ok[:-1] & ok[1:]
+    out = dict(media=np.nanmean(b), std=np.nanstd(b, ddof=1), pendiente_nm_100c=p, corr_z=rz, corr_senal=rs,
+               medias_bloque=" ".join(f"{m:+.0f}" for m in medias), rango_medias_bloque=np.nanmax(medias) - np.nanmin(medias),
+               std_medias_bloque=np.nanstd(medias, ddof=1), se_medio_bloque=np.nanmean(se), chi2_bloques=x2,
+               gl=int(okb.sum() - 1), p_chi2=float(chi2.sf(x2, okb.sum() - 1)),
+               autocorr_paso1=float(np.corrcoef(b[:-1][par], b[1:][par])[0, 1]))
+    for k, j in (("pendiente_nm_100c", 0), ("corr_z", 1), ("corr_senal", 2)):
+        out[f"{k}_lo"], out[f"{k}_hi"] = ic(bs[:, j])
+    return out, medias
+
+
+# ----------------------------------------------------------------------------
+# analisis
+# ----------------------------------------------------------------------------
 
 def analisis(a):
     import tracking_3d as t3
-    from espejo import coordenadas_espejo, triangular_z, sigma_z_triangulada
-    global HUECO, LARGO
+    from espejo import coordenadas_espejo, triangular_z
+    global HUECO, LARGO, SIG_Z_RED
     rng = np.random.default_rng(a.seed)
     SALIDA.mkdir(parents=True, exist_ok=True)
     geo = json.loads((CACHE / "geometria.json").read_text())
@@ -468,171 +646,160 @@ def analisis(a):
     mejor = pd.read_csv(t3.SALIDA / "tracking_3d_enlace_mejor.csv").iloc[0]
     assert mejor.costo == "norm2" and float(mejor.umbral) == UMBRAL
     HUECO, LARGO = int(mejor.hueco), int(mejor.largo)
-    st = lambda x, y: coordenadas_espejo(x, y, px, phi, q)  # noqa: E731  (s, t) [nm]
-    sR_c, tR_c = st(cl.x_real, cl.y_real)
-    sF_c, tF_c = st(cl.x_refl, cl.y_refl)
-    filas = []
+    SIG_Z_RED = float(pd.read_csv(t3.SALIDA / "tracking_3d_enlace_sigmas.csv").set_index("umbral").loc[UMBRAL_MIN, "sigma_z"])
+    st0 = lambda x, y: coordenadas_espejo(x, y, px, phi, q)  # noqa: E731
+    sR_c, tR_c = st0(cl.x_real, cl.y_real)
+    sF_c, tF_c = st0(cl.x_refl, cl.y_refl)
+    sR_c, tR_c, sF_c, tF_c = (np.asarray(v) for v in (sR_c, tR_c, sF_c, tF_c))
+    z_cl = {b: triangular_z(sR_c, sF_c, b) for b in BETAS}
 
-    # ---- 1. x, y del real: red por cuadro (umbral 0.4 y 0.2, y tras suprimir anillos) frente al clasico
-    comp = []
-    entradas = [(f"umbral {UMBRAL:g}", det_todo[det_todo.conf >= UMBRAL]), (f"umbral {UMBRAL_MIN:g}", det_todo[det_todo.conf >= UMBRAL_MIN]),
-                (f"umbral {UMBRAL_MIN:g}, anillos suprimidos", suprimir_anillos(det_todo[det_todo.conf >= UMBRAL_MIN].reset_index(drop=True)))]
-    for nombre, d in entradas:
-        d = d.reset_index(drop=True)
+    # ---- desfase del par clasico (referencia del modelo; no lo usa el pipeline)
+    L_c, dt_c = sR_c - sF_c, tR_c - tF_c
+    filas_des = []
+    for tipo in ("L", "sF"):
+        md = modelo_desfase(tipo, L_c, dt_c, sF_c, rng, N_BOOT)
+        filas_des.append(dict(fuente="par clasico", **{k: v for k, v in md.items() if k != "corr"}))
+
+    # ---- pipeline: variantes y ablaciones
+    res = {}
+    for v, cfg in VARIANTES.items():
+        res[v] = pipeline(v, cfg, det_todo, man, cl, geo, t3, rng, n_boot_desfase=N_BOOT if v == "final" else 0)
+    for v, cambio in ABLACIONES.items():
+        res[v] = pipeline(v, {**FINAL, **cambio}, det_todo, man, cl, geo, t3, rng)
+    for v in ("final", "desfase_solo_constante", "desfase_en_s_reflejo", "sin_modelo_desfase"):
+        md = res[v]["modelo"]
+        filas_des.append(dict(fuente=f"pipeline ({v}), pares del primer pase", **{k: x for k, x in md.items() if k != "corr"}))
+    tdes = pd.DataFrame(filas_des)
+    tdes["angulo_borde_franja_deg"] = geo["angulo_borde_deg"]
+    tdes["delta_predicho_por_el_borde_deg"] = -geo["angulo_borde_deg"]
+    tdes.to_csv(SALIDA / "tracking_yeast6_1_desfase.csv", index=False)
+    ev = pd.DataFrame([evaluar(r, cl, geo, z_cl[BETA_REF]) for r in res.values()])
+
+    # ---- x, y: red por cuadro frente al clasico; ruido de localizacion y sesgo
+    fuentes_xy = {"clasico": np.c_[cl.x_real, cl.y_real]}
+    for nombre, u in (("red umbral 0.4", UMBRAL), ("red umbral 0.2", UMBRAL_MIN)):
+        d = det_todo[det_todo.conf >= u].reset_index(drop=True)
         i = mas_cercano(d, cl.x_real.to_numpy(), cl.y_real.to_numpy(), R_ASOC_PX)
-        ok = i >= 0
-        xn, yn = d.x_px.to_numpy()[i[ok]], d.y_px.to_numpy()[i[ok]]
-        sN, tN = st(xn, yn)
-        ex, ey = (xn - cl.x_real[ok].to_numpy()) * px, (yn - cl.y_real[ok].to_numpy()) * px
-        R = lambda k, v: filas.append(dict(variante=nombre, seccion="1", magnitud=k, valor=v))  # noqa: E731
-        R("detecciones por cuadro", len(d) / T)
-        R("cuadros con el real detectado (<= 3 px)", int(ok.sum()))
-        R("cuadros sin el real", " ".join(map(str, np.flatnonzero(~ok))) or "-")
-        R("otras detecciones por cuadro", (len(d) - ok.sum()) / T)
-        R("otras a 3-20 px del real (anillos) por cuadro",
-          float(sum(((np.hypot(g.x_px - cl.x_real[f], g.y_px - cl.y_real[f]) > R_ASOC_PX) &
-                     (np.hypot(g.x_px - cl.x_real[f], g.y_px - cl.y_real[f]) <= 20)).sum() for f, g in d.groupby("frame")) / T))
-        R("otras a <= 3 px del reflejo clasico por cuadro",
-          float((mas_cercano(d, cl.x_refl.to_numpy(), cl.y_refl.to_numpy(), R_ASOC_PX) >= 0).mean()))
-        for e_, v in (("x", ex), ("y", ey), ("s", sN - sR_c[ok]), ("t", tN - tR_c[ok]), ("radial", np.hypot(ex, ey))):
-            comp.append(dict(entrada=nombre, eje=e_, **estad(v)))
-        # ruido a lo largo de t con el reflejo clasico como referencia (t' = t): std de dt y de su paso
-        dt = tN - tF_c[ok]
-        comp.append(dict(entrada=nombre, eje="dt con el reflejo clasico", **estad(dt)))
-    dtc = tR_c - tF_c
-    z45 = triangular_z(sR_c, sF_c, BETA_REF)
-    pend_dt_z = np.polyfit(z45, dtc, 1)[0]
-    for nombre, v in (("corr(dt, z triangulada 45)", np.corrcoef(dtc, z45)[0, 1]), ("pendiente d(dt)/dz", pend_dt_z),
-                      ("corr(dt, s del real)", np.corrcoef(dtc, sR_c)[0, 1]), ("corr(dt, cuadro)", np.corrcoef(dtc, np.arange(T))[0, 1]),
-                      ("std de dt sin la parte lineal en z [nm]", np.std(dtc - np.polyval(np.polyfit(z45, dtc, 1), z45), ddof=1))):
-        filas.append(dict(variante="clasico", seccion="2", magnitud=nombre, valor=v))
-    comp.append(dict(entrada="clasico", eje="dt con el reflejo clasico", **estad(dtc)))
-    comp.append(dict(entrada="clasico", eje="paso de dt / raiz 2", **estad(np.diff(dtc) / np.sqrt(2))))
-    comp = pd.DataFrame(comp)
-    comp.to_csv(SALIDA / "tracking_yeast6_1_xy_red_vs_clasico.csv", index=False)
-
-    # ---- 2. pipeline: pistas, reflejos y emparejamiento (dos variantes)
-    res = {v: pipeline(v, det_todo, man, cl, geo, t3, filas) for v in VARIANTES}
-    for k, nombre in (("iter", "autocalibracion"), ("sens", "sensibilidad_enlace"), ("pistas", "pistas"), ("pares", "pares")):
-        pd.concat([r[k] for r in res.values()], ignore_index=True).to_csv(SALIDA / f"tracking_yeast6_1_{nombre}.csv", index=False)
-    comp_refl = []
-    for v, r in res.items():
-        tr = r["o"]["tray"]
-        sFp, tFp = st(tr.x_refl_px, tr.y_refl_px)
-        sRp, tRp = st(tr.x_tri_px, tr.y_tri_px)
-        for e_, val in (("x", (tr.x_refl_px - cl.x_refl) * px), ("y", (tr.y_refl_px - cl.y_refl) * px), ("s", sFp - sF_c),
-                        ("t", tFp - tF_c), ("radial", np.hypot(tr.x_refl_px - cl.x_refl, tr.y_refl_px - cl.y_refl) * px),
-                        ("real de la pista - clasico, s", sRp - sR_c), ("real de la pista - clasico, t", tRp - tR_c),
-                        ("dt de la pista", tRp - tFp)):
-            comp_refl.append(dict(variante=v, eje=e_, **estad(val)))
-    comp_refl = pd.DataFrame(comp_refl)
-    comp_refl.to_csv(SALIDA / "tracking_yeast6_1_reflejo_vs_clasico.csv", index=False)
-
-    # ---- 3. z triangulada por cuadro, barrido de beta, atipicos por consistencia temporal
-    fuentes = {"clasico": (np.c_[cl.x_real, cl.y_real], np.c_[cl.x_refl, cl.y_refl], np.c_[cl.x_real, cl.y_real])}
-    for v, r in res.items():
-        tr = r["o"]["tray"]
-        fuentes[v] = (np.c_[tr.x_tri_px, tr.y_tri_px], np.c_[tr.x_refl_px, tr.y_refl_px], np.c_[tr.x_px, tr.y_px])
-    pc = dict(frame=np.arange(T), x_real_clasico_px=cl.x_real, y_real_clasico_px=cl.y_real, x_refl_clasico_px=cl.x_refl,
-              y_refl_clasico_px=cl.y_refl)
-    for v in VARIANTES:
-        tr = res[v]["o"]["tray"]
-        for c in tr:
-            pc[f"{c}_{v}"] = tr[c]
-    zf, tray = [], {}
-    for fuente, (pr, pf, _) in fuentes.items():
-        sr, _ = st(pr[:, 0], pr[:, 1])
-        sf, _ = st(pf[:, 0], pf[:, 1])
-        sig_s = res["adaptada"]["sig_dt"] / np.sqrt(2)
-        for b in BETAS:
-            z = triangular_z(sr, sf, b)
-            n = int(np.isfinite(z).sum())
-            fila = dict(fuente=fuente, beta=b, cuadros=n, z_media=np.nanmean(z) if n else np.nan,
-                        z_std=np.nanstd(z) if n else np.nan, sigma_z_propagado=float(sigma_z_triangulada(sig_s, sig_s, b)))
-            for k in KS_ATIP:
-                fila[f"atipicos_k{k:g}"] = int(atipicos(z, k)[0].sum()) if n > 5 else 0
-            at, med, sg = atipicos(z, K_ATIP) if n > 5 else (np.zeros(T, bool), np.full(T, np.nan), np.nan)
-            fila["sigma_residuo"] = sg
-            fila["max_paso"] = float(np.nanmax(np.abs(np.diff(z)))) if n > 1 else np.nan
-            zf.append(fila)
-            tray[fuente, b] = (z, at, med)
-            pc[f"z_{fuente}_b{b:g}_nm"] = z
-            pc[f"atipico_{fuente}_b{b:g}"] = at
-    zt = pd.DataFrame(zf)
-    zt.to_csv(SALIDA / "tracking_yeast6_1_z_beta.csv", index=False)
-    # sensibilidad del rechazo a la ventana y a k (beta 45)
-    sv = []
-    for fuente in ("adaptada", "adaptada_ancha", "tal_cual", "clasico"):
-        z = tray[fuente, BETA_REF][0]
-        for w in (5, 9, 15):
-            for k in KS_ATIP:
-                med = mediana_movil(z, w)
-                rr = z - med
-                rv = rr[np.isfinite(rr)]
-                sg = 1.4826 * np.median(np.abs(rv - np.median(rv)))
-                sv.append(dict(fuente=fuente, ventana=w, k=k, sigma_residuo=sg, atipicos=int((np.abs(rr) > k * sg).sum())))
-    sv = pd.DataFrame(sv)
-    sv.to_csv(SALIDA / "tracking_yeast6_1_atipicos_ventana.csv", index=False)
-
-    # ---- 4. trayectoria 3D y D por MSD
-    dfil, msd_t = [], []
-    for fuente, (pr, _, plat) in fuentes.items():
-        if not np.isfinite(tray[fuente, BETA_REF][0]).any():
+        xy = np.full((T, 2), np.nan)
+        xy[i >= 0] = np.c_[d.x_px.to_numpy()[i[i >= 0]], d.y_px.to_numpy()[i[i >= 0]]]
+        fuentes_xy[nombre] = xy
+    tr_f = res["final"]["o"]["tray"]
+    fuentes_xy["pipeline final (pista)"] = np.c_[tr_f.x_px, tr_f.y_px]
+    comp, rui, ses, medias_sesgo = [], [], [], {}
+    for nombre, xy in fuentes_xy.items():
+        for e_, k in (("x", 0), ("y", 1)):
+            rui.append(dict(fuente=nombre, eje=e_, **ruido(xy[:, k] * px, rng)))
+        if nombre == "clasico":
             continue
+        ex, ey = (xy[:, 0] - cl.x_real.to_numpy()) * px, (xy[:, 1] - cl.y_real.to_numpy()) * px
+        for e_, v in (("x", ex), ("y", ey), ("radial", np.hypot(ex, ey))):
+            comp.append(dict(fuente=nombre, eje=e_, **estad(v)))
+        if nombre == "red umbral 0.4":
+            for e_, v in (("x", ex), ("y", ey)):
+                o_, m_ = sesgo_en_el_tiempo(v, z_cl[BETA_REF], cl.senal_real.to_numpy(), rng)
+                ses.append(dict(fuente=nombre, eje=e_, **o_))
+                medias_sesgo[e_] = (v, m_)
+    pd.DataFrame(comp).to_csv(SALIDA / "tracking_yeast6_1_xy_red_vs_clasico.csv", index=False)
+    rui = pd.DataFrame(rui)
+    rui.to_csv(SALIDA / "tracking_yeast6_1_ruido_localizacion.csv", index=False)
+    ses = pd.DataFrame(ses)
+    ses.to_csv(SALIDA / "tracking_yeast6_1_sesgo_tiempo.csv", index=False)
+
+    # ---- z triangulada, atipicos (k = 3 fijo, sensibilidad 2.5 y 3.5) y D por MSD
+    trays = {"clasico": (np.c_[cl.x_real, cl.y_real], z_cl, np.c_[cl.x_real, cl.y_real])}
+    for v in ("final", "tal_cual"):
+        tr = res[v]["o"]["tray"]
+        trays[v] = (np.c_[tr.x_tri_px, tr.y_tri_px], {b: z_de(res[v], geo, b) for b in BETAS}, np.c_[tr.x_px, tr.y_px])
+    zf, dfil, msd_t, pc = [], [], [], dict(frame=np.arange(T))
+    for fuente, (pr, zb, plat) in trays.items():
         xy, xy_lat = pr * px, plat * px
         for b in BETAS:
-            z, at, _ = tray[fuente, b]
-            for rech in (True, False):
-                zz = np.where(at, np.nan, z) if rech else z
-                r3 = np.where(np.isfinite(zz)[:, None], np.c_[xy, zz], np.nan)   # 3D y z: cuadros con z valida
-                res_b = d_por_msd(r3, rng, ejes={"3d": [0, 1, 2], "z": [2]})
-                if b == BETA_REF and rech:                                     # lateral: todos los cuadros de la pista
-                    res_b.update(d_por_msd(np.c_[xy_lat, np.zeros(T)], rng, ejes={"lateral": [0, 1], "x": [0], "y": [1]}))
-                for e_, val in res_b.items():
-                    dfil.append(dict(fuente=fuente, beta=b, atipicos_rechazados=rech, eje=e_, D_um2_s=val["D"], lo=val["lo"],
-                                     hi=val["hi"], ordenada_nm2=val["ordenada_nm2"], pares_lag1=int(val["pares"][0])))
-                    if b == BETA_REF:
-                        for k in range(N_LAGS):
-                            msd_t.append(dict(fuente=fuente, atipicos_rechazados=rech, eje=e_, lag=k + 1,
-                                              msd_nm2=val["msd"][k], pares=int(val["pares"][k])))
+            z = zb[b]
+            n = int(np.isfinite(z).sum())
+            fila = dict(fuente=fuente, beta=b, cuadros=n, z_media=np.nanmean(z), z_std=np.nanstd(z))
+            for k in KS_ATIP:
+                at, _, sg = atipicos(z, k)
+                fila[f"atipicos_k{k:g}"] = int(at.sum())
+            fila["sigma_residuo"] = sg
+            zf.append(fila)
+            pc[f"z_{fuente}_b{b:g}_nm"] = z
+            pc[f"atipico_{fuente}_b{b:g}"] = atipicos(z, K_ATIP)[0]
+            for k in ((None,) + KS_ATIP if b == BETA_REF else (K_ATIP,)):
+                zz = z if k is None else np.where(atipicos(z, k)[0], np.nan, z)
+                r3 = np.where(np.isfinite(zz)[:, None], np.c_[xy, zz], np.nan)
+                rb = d_por_msd(r3, rng, ejes={"3d": [0, 1, 2], "z": [2]})
+                if b == BETA_REF and k == K_ATIP:
+                    rb.update(d_por_msd(np.c_[xy_lat, np.zeros(T)], rng, ejes={"lateral": [0, 1], "x": [0], "y": [1]}))
+                for e_, val in rb.items():
+                    dfil.append(dict(fuente=fuente, beta=b, k_atipicos=k if k is not None else np.inf, eje=e_,
+                                     D_um2_s=val["D"], lo=val["lo"], hi=val["hi"], ordenada_nm2=val["ordenada_nm2"],
+                                     pares_lag1=int(val["pares"][0])))
+                    if b == BETA_REF and k == K_ATIP:
+                        for j in range(N_LAGS):
+                            msd_t.append(dict(fuente=fuente, eje=e_, lag=j + 1, msd_nm2=val["msd"][j], pares=int(val["pares"][j])))
+    zt = pd.DataFrame(zf)
+    zt.to_csv(SALIDA / "tracking_yeast6_1_z_beta.csv", index=False)
     td = pd.DataFrame(dfil)
     td.to_csv(SALIDA / "tracking_yeast6_1_D.csv", index=False)
     tm = pd.DataFrame(msd_t)
     tm.to_csv(SALIDA / "tracking_yeast6_1_msd.csv", index=False)
-    pc = pd.DataFrame(pc)
-    pc.to_csv(SALIDA / "tracking_yeast6_1_por_cuadro.csv", index=False)
-    tf = pd.DataFrame(filas)
-    tf.to_csv(SALIDA / "tracking_yeast6_1_resumen.csv", index=False)
+    # efecto de girar phi sobre la z del pipeline final (misma trayectoria, sistema de la franja)
+    zg = z_de(res["final"], geo, BETA_REF, phi_=phi)
+    efecto_giro = float(np.sqrt(np.nanmean((trays["final"][1][BETA_REF] - zg) ** 2)))
 
-    with pd.option_context("display.width", 250, "display.max_columns", 30, "display.max_rows", 400,
-                           "display.max_colwidth", 120):
+    # ---- ablaciones: D de cada una (beta 45, k = 3, menos remuestreos)
+    for i, r in enumerate(res.values()):
+        tr = r["o"]["tray"]
+        z = z_de(r, geo, BETA_REF)
+        zz = np.where(atipicos(z, K_ATIP)[0], np.nan, z) if np.isfinite(z).sum() > 5 else z
+        xy = np.c_[tr.x_tri_px, tr.y_tri_px] * px
+        r3 = np.where(np.isfinite(zz)[:, None], np.c_[xy, zz], np.nan)
+        rb = d_por_msd(r3, rng, ejes={"3d": [0, 1, 2], "z": [2]}, n_boot=500)
+        rb.update(d_por_msd(np.c_[np.c_[tr.x_px, tr.y_px] * px, np.zeros(T)], rng, ejes={"lateral": [0, 1]}, n_boot=500))
+        for e_ in ("lateral", "z", "3d"):
+            ev.loc[i, f"D_{e_}"] = rb[e_]["D"]
+            ev.loc[i, f"D_{e_}_lo"], ev.loc[i, f"D_{e_}_hi"] = rb[e_]["lo"], rb[e_]["hi"]
+    ev.to_csv(SALIDA / "tracking_yeast6_1_variantes.csv", index=False)
+    for v in VARIANTES:
+        tr = res[v]["o"]["tray"]
+        for c_ in tr:
+            pc[f"{c_}_{v}"] = tr[c_]
+    pd.DataFrame(pc).to_csv(SALIDA / "tracking_yeast6_1_por_cuadro.csv", index=False)
+
+    with pd.option_context("display.width", 250, "display.max_columns", 40, "display.max_rows", 400, "display.max_colwidth", 60):
         f1 = lambda v: f"{v:.4g}"  # noqa: E731
-        print(tf.to_string(index=False))
-        for t_ in (comp, comp_refl, pd.concat([r["iter"] for r in res.values()]), pd.concat([r["sens"] for r in res.values()]),
-                   pd.concat([r["pistas"] for r in res.values()]), pd.concat([r["pares"] for r in res.values()]),
-                   zt[zt.beta.isin([40, 42.5, 45, 47.5, 50])], sv,
-                   td[td.beta.isin([40, 45, 50]) | td.eje.isin(["lateral", "x", "y"])]):
+        print(f"geometria: phi {phi:+.2f} deg, borde de la franja a {geo['angulo_borde_deg']:+.2f} deg de t; "
+              f"sigma_z de la red para el enlace 3D {SIG_Z_RED:.1f} nm; efecto del giro de phi sobre z (beta 45): "
+              f"{efecto_giro:.1f} nm RMS")
+        for t_ in (tdes, ev.drop(columns=["cuadros_sin_triangular"]), ev[["variante", "cuadros_sin_triangular"]],
+                   pd.DataFrame(comp), rui, ses, zt[zt.beta.isin([40, 42.5, 45, 47.5, 50])],
+                   td[td.beta.isin([40, 42.5, 45, 47.5, 50])]):
             print(t_.to_string(index=False, float_format=f1))
             print()
-    figuras(pc, zt, td, tm, tray, geo, res, cl)
+    (SALIDA / "tracking_yeast6_1_geometria.json").write_text(json.dumps(dict(
+        phi_franja_deg=phi, angulo_borde_franja_deg=geo["angulo_borde_deg"], phi_final_deg=res["final"]["phi"],
+        sigma_dt_final_nm=res["final"]["sig_dt"], D_enlace_final=res["final"]["D"], sigma_z_red_enlace_3d=SIG_Z_RED,
+        efecto_giro_z45_rms_nm=efecto_giro), indent=1))
+    figuras(pd.DataFrame(pc), zt, td, tm, trays, geo, res, cl, (L_c, dt_c, sF_c, z_cl[BETA_REF]), rui, medias_sesgo)
 
 
 # ----------------------------------------------------------------------------
 # figuras
 # ----------------------------------------------------------------------------
 
-def figuras(pc, zt, td, tm, tray, geo, res, cl):
+def figuras(pc, zt, td, tm, trays, geo, res, cl, des_cl, rui, medias_sesgo):
     from espejo import coordenadas_espejo
     plt = _estilo()
     px, phi, q, T = geo["px"], geo["phi_deg"], np.array(geo["q_px"]), geo["T"]
     x0, y0 = geo["ventana_x0"], geo["ventana_y0"]
-    st = lambda x, y: coordenadas_espejo(x, y, px, phi, q)  # noqa: E731
+    st = lambda x, y, p=phi: coordenadas_espejo(x, y, px, p, q)  # noqa: E731
     fr = np.arange(T)
     grid = dict(color="#e6e5e0", lw=0.6)
-    ad = res["adaptada"]["o"]["tray"]
+    fin = res["final"]
+    ad = fin["o"]["tray"]
 
-    # -- 1-2: deteccion, pistas y emparejamiento
-    fig, axs = plt.subplots(1, 3, figsize=(15, 4.6), gridspec_kw=dict(width_ratios=[1.1, 1.4, 1]))
+    # -- deteccion, emparejamiento y desfase
+    fig, axs = plt.subplots(1, 4, figsize=(19, 4.6), gridspec_kw=dict(width_ratios=[1.1, 1.3, 1, 1]))
     ax = axs[0]
     med = np.load(CACHE / "media_ventana.npy")
     ax.imshow(med, cmap="gray", vmin=np.percentile(med, 1), vmax=np.percentile(med, 99.7),
@@ -640,98 +807,132 @@ def figuras(pc, zt, td, tm, tray, geo, res, cl):
     det = pd.read_csv(CACHE / "detecciones_red.csv")
     d2 = det[det.conf >= UMBRAL_MIN]
     ax.scatter(d2.x_px, d2.y_px, s=3, color="#c9c8c2", lw=0, label="red, conf >= 0.2 (todos los cuadros)")
-    sup = res["adaptada"]["det"]
-    ax.scatter(sup.x_px, sup.y_px, s=4, color=COLOR["red"], lw=0, label="tras suprimir anillos")
-    man = res["adaptada"]["cand"]
-    ax.scatter(man.x_px, man.y_px, s=4, color=COLOR["reflejo"], lw=0, label="manchas candidatas a reflejo")
+    ax.scatter(fin["det"].x_px, fin["det"].y_px, s=4, color=COLOR["red"], lw=0, label="candidatas a real (final)")
+    ax.scatter(fin["cand"].x_px, fin["cand"].y_px, s=4, color=COLOR["reflejo"], lw=0, label="manchas candidatas a reflejo")
     ax.plot(cl.x_real, cl.y_real, "-", color="white", lw=0.8)
     ax.plot(cl.x_refl, cl.y_refl, "-", color="white", lw=0.8, label="par clasico")
     ok = ad.x_refl_px.notna()
-    ax.scatter(ad.x_tri_px[ok], ad.y_tri_px[ok], s=7, marker="o", facecolor="none", edgecolor=COLOR["tri"], lw=0.7,
-               label="pipeline: cuadros triangulados")
-    ax.scatter(ad.x_refl_px[ok], ad.y_refl_px[ok], s=7, marker="o", facecolor="none", edgecolor=COLOR["tri"], lw=0.7)
+    for xx, yy in ((ad.x_tri_px, ad.y_tri_px), (ad.x_refl_px, ad.y_refl_px)):
+        ax.scatter(xx[ok], yy[ok], s=7, marker="o", facecolor="none", edgecolor=COLOR["tri"], lw=0.7,
+                   label="pipeline final: cuadros triangulados" if xx is ad.x_tri_px else None)
     ax.set_xlim(x0 - 0.5, x0 + VENTANA - 0.5); ax.set_ylim(y0 + VENTANA - 0.5, y0 - 0.5)
     ax.set_xlabel("x [px, canal derecho]"); ax.set_ylabel("y [px]")
     ax.set_title("ventana de la red (media de los cuadros 0-9)", fontsize=8.5)
     ax.legend(frameon=False, fontsize=6.3, loc="upper left", bbox_to_anchor=(0, -0.12), ncol=2)
     ax = axs[1]
-    sRc, tRc = st(cl.x_real, cl.y_real)
-    for col, nombre, mk in (("tal_cual", "red, umbral 0.4 (tal cual)", "x"), ("adaptada", "red, anillos suprimidos", "o")):
-        trr = res[col]["o"]["tray"]
-        s_, t_ = st(trr.x_px, trr.y_px)
-        ax.plot(fr, s_ - sRc, mk, ms=3, mfc="none", color=COLOR["red"] if col == "adaptada" else COLOR["gris"], lw=0,
-                label=f"{nombre}: s - s clasico")
+    sRc, _ = st(cl.x_real, cl.y_real)
+    for v, nombre, mk, c in (("tal_cual", "tal cual (umbral 0.4)", "x", COLOR["gris"]), ("final", "pipeline final", "o", COLOR["red"])):
+        trr = res[v]["o"]["tray"]
+        s_, _ = st(trr.x_px, trr.y_px)
+        ax.plot(fr, s_ - sRc, mk, ms=3, mfc="none", color=c, lw=0, label=f"{nombre}: s - s clasico")
     ax.axhline(0, color="#8a8984", lw=0.8)
     ax.set_xlabel("cuadro (10 Hz)"); ax.set_ylabel("real de la pista - real clasico, a lo largo de m [nm]")
-    ax.set_ylim(-1600, 1600)
-    ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
-    ax.set_title("posicion del real en la pista de la particula (los saltos de ~600-1500 nm son anillos)", fontsize=8.5)
+    ax.set_ylim(-1600, 1600); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
+    ax.set_title("real de la pista de la particula (los saltos de 600-1500 nm son anillos)", fontsize=8.5)
+    L_c, dt_c, sF_c, z45 = des_cl
+    md_c = modelo_desfase("L", L_c, dt_c, sF_c)
+    md_p = fin["modelo"]
+    Lp, dtp, _ = fin["datos_desfase"]
     ax = axs[2]
-    sFc, tFc = st(cl.x_refl, cl.y_refl)
-    from espejo import triangular_z
-    z45 = triangular_z(sRc, sFc, BETA_REF)
-    dtc = tRc - tFc
-    ax.scatter(z45, dtc, s=9, color=COLOR["clasico"], label="par clasico")
-    p_ = np.polyfit(z45, dtc, 1)
-    xx = np.array([z45.min(), z45.max()])
-    ax.plot(xx, np.polyval(p_, xx), "-", color=COLOR["clasico"], lw=1.2,
-            label=f"pendiente {p_[0]:+.2f}, r = {np.corrcoef(z45, dtc)[0, 1]:+.2f}")
-    sRa, tRa = st(ad.x_tri_px, ad.y_tri_px)
-    sFa, tFa = st(ad.x_refl_px, ad.y_refl_px)
-    ax.scatter(triangular_z(sRa, sFa, BETA_REF), tRa - tFa, s=12, marker="o", facecolor="none", edgecolor=COLOR["tri"],
-               label="pipeline (adaptada)")
-    ax.axhline(0, color="#8a8984", lw=0.8)
-    ax.set_xlabel("z triangulada, beta 45 [nm]"); ax.set_ylabel("dt = t real - t reflejo [nm]")
-    ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
-    ax.set_title("el modelo pide dt = 0 (t' = t): aqui depende de z", fontsize=8.5)
-    fig.suptitle("Yeast6_1, canal derecho: red s1 frente a la deteccion clasica y emparejamiento real <-> reflejo", fontsize=10)
+    ax.scatter(L_c, dt_c, s=9, color=COLOR["clasico"], label="par clasico")
+    ax.scatter(Lp, dtp, s=12, marker="o", facecolor="none", edgecolor=COLOR["tri"], label="pipeline, pares del primer pase")
+    xx = np.linspace(np.nanmin(np.r_[L_c, Lp]), np.nanmax(np.r_[L_c, Lp]), 2)
+    ax.plot(xx, md_c["a"] + np.tan(np.radians(md_c["delta_deg"])) * xx, "-", color=COLOR["clasico"], lw=1.2,
+            label=f"ajuste clasico: delta = {md_c['delta_deg']:+.1f} deg")
+    ax.plot(xx, md_p["a"] + np.tan(np.radians(md_p["delta_deg"])) * xx, "-", color=COLOR["tri"], lw=1.2,
+            label=f"ajuste del pipeline: delta = {md_p['delta_deg']:+.1f} deg")
+    db = -geo["angulo_borde_deg"]
+    ax.plot(xx, np.tan(np.radians(db)) * (xx - np.nanmean(L_c)), ":", color=COLOR["atipico"], lw=1.2,
+            label=f"giro que pide el borde de la franja ({db:+.1f} deg)")
+    ax.set_xlabel("L = s real - s reflejo [nm]"); ax.set_ylabel("dt = t real - t reflejo [nm] (sistema de la franja)")
+    ax.set_ylim(-500, 500); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=6.5)
+    ax.set_title("modelo pedido: dt lineal en L (giro de m)", fontsize=8.5)
+    ax = axs[3]
+    ax.scatter(z45, dt_c, s=9, color=COLOR["clasico"], label="par clasico")
+    p_ = np.polyfit(z45, dt_c, 1)
+    zz = np.array([z45.min(), z45.max()])
+    ax.plot(zz, np.polyval(p_, zz), "-", color=COLOR["clasico"], lw=1.2,
+            label=f"pendiente {p_[0]:+.2f}, r = {np.corrcoef(z45, dt_c)[0, 1]:+.2f}")
+    ax.set_xlabel("z triangulada, beta 45 [nm] (= -s reflejo)"); ax.set_ylabel("dt [nm]")
+    ax.set_ylim(-500, 500); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
+    ax.set_title("donde esta la varianza de dt: en z, no en L", fontsize=8.5)
+    fig.suptitle("Yeast6_1, canal derecho: red s1 frente a la deteccion clasica, emparejamiento y desfase real - reflejo", fontsize=10)
     fig.tight_layout()
     fig.savefig(SALIDA / "fig_tracking_yeast6_1_deteccion.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    # -- 3: z(t) con atipicos
+    # -- ruido de localizacion y sesgo en el tiempo
+    fig, axs = plt.subplots(1, 3, figsize=(16, 4.4), gridspec_kw=dict(width_ratios=[1.2, 1.2, 1]))
+    for ax, e_ in zip(axs[:2], ("x", "y")):
+        v, m_ = medias_sesgo[e_]
+        ax.plot(fr, v, "o", ms=3, color=COLOR["red"], alpha=0.6, label="por cuadro")
+        cen = np.arange(BLOQUE / 2 - 0.5, T, BLOQUE)
+        ax.plot(cen, m_, "s-", color=COLOR["clasico"], ms=5, lw=1.2, label="media por bloque de 10 cuadros")
+        ax.axhline(np.nanmean(v), color="#8a8984", lw=0.8, ls=":")
+        ax.set_xlabel("cuadro (10 Hz)"); ax.set_ylabel(f"{e_} red (umbral 0.4) - {e_} clasico [nm]")
+        ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
+        ax.set_title(f"sesgo red - clasico en {e_}", fontsize=8.5)
+    ax = axs[2]
+    fuentes = list(dict.fromkeys(rui.fuente))
+    w = 0.18
+    for k, (met, c) in enumerate((("sigma_msd", COLOR["red"]), ("sigma_pasos", COLOR["reflejo"]))):
+        for j, e_ in enumerate(("x", "y")):
+            s_ = rui[rui.eje == e_].set_index("fuente").loc[fuentes]
+            xs = np.arange(len(fuentes)) + (2 * k + j - 1.5) * w
+            ax.errorbar(xs, s_[met], yerr=[s_[met] - s_[f"{met}_lo"], s_[f"{met}_hi"] - s_[met]], fmt="o" if j == 0 else "s",
+                        color=c, ms=4, lw=1, capsize=2, label=f"{'ordenada del MSD' if k == 0 else 'pasos - 2 D dt'}, {e_}")
+    ax.axhline(0, color="#8a8984", lw=0.8)
+    ax.set_xticks(np.arange(len(fuentes)))
+    ax.set_xticklabels([f.replace("pipeline final (pista)", "pipeline\nfinal").replace("red umbral", "red\numbral") for f in fuentes],
+                       fontsize=7)
+    ax.set_ylabel("sigma de localizacion [nm] (negativo: varianza < 0)")
+    ax.grid(True, axis="y", **grid); ax.legend(frameon=False, fontsize=6.5)
+    ax.set_title("ruido de localizacion (con el termino de desenfoque; IC 95 %)", fontsize=8.5)
+    fig.suptitle("Yeast6_1: sesgo entre la red y la deteccion clasica y ruido de localizacion de cada una", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(SALIDA / "fig_tracking_yeast6_1_ruido.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    # -- z(t) con atipicos (k = 3)
+    zc = trays["clasico"][1]
+    zf_ = trays["final"][1]
     fig, axs = plt.subplots(1, 2, figsize=(14, 4.4), gridspec_kw=dict(width_ratios=[2.4, 1]))
     ax = axs[0]
-    zc = {b: tray["clasico", b][0] for b in (40.0, 50.0)}
     ax.fill_between(fr, zc[40.0], zc[50.0], color=COLOR["clasico"], alpha=0.12, lw=0, label="par clasico, beta 40-50")
-    zcl, atc, _ = tray["clasico", BETA_REF]
+    zcl = zc[BETA_REF]
+    atc = atipicos(zcl, K_ATIP)[0]
     ax.plot(fr, zcl, "-", color=COLOR["clasico"], lw=1, label="par clasico, beta 45")
     ax.plot(fr[atc], zcl[atc], "x", color=COLOR["clasico"], ms=5, mew=1, label=f"atipicos del clasico (k = {K_ATIP:g})")
-    zw, atw, _ = tray["adaptada_ancha", BETA_REF]
-    ax.plot(fr, zw, "s", ms=5, mfc="none", mec="#7fcfae", mew=0.8, label="pipeline, sigma_dt x 2, beta 45")
-    ax.plot(fr[atw], zw[atw], "s", ms=8, mfc="none", mec=COLOR["atipico"], mew=0.8, alpha=0.6)
-    za, ata, meda = tray["adaptada", BETA_REF]
-    ax.plot(fr, za, "o", ms=3.5, color=COLOR["tri"], label="pipeline (adaptada), beta 45")
+    za = zf_[BETA_REF]
+    ata, meda, _ = atipicos(za, K_ATIP)
+    ax.plot(fr, za, "o", ms=3.5, color=COLOR["tri"], label="pipeline final, beta 45")
     ax.plot(fr, meda, "-", color=COLOR["tri"], lw=0.9, alpha=0.7, label=f"mediana movil ({VENT_MED} cuadros)")
     ax.plot(fr[ata], za[ata], "o", ms=8, mfc="none", mec=COLOR["atipico"], mew=1.3, label=f"atipicos del pipeline (k = {K_ATIP:g})")
     ax.set_xlabel("cuadro (10 Hz)"); ax.set_ylabel("z del real [nm] (+z hacia el objetivo; linea en el borde de la franja)")
     ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7, ncol=2)
     ax = axs[1]
-    for fuente, c, mk in (("clasico", COLOR["clasico"], "s"), ("adaptada", COLOR["tri"], "o"), ("adaptada_ancha", "#7fcfae", "s"),
-                          ("tal_cual", COLOR["gris"], "x")):
+    for fuente, c, mk in (("clasico", COLOR["clasico"], "s"), ("final", COLOR["tri"], "o")):
         z_ = zt[zt.fuente == fuente]
-        if z_.cuadros.max() == 0:
-            continue
-        ax.plot(z_.beta, 100 * z_[f"atipicos_k{K_ATIP:g}"] / z_.cuadros, "-" + mk, color=c, ms=3.5, lw=1.2, mfc="none" if mk == "o" else c,
-                label=f"{NOMBRE_VAR[fuente]} ({int(z_.cuadros.iloc[0])} cuadros)")
-    ax.set_xlabel("beta [grados]"); ax.set_ylabel(f"cuadros rechazados (k = {K_ATIP:g}) [%]")
-    ax.set_ylim(bottom=0); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
-    fig.suptitle("Yeast6_1: z triangulada por cuadro y rechazo de atipicos por consistencia temporal (no por la z de la red)",
+        for k, ls in zip(KS_ATIP, (":", "-", "--")):
+            ax.plot(z_.beta, 100 * z_[f"atipicos_k{k:g}"] / z_.cuadros, ls + mk, color=c, ms=3, lw=1.1 if k == K_ATIP else 0.8,
+                    mfc="none", label=f"{NOMBRE_VAR[fuente]}, k = {k:g} ({int(z_.cuadros.iloc[0])} cuadros)")
+    ax.set_xlabel("beta [grados]"); ax.set_ylabel("cuadros rechazados [%]")
+    ax.set_ylim(bottom=0); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=6.5)
+    fig.suptitle("Yeast6_1: z triangulada por cuadro y atipicos por consistencia temporal (k = 3; no por la z de la red)",
                  fontsize=10)
     fig.tight_layout()
     fig.savefig(SALIDA / "fig_tracking_yeast6_1_z.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    # -- 4: trayectoria 3D (variante con mas cuadros triangulados)
-    aw = res["adaptada_ancha"]["o"]["tray"]
-    zw_r = np.where(atw, np.nan, zw) / 1000
+    # -- trayectoria 3D
+    zw_r = np.where(ata, np.nan, za) / 1000
+    zcl_r = np.where(atc, np.nan, zcl) / 1000
     fig = plt.figure(figsize=(15, 4.8))
     gs = fig.add_gridspec(1, 4, width_ratios=[1.25, 1, 1.2, 0.04], wspace=0.5)
     xc, yc = cl.x_real.mean(), cl.y_real.mean()
-    zcl_r = np.where(atc, np.nan, zcl) / 1000
     Xc, Yc = (cl.x_real - xc) * px / 1000, (cl.y_real - yc) * px / 1000
-    Xa, Ya = (aw.x_tri_px - xc) * px / 1000, (aw.y_tri_px - yc) * px / 1000
-    et = "pipeline (adaptada, sigma_dt x 2)"
+    Xa, Ya = (ad.x_tri_px - xc) * px / 1000, (ad.y_tri_px - yc) * px / 1000
+    et = "pipeline final"
     ax = fig.add_subplot(gs[0], projection="3d")
     ax.plot(Xc, Yc, zcl_r, "-", color=COLOR["clasico"], lw=0.7, alpha=0.6, label="par clasico")
     sc = ax.scatter(Xa, Ya, zw_r, c=fr, cmap="viridis", s=10, vmin=0, vmax=T - 1, label=et)
@@ -756,28 +957,29 @@ def figuras(pc, zt, td, tm, tray, geo, res, cl):
     fig.savefig(SALIDA / "fig_tracking_yeast6_1_trayectoria.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    # -- 5: MSD por eje y D_z(beta)
-    fig, axs = plt.subplots(1, 4, figsize=(19, 4.4))
+    # -- MSD por eje y D_z(beta)
+    fig, axs = plt.subplots(1, 3, figsize=(16, 4.4))
     dims = {"lateral": 2, "z": 1, "3d": 3}
     cols = {"lateral": COLOR["lat"], "z": COLOR["z"], "3d": COLOR["3d"]}
     tau = DT * np.arange(1, N_LAGS + 1)
-    for ax, fuente in zip(axs[:3], ("adaptada", "adaptada_ancha", "clasico")):
+    sel = lambda f, e: td[(td.fuente == f) & (td.beta == BETA_REF) & (td.k_atipicos == K_ATIP) & (td.eje == e)]  # noqa: E731
+    for ax, fuente in zip(axs[:2], ("final", "clasico")):
         for e_, d_ in dims.items():
-            m_ = tm[(tm.fuente == fuente) & tm.atipicos_rechazados & (tm.eje == e_)].sort_values("lag")
-            f_ = td[(td.fuente == fuente) & (td.beta == BETA_REF) & td.atipicos_rechazados & (td.eje == e_)].iloc[0]
+            m_ = tm[(tm.fuente == fuente) & (tm.eje == e_)].sort_values("lag")
+            f_ = sel(fuente, e_).iloc[0]
             ax.plot(tau, m_.msd_nm2 / d_ / 1e3, "o", color=cols[e_], ms=5)
             ax.plot(tau, (2 * f_.D_um2_s * 1e6 * tau + f_.ordenada_nm2 / d_) / 1e3, "-", color=cols[e_], lw=1.5,
                     label=f"{e_}: D = {f_.D_um2_s:.3f} [{f_.lo:.3f}, {f_.hi:.3f}] um^2/s")
         ax.set_xlabel("lag [s]"); ax.set_ylabel("MSD por eje [10^3 nm^2]")
         ax.set_xlim(0, tau[-1] * 1.08); ax.set_ylim(bottom=0)
         ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7, loc="upper left")
-        ax.set_title(f"{NOMBRE_VAR[fuente]}\n(beta 45, sin atipicos; IC 95 % bootstrap de bloques)", fontsize=8)
-    ax = axs[3]
-    for fuente, c, mk in (("clasico", COLOR["clasico"], "s"), ("adaptada", COLOR["tri"], "o"), ("adaptada_ancha", "#7fcfae", "^")):
-        f_ = td[(td.fuente == fuente) & td.atipicos_rechazados & (td.eje == "z")].sort_values("beta")
-        ax.fill_between(f_.beta, f_.lo, f_.hi, color=c, alpha=0.10, lw=0)
+        ax.set_title(f"{NOMBRE_VAR[fuente]}\n(beta 45, atipicos con k = 3; IC 95 % bootstrap de bloques)", fontsize=8)
+    ax = axs[2]
+    for fuente, c, mk in (("clasico", COLOR["clasico"], "s"), ("final", COLOR["tri"], "o")):
+        f_ = td[(td.fuente == fuente) & (td.k_atipicos == K_ATIP) & (td.eje == "z")].sort_values("beta")
+        ax.fill_between(f_.beta, f_.lo, f_.hi, color=c, alpha=0.12, lw=0)
         ax.plot(f_.beta, f_.D_um2_s, "-" + mk, color=c, ms=3.5, lw=1.2, label=f"D_z, {NOMBRE_VAR[fuente]}")
-        fl = td[(td.fuente == fuente) & (td.eje == "lateral")].iloc[0]
+        fl = sel(fuente, "lateral").iloc[0]
         ax.axhline(fl.D_um2_s, color=c, ls=":", lw=1.2, label=f"D lateral, {NOMBRE_VAR[fuente]}: {fl.D_um2_s:.3f}")
     ax.set_xlabel("beta [grados]"); ax.set_ylabel("D [um^2/s]")
     ax.set_ylim(bottom=0); ax.grid(True, **grid); ax.legend(frameon=False, fontsize=7)
@@ -786,6 +988,7 @@ def figuras(pc, zt, td, tm, tray, geo, res, cl):
     fig.tight_layout()
     fig.savefig(SALIDA / "fig_tracking_yeast6_1_msd.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],

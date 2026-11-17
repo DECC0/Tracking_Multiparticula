@@ -1,187 +1,250 @@
 # Tracking 3D en Yeast6_1 (canal derecho)
 
-Se aplica a datos reales el pipeline de `resultados_tracking_3d.md`: la red s1, el enlace LAP elegido en B1, el detector clásico de reflejos, el emparejamiento real ↔ reflejo y la z triangulada. Los datos son Yeast6_1 (`resultados_datos_reales.md`): una sola partícula, 100 cuadros a 10 Hz, exposición de 100 ms y canal derecho. Es solo análisis: no se reentrena nada y no se usó Hypatia.
+Se aplica a datos reales el pipeline de `resultados_tracking_3d.md`: la red s1, el enlace LAP de B1, el detector clásico de reflejos, el emparejamiento real ↔ reflejo y la z triangulada. Los datos son los de Yeast6_1 (`resultados_datos_reales.md`): una partícula, 100 cuadros a 10 Hz con exposición de 100 ms, canal derecho. Es solo análisis, sin reentrenar y sin Hypatia.
 
 ```bash
 PY=~/miniforge3/envs/tesis/bin/python
 LD_PRELOAD=$HOME/miniforge3/envs/tesis/lib/libstdc++.so.6 $PY figuras/tracking_yeast6_1.py localizar [--tif RUTA]   # ~20 s
-$PY figuras/tracking_yeast6_1.py analisis                                                                             # ~5 min (bootstrap)
+$PY figuras/tracking_yeast6_1.py analisis                                                                             # ~8 min (bootstrap)
 ```
 
-**Montaje.** Es el mismo de `celula_v2.py reales`:
-- Par clásico real/reflejo de `analisis_datos_reales.py`.
-- φ = −169.9°, la dirección media reflejo → real.
-- Línea espejo/plano focal en el borde de la franja, a −32.0 px del punto medio del par. Es un supuesto: `resultados_calibracion_pupila.md`, sección 7, la corre +1.52 µm.
-- La red ve una ventana de 96 px centrada en el punto medio, columnas 303–398 y filas 399–494. Su canal de distancia usa esa línea.
-- La red se corre una vez con umbral 0.2, que es un superconjunto del 0.4.
-- Las manchas (`tracking/reflejos.py`, DoG > 5σ y ajuste gaussiano) se buscan en la misma ventana.
+**Montaje** (el de `celula_v2.py reales`):
+- **Par clásico real/reflejo** de `analisis_datos_reales.py`.
+- **Geometría:** φ = −169.9°, la dirección media reflejo → real. La línea espejo/plano focal se toma en el borde de la franja, a −32.0 px del punto medio. Es un supuesto: `resultados_calibracion_pupila.md`, sección 7, la corre 1.52 µm.
+- **Red:** ventana de 96 px centrada en el punto medio, con umbral 0.2, que es un superconjunto del 0.4.
+- **Manchas:** las de `tracking/reflejos.py` (DoG > 5σ y ajuste gaussiano), en la misma ventana.
 
-**Cómo se elige la partícula.** Es el componente conexo de pistas reales y de reflejo unidas por pares que tiene más cuadros triangulados. El criterio es del propio pipeline y no usa el par clásico. El par clásico sirve solo como referencia: un real o un reflejo "correcto" es el que cae a ≤ 3 px o ≤ 2 px de la posición clásica.
+**Criterios de evaluación:**
+- La "partícula" del pipeline es el componente conexo de pistas reales y de reflejo unidas por pares con más cuadros triangulados. No usa el par clásico.
+- El par clásico solo sirve de referencia. Un real "correcto" está a ≤ 3 px del real clásico; un reflejo "correcto", a ≤ 2 px del reflejo clásico.
+- **MSD:** pendiente de MSD(τ) con τ = 1–4 cuadros, con ordenada.
+- **IC 95 %:** bootstrap de bloques móviles de 10 cuadros (10 bloques por remuestreo, 2000 remuestreos, solo pares dentro de un bloque).
 
-**MSD.** Pendiente de MSD(τ) para τ = 1–4, con ordenada. El IC 95 % sale de un bootstrap de bloques móviles de 10 cuadros: 10 bloques por remuestreo, 2000 remuestreos, contando solo los pares dentro de un bloque.
-
-**Salidas.**
-- `figuras/tracking_yeast6_1/`: CSV agregados y 4 PNG a 300 dpi.
-- Caché en `localizacion/datos/yeast6_1/`, no versionada: par clásico, geometría, detecciones de la red, manchas y la media de la ventana.
+**Salidas:**
+- `figuras/tracking_yeast6_1/`: CSV y 5 PNG a 300 dpi;
+- caché sin versionar en `localizacion/datos/yeast6_1/`.
 
 ## Resumen
 
-| paso | resultado |
+| | resultado |
 |---|---|
-| 1. x, y del real: red frente a la detección clásica | **Con umbral 0.4, la red detecta el real en 88 de 100 cuadros**; faltan 4, 6, 7, 9, 10, 72, 76, 78, 82, 90, 97 y 98. Con 0.2, en 99 (falta el 76). Diferencia red − clásico: media (−55, −101) nm en (x, y), desviación (70, 89) nm, **RMS radial 161 nm** (145 con 0.2). Además pone 1.55 detecciones por cuadro **sobre los anillos de la PSF del real** (3–20 px; 4.4 con umbral 0.2), con la misma conf que el real |
-| 2. reflejo y emparejamiento | El detector de manchas encuentra el reflejo en 98 de 100 cuadros, a 0.84 px de mediana del clásico. **Tal cual, el pipeline falla:** la red da 8 pistas reales, la mayoría sobre anillos; la partícula queda repartida en 3, y el real de los pares cae sobre un anillo en 32 de 77 cuadros. Con la **variante adaptada** (anillos suprimidos y sin las detecciones que la red pone sobre el reflejo), los 50 cuadros triangulados tienen el reflejo correcto y el real correcto en 40[^a], pero no se triangulan los cuadros 0–47. Con σ_dt × 2 se triangulan **99 cuadros**: reflejo correcto en 97, real en 81 |
-| problema de los datos | **dt = t_real − t_reflejo no es constante**, contra el modelo (t' = t). En el par clásico se correlaciona con la z triangulada (r = −0.89, pendiente −0.55 nm/nm) y deriva ±200 nm. Por eso el σ_dt que se mide es 150–175 nm, frente a ~67 nm en simulación |
-| 3. z triangulada | Con β = 45°, z = −s_reflejo, así que la z del pipeline solo difiere de la clásica por la posición del reflejo: **media −47 a −65 nm, RMS 68–89 nm**. Media de z con β = 45°: −836 nm (clásico) y −904 nm (pipeline, 99 cuadros). La media se corre ~190 nm por grado de β: **de −1813 nm a 40° a +115 nm a 50°** |
-| atípicos (mediana móvil de 9 cuadros, k = 3) | **Pipeline: 2 de 50, 5 de 99 y 2 de 77 cuadros con β = 45°**. En el barrido de 40–50° hay entre 1 y 8 por variante. El par clásico rechaza **7–18 de 100**, porque su z es más suave (σ del residuo 30–42 nm, frente a 47–69 del pipeline) y el umbral relativo corta excursiones reales. Hay sensibilidad fuerte a la ventana: el clásico rechaza 22, 18 y 1 con ventanas de 5, 9 y 15 cuadros |
-| 4. D (β = 45°, sin atípicos), µm²/s | Par clásico: **lateral 0.078 [0.039, 0.111], z 0.040 [0.011, 0.079], 3D 0.075 [0.039, 0.112]**. Pipeline, 99 cuadros: lateral 0.079 [0.031, 0.169], z 0.055 [0.016, 0.108], 3D 0.052 [0.023, 0.102][^b]. Con una partícula y 100 cuadros, los IC abarcan un factor 3–10 |
-| D_z(β) | **Baja al subir β:** 0.062 → 0.040 → 0.030 (clásico, 40 → 45 → 50°) y 0.069 → 0.055 → 0.043 (pipeline). D_z < D_lateral en todo [40, 50]°, pero los IC se solapan en todo el rango. **β no se puede fijar por isotropía con estos datos** |
+| 1. desfase dt = t_real − t_reflejo, lineal en L | **El modelo no explica el desfase.** Ajustado a todos los cuadros, r² = 0.010 en el par clásico y 0.005 en el pipeline. El giro implícito de m queda indeterminado: **−4.0° [−15.6, +17.7]** con el par clásico y **+1.7° [−46.7, +7.7]** con el pipeline. El borde de la franja pediría −6.5°, dentro de los dos IC, pero también lo está 0°. La causa: L varía solo ±5 % (4630 ± 232 nm), así que un giro de m es casi una constante. La varianza de dt está en z (r = −0.89 con la z triangulada). σ_dt sale del residuo: **160 nm** (172 sin modelo) |
+| efecto en el emparejamiento | El pipeline final, con el modelo L, triangula **95 cuadros**: reflejo correcto en 93 y real en 79. Sin modelo eran 50. **Toda la ganancia viene de la constante del modelo** (centrar dt; el sesgo de la red en t es de ~70 nm), no de la pendiente: restar solo la mediana de dt da exactamente los mismos 95 / 93 / 79 cuadros |
+| 2. ruido de localización (x, y) | **Clásico:** σ = 54–60 nm en x y ≈ 0 ± 15 nm en y (IC desde < 0 hasta 55–93 nm). **Red, umbral 0.4:** 94–100 nm en x y 64–75 nm en y (IC 52–131 en x). Las estimaciones favorecen al clásico, pero los IC se solapan. La pista del pipeline final da 115–156 nm, por los saltos a anillos |
+| sesgo red − clásico | Media (−55, −101) nm. **No es constante**: las medias por bloque de 10 cuadros van de −129 a −13 nm en x y de −170 a −9 en y. Su dispersión es 1.7–1.8 veces la esperable por el ruido de cada bloque (χ² 23 y 63 con 9 gl). No hay tendencia (pendiente −2 [−117, +60] y +10 [−145, +69] nm por 100 cuadros), ni correlación con z (−0.17, −0.12) ni con el brillo (−0.11, −0.20), todo con IC que incluyen 0. En y el sesgo deriva lentamente (autocorrelación de paso 1: 0.37) |
+| 3. atípicos de z (k = 3) | Con β = 45°, **3 de 95** (pipeline) y **18 de 100** (par clásico, cuya z es más suave: σ del residuo 30 nm frente a 54). Sensibilidad en β 40–50°: con k = 2.5, 5–10 y 13–22; con k = 3, 2–5 y 7–18; con k = 3.5, 1–2 y 5–14 |
+| 4. D, µm²/s (β = 45°, k = 3) | **Par clásico:** lateral 0.078 [0.039, 0.113], z 0.040 [0.011, 0.080], 3D 0.075 [0.036, 0.113]. **Pipeline final:** lateral 0.114 [0.065, 0.194] (inflado por los anillos), z 0.056 [0.017, 0.108], 3D 0.084 [0.049, 0.125]. D_z baja de 0.062–0.073 a 40° a 0.030–0.043 a 50°. Con k = 2.5, 3.5 o sin rechazo, D_z cambia ≤ 0.007 |
 
-[^a]: Real correcto: a ≤ 3 px del real clásico.
-[^b]: El 3D del pipeline queda por debajo de su lateral y de su z porque usa las (x, y) de los cuadros triangulados. Los saltos a los anillos le dan una ordenada de 1.9·10⁵ nm² y aplanan la pendiente.
+**Conclusión:**
+- El desfase real–reflejo de estos datos **no es un giro de m**. Depende de z, probablemente por un sesgo de los centroides con el desenfoque: anillos del real asimétricos o recorte de pupila del reflejo. En el emparejamiento solo hacía falta centrarlo, y eso lo hace la constante del modelo, que también la habría dado la mediana sola.
+- **Con el pipeline final**, la z con β = 45° reproduce la del par clásico a 81 nm RMS (media −63 nm), y D_z coincide con la del par clásico dentro de los IC.
+- **Lo que limita D_z es β y la estadística, no el tracking:** con una partícula y 100 cuadros, los IC son de un factor 5–10. La lateral del pipeline está inflada por los cuadros en que el real es un anillo.
 
-**Conclusión.**
-- **En datos reales, el pipeline de `tracking_3d.py` no funciona sin adaptar.** Hay dos fallas que la simulación no tiene:
-  - la red detecta los anillos de la PSF real (y, a veces, el reflejo) como emisores;
-  - el desfase real–reflejo a lo largo de la línea del espejo depende de z.
-- **Con dos adaptaciones**, la supresión de anillos en 16 px y σ_dt holgado, el reflejo se empareja bien en 97 de 99 cuadros y la z con β = 45° reproduce la del par clásico a ~85 nm RMS.
-- **Lo que limita el D en z no es el tracking**, sino una partícula, 100 cuadros y β: D_z cambia un factor 2 entre 40 y 50°.
+## 1. Modelo del desfase real–reflejo
 
-## 1. x, y del real: red s1 frente a la detección clásica
+`tracking_yeast6_1_desfase.csv` y `fig_tracking_yeast6_1_deteccion.png` (paneles 3 y 4).
 
-`tracking_yeast6_1_xy_red_vs_clasico.csv` y `_resumen.csv`. En cada cuadro, la detección de la red más cercana al real clásico, si está a ≤ 3 px.
+**Modelo:**
+- dt = a + b·L, con L = s_real − s_reflejo. Es lo que se ve si el segmento real → reflejo es paralelo a m + b·t en lugar de a m: la dirección de m está girada δ = atan b.
+- Se ajusta con recorte iterativo de residuos > 3σ (σ = 1.4826 MAD). El IC del giro sale de un bootstrap de bloques.
 
-| entrada | cuadros con el real | det/cuadro | sobre anillos | sobre el reflejo | x: media ± std | y: media ± std | s (a lo largo de m) | t (a lo largo de la línea) | RMS radial |
-|---|---|---|---|---|---|---|---|---|---|
-| umbral 0.4 | 88 | 2.87 | 1.55 | 0.11 | −55 ± 70 | −101 ± 89 | +72 ± 73 | +89 ± 86 | 161 nm |
-| umbral 0.2 | 99 | 6.97 | 4.42 | 0.28 | −44 ± 74 | −70 ± 94 | +56 ± 78 | +61 ± 90 | 145 nm |
-| umbral 0.2, anillos suprimidos | 84 | 1.90 | 0.48 | 0.27 | −46 ± 92 | −78 ± 103 | +59 ± 96 | +69 ± 99 | 165 nm |
+**Aplicación en el pipeline:**
+- Se ajusta en los cuadros comunes de los pares de la partícula del primer pase (σ_dt = 200 nm y D = 0.2 µm²/s). No se usa el par clásico.
+- Se aplica a todos los cuadros: se gira el sistema (s, t) en δ (φ = −168.3° en lugar de −169.9°) y se resta la mediana del dt girado (−75 nm).
+- El segundo pase usa σ_dt = 1.4826 MAD del residuo y el D lateral medido en el primero.
+- El giro mueve la z del pipeline 9 nm RMS (β = 45°).
 
-- **Sesgo y dispersión.** Hay un sesgo constante de ~110 nm en (x, y), casi todo en la dirección (−x, −y). La dispersión es de 70–90 nm por eje. El centroide clásico (r = 10 px sobre una PSF con anillos) no es una referencia sin error, así que esto mide la discrepancia, no el error de la red.
-- **Ninguno de los dos se puede declarar mejor con estos datos.** La referencia independiente sería el reflejo, porque t' = t, pero dt deriva con z (sección 2). La std de dt contra el reflejo clásico es 156 nm con la red y 160 nm con el centroide clásico. El paso cuadro a cuadro de dt del par clásico (std del paso / √2) da un ruido combinado de 46 nm por cuadro.
-- **Los anillos son el problema principal.** Las detecciones extra caen a 4–20 px del real, en los anillos de la PSF esférica (`resultados_psf_real.md`), y su z mediana es de +1.5 µm, frente a +0.1 µm en el núcleo. La conf máxima del cuadro corresponde al real en solo 74 de 98 cuadros, así que una supresión de no-máximos por conf no basta.
-- **La supresión adaptada** agrupa las detecciones a ≤ 16 px de la de más conf y se queda con la más cercana al centro ponderado por conf, porque los anillos rodean al real. Así recupera el real en 84 cuadros y deja 0.48 detecciones de anillo por cuadro. En los 16 cuadros restantes no queda ninguna detección a ≤ 3 px del real: el representante es un anillo o no hay detección (saltos de 300–700 nm en `fig_tracking_yeast6_1_deteccion`, centro).
+| ajuste | n | δ [IC 95 %] | r² | σ de dt sin modelo / residuo |
+|---|---|---|---|---|
+| par clásico, dt ~ L | 100 | **−4.0° [−15.6, +17.7]** | 0.010 | 212 / 202 nm |
+| pipeline (primer pase), dt ~ L | 99 (90 dentro) | **+1.7° [−46.7, +7.7]** | 0.005 | 172 / **160 nm** |
+| *diagnóstico:* par clásico, dt ~ s_reflejo | 100 | pendiente 0.55 [0.46, 0.70] | 0.79 | 212 / 79 nm |
+| *diagnóstico:* pipeline, dt ~ s_reflejo | 99 (68 dentro) | pendiente 0.32 | 0.84 | 172 / 34 nm |
 
-## 2. Reflejo, pistas y emparejamiento
+- **Comparación con la franja.** El borde de la franja forma +6.5° con t, el mismo valor que `resultados_datos_reales.md`, sección 3, da para el canal derecho. Si el borde fuera paralelo a la línea del espejo, m debería girarse −6.5°. El par clásico da −4.0°, con el mismo signo y un orden de magnitud parecido, y el pipeline da +1.7°. Pero los dos IC contienen a la vez −6.5° y 0°. **Estos datos no pueden confirmar ni descartar ese giro.**
+  - Con L casi constante (±232 nm sobre 4630), un giro de 4° mueve dt en ~320 nm de forma casi uniforme y solo ±16 nm de un cuadro a otro.
+  - Por eso la pendiente y la constante son casi la misma cosa: el ajuste clásico compensa δ = −4.0° con a = +321 nm.
+  - Para medir el giro hacen falta reflejos a distancias L muy distintas: varias partículas o beads (`resultados_calibracion_espejo.md`).
+- **Dónde está la varianza de dt.** Está en s_reflejo, que con β = 45° es exactamente −z. En el par clásico, dt ~ s_reflejo deja un residuo de 79 nm frente a 202 (r² 0.79).
+  - **No es una geometría del espejo.** Si la normal del espejo tuviera una componente a lo largo de t, el desfase dependería de la distancia al espejo, d = s cos β + z sin β, y no de la posición del reflejo sola.
+  - Lo más probable es un sesgo de los centroides a lo largo de t que cambia con el desenfoque.
+  - Se reporta como diagnóstico. Usarlo en el pipeline (variante `desfase_en_s_reflejo`) da σ_dt = 34 nm, demasiado estrecho: 76 cuadros triangulados en lugar de 95.
 
-`tracking_yeast6_1_pistas.csv`, `_pares.csv`, `_reflejo_vs_clasico.csv`, `_autocalibracion.csv`, `_sensibilidad_enlace.csv`.
+## 2. x, y del real: red frente a la detección clásica
 
-**Enlace.** Se usa el de B1: costo normalizado con 2σ² + 2DΔt, huecos ≤ 10 y pistas de ≥ 8 detecciones, pero **en 2D**, porque la z de la red no es confiable en datos reales (`resultados_celula_v2.md`, sección 4). Los reflejos se enlazan con el mismo costo. Sin GT, D y σ_dt se auto-calibran en dos pases:
-1. primer pase con D = 0.2 µm²/s y σ_dt = 200 nm;
-2. segundo pase con el D lateral de la partícula (sin atípicos laterales) y σ_dt = 1.4826 MAD de dt en todos los cuadros comunes de sus pares.
+`tracking_yeast6_1_xy_red_vs_clasico.csv`, `_ruido_localizacion.csv`, `_sesgo_tiempo.csv` y `fig_tracking_yeast6_1_ruido.png`.
 
-Seguir iterando no converge. Cada emparejamiento se queda con los cuadros de dt chico, así que σ_dt se estrecha (adaptada: 173 → 72 → 23 nm, hasta 0 pares) u oscila (tal cual: 149 → 108 → 314 → 229 → 165 → 88 nm).
+**Detecciones.** En cada cuadro, la detección de la red más cercana al real clásico, si está a ≤ 3 px.
+- Con umbral 0.4, la red detecta el real en 88 cuadros. Faltan 4, 6, 7, 9, 10, 72, 76, 78, 82, 90, 97 y 98.
+- Con 0.2, lo detecta en 99 (falta el 76).
+- Además pone 1.55 detecciones por cuadro (4.42 con umbral 0.2) sobre los anillos de la PSF del real, a 3–20 px y con la misma conf.
+- Diferencia red − clásico, con umbral 0.4: x −55 ± 70 nm, y −101 ± 89 nm, RMS radial 161 nm. Con 0.2: −44 ± 74 y −70 ± 94 nm, RMS 145 nm.
 
-**Variantes.**
-- **Tal cual:** la configuración de `tracking_3d` (umbral 0.4 y `filtrar_manchas`, que quita las manchas a ≤ 2 px de una detección y las que no están del lado del espejo de ninguna).
-- **Adaptada:**
-  - umbral 0.2, que detecta el real en 99 cuadros frente a 88;
-  - supresión de anillos en 16 px;
-  - se descartan como candidatas a real las detecciones del lado del espejo de otra, a más de 16 px a lo largo de m y a < 600 nm en t (0.39 por cuadro). Son el reflejo detectado como real. Sin este paso, la mancha del reflejo se empareja con la propia detección del reflejo (L ≈ 0);
-  - se excluyen las manchas a ≤ 16 px de una detección (los anillos).
-- **Adaptada con σ_dt × 2** (346 nm): sensibilidad, no auto-calibrada.
+**Ruido de localización.** Se estima de cada serie de posiciones por separado, con el D de la misma pendiente:
+- **por el MSD:** la ordenada b del ajuste MSD(τ) = 2Dτ + b, con τ = 1–4;
+- **por los pasos:** var(paso entre cuadros consecutivos) − 2DΔt.
 
-| variante | σ_dt | candidatas/cuadro (con el reflejo clásico) | pistas reales / de reflejo | pares | cuadros triangulados | reflejo correcto | real correcto |
+Con exposición t_E = Δt, el desenfoque de movimiento resta 2D·t_E/3 a las dos cosas, así que σ² = (b + 2D·t_E/3)/2 = (var − 2DΔt + 2D·t_E/3)/2. Una varianza negativa se informa como σ < 0.
+
+| serie | eje | cuadros | σ por la ordenada del MSD [IC] | σ por los pasos [IC] | sin el término de desenfoque (MSD / pasos) |
+|---|---|---|---|---|---|
+| par clásico | x | 100 | 60 [−25, 93] nm | 54 [−18, 82] | 38 / 27 |
+| par clásico | y | 100 | −15 [−66, 56] | 15 [−53, 53] | −57 / −52 |
+| red, umbral 0.4 | x | 88 | 100 [58, 131] | 94 [52, 120] | 91 / 84 |
+| red, umbral 0.4 | y | 88 | 75 [−31, 106] | 64 [−10, 90] | 52 / 35 |
+| red, umbral 0.2 | x | 99 | 97 [55, 128] | 93 [54, 123] | 88 / 83 |
+| red, umbral 0.2 | y | 99 | 70 [−28, 92] | 67 [19, 86] | 38 / 32 |
+| pipeline final (pista) | x | 97 | 156 [88, 200] | 150 [97, 187] | 142 / 136 |
+| pipeline final (pista) | y | 97 | 121 [76, 148] | 115 [75, 142] | 106 / 99 |
+
+- **Los dos estimadores coinciden** a menos de 11 nm en cada serie, como corresponde: comparten D, y el de los pasos es el lag 1 del mismo MSD. La excepción es la y del clásico (−15 frente a +15 nm), donde los dos dan una varianza cercana a 0.
+- **El clásico parece más preciso:** 54–60 nm en x y casi 0 en y, frente a 64–100 nm de la red.
+  - En x, el IC de la red no baja de 52 nm y el del clásico llega a 0, pero se solapan entre 52 y 93 nm.
+  - Con un D de ~0.08 µm²/s, el paso browniano por eje es de ~125 nm (√(2DΔt)). Un ruido de 50–100 nm queda en el borde de lo que 100 cuadros pueden separar de la difusión.
+  - Que el clásico dé σ² ≤ 0 en y indica que su ruido allí está por debajo de lo resoluble.
+- **Consistencia cruzada.** var(red − clásico) = σ_red² + σ_clásico² − 2·cov.
+  - En x, la std de la diferencia (70 nm) es menor que la suma en cuadratura de los σ (~115 nm): hay covarianza positiva, porque los dos métodos localizan sobre los mismos fotones.
+  - En y es mayor (89 frente a ~76 nm), lo que encaja con el sesgo que deriva en y (tabla siguiente).
+- **Pista del pipeline.** Su ruido de 115–156 nm no es el de la red sino el de los cuadros en que el representante es un anillo (sección 3). Por eso su D lateral sale inflado (sección 5).
+
+**¿El sesgo red − clásico es constante en el tiempo?** No del todo.
+
+| eje | media | medias por bloque de 10 cuadros | dispersión de las medias / error esperado | χ² (9 gl) | pendiente por 100 cuadros [IC] | corr. con z [IC] | corr. con el brillo [IC] | autocorr. de paso 1 |
+|---|---|---|---|---|---|---|---|---|
+| x | −55 nm | −112 −30 −76 −13 −35 −48 −62 −129 −37 −48 | 37 / 21 nm | 23 (p = 0.006) | −2 [−117, +60] nm | −0.17 [−0.41, +0.05] | −0.11 [−0.33, +0.09] | 0.02 |
+| y | −101 nm | −170 −91 −147 −9 −77 −90 −146 −104 −123 −70 | 47 / 26 nm | 63 | +10 [−145, +69] nm | −0.12 [−0.44, +0.12] | −0.20 [−0.42, +0.09] | 0.37 |
+
+- **No hay tendencia** a lo largo del video (100 cuadros, con un fotoblanqueo de ~3×), **ni dependencia de z ni del brillo** distinguible de 0.
+- **Pero las medias por bloque varían más que su error** (factor 1.7–1.8):
+  - en x el sesgo cuadro a cuadro no está autocorrelacionado y el exceso entre bloques es moderado (p = 0.006);
+  - en y está autocorrelacionado (0.37), así que el χ² exagera la significancia, pero esa misma autocorrelación muestra que el sesgo en y deriva en escalas de unos pocos cuadros.
+- **En resumen:** un desfase medio de ~115 nm, con fluctuaciones de ±40–50 nm de un tramo a otro que no siguen ni a z ni al brillo.
+
+## 3. Pipeline: variantes
+
+`tracking_yeast6_1_variantes.csv` y `fig_tracking_yeast6_1_deteccion.png`.
+
+**Enlace.** El de B1 (costo normalizado 2σ² + 2DΔt, huecos ≤ 10, pistas de ≥ 8 detecciones), en 2D. Dos pases:
+1. con D = 0.2 µm²/s y σ_dt = 200 nm;
+2. con el D lateral de la partícula del primer pase (sin atípicos laterales) y el σ_dt y el giro del modelo de desfase (sección 1).
+
+**Variantes:**
+- **Tal cual:** la configuración de `tracking_3d` (umbral 0.4; `filtrar_manchas`, sin supresión de anillos) y sin modelo de desfase.
+- **Final:**
+  - umbral 0.2;
+  - supresión de anillos en 16 px: de cada grupo de detecciones, la más cercana a su centro ponderado por conf;
+  - descarte de las detecciones que están del lado del espejo de otra, a más de 16 px a lo largo de m y a < 600 nm en t, porque son el reflejo detectado como real (0.39 por cuadro);
+  - exclusión de las manchas a ≤ 16 px de una detección;
+  - modelo de desfase en L.
+
+| variante | σ_dt | det./cuadro | pistas reales / de reflejo | cuadros triangulados | reflejo correcto | real correcto | z − z clásica, β 45° (media / RMS) |
 |---|---|---|---|---|---|---|---|
-| tal cual | 149 nm | 2.35 (85 cuadros) | 8 / 8 | 4 | 77 | 75 | 45 |
-| adaptada | 173 nm | 1.27 (97) | 4 / 2 | 2 | 50 (cuadros 45–99) | 50 | 40 |
-| adaptada, σ_dt × 2 | 346 nm | 1.27 (97) | 6 / 2 | 5 | 99 (falta el 86) | 97 | 81 |
+| tal cual | 157 nm | 2.87 | 8 / 9 | 77 | 75 | 44 | −55 / 89 nm |
+| **final** | **160 nm** | 1.51 | 4 / 2 | **95** (faltan 10, 42, 86, 87, 88) | **93** | **79** | −63 / 81 nm |
 
 - **Tal cual.**
-  - Hay 2.35 manchas candidatas por cuadro. Las ~1.5 que sobran están sobre los anillos del real (a ~10 px), del lado del espejo y moviéndose rígidamente con él.
-  - La pista del reflejo verdadero (87 cuadros, a 0.83 px del clásico) sí se forma. Pero la partícula se reparte en 3 pistas reales, y la mayoría de las demás pistas de la red siguen anillos.
-  - En 32 de los 77 cuadros triangulados, el "real" es un anillo. Con β = 45° no importa, porque z = −s_reflejo, pero con β ≠ 45° entra con un factor (tan β − cot β)/2 = ∓0.18 a 40° y 50°.
-- **Adaptada.**
-  - Una sola pista de reflejo de 99 cuadros, a 0.84 px del clásico.
-  - En los cuadros 0–47 dt ≈ +200 nm: la deriva de dt con z (+60 a +220 nm de media por bloque de 10 cuadros) más el sesgo de +70 nm de la red en t. Eso es 1.3σ_dt, y la contribución por cuadro al puntaje, C_LR − (dt/σ)²/2 con C_LR = 0.87, sale negativa. Por eso la pista de la partícula de esos cuadros (48 cuadros a 1.6 px del real) no se empareja.
-  - Con σ_dt × 2 se emparejan todas: el primer pase, con σ_dt = 200 nm, daba también 99 cuadros. Sobre la rejilla de D (0.02, 0.2, 1.5 µm²/s) × σ_dt (×0.5, ×1, ×2), los cuadros triangulados van de 27 a 99. Dependen de σ_dt y también de D: con σ_dt = 173 nm son 50 y 52 con D = 0.02 y 0.2, y 98 con D = 1.5, porque un D grande deja enlazar la partícula en menos pistas.
-- **Mancha emparejada frente al reflejo clásico** (adaptada × 2, 99 cuadros):
-  - desfase (−68, +13) nm en (x, y) y +65 nm en s;
-  - std 47 / 40 nm, RMS radial 93 nm.
+  - La red da 8 pistas reales, la mayoría sobre anillos, y el real de los pares es un anillo en 33 de los 77 cuadros.
+  - Con β = 45° eso no cambia z (z = −s_reflejo), pero con 40° o 50° entra con un factor ∓0.18, y la pista lateral queda inservible (σ ~ 250 nm).
+- **Final.** El reflejo emparejado es el correcto en 93 de los 95 cuadros triangulados.
+- **La diferencia de z con el par clásico** es la del reflejo: ajuste gaussiano en ±5 px frente a centroide iterativo de r = 10 px sobre un reflejo con la pupila recortada (`resultados_recorte_pupila.md`).
 
-  Es la diferencia entre el ajuste gaussiano en ±5 px y el centroide iterativo con r = 10 px de un reflejo que no es gaussiano (pupila recortada, `resultados_recorte_pupila.md`).
+## 4. z triangulada y atípicos
 
-**El modelo t' = t no se cumple en estos datos.** Con el par clásico (`fig_tracking_yeast6_1_deteccion`, derecha):
-- dt se correlaciona con la z triangulada (r = −0.89, pendiente −0.55 nm por nm de z), con s del real (+0.81) y con el tiempo (−0.73);
-- al quitarle la parte lineal en z, su std baja de 160 a 73 nm.
+`tracking_yeast6_1_z_beta.csv` y `fig_tracking_yeast6_1_z.png`.
 
-Puede venir de un sesgo de los centroides a lo largo de t que depende del desenfoque (anillos asimétricos del real, recorte de pupila del reflejo) o de que la normal del espejo tenga una componente a lo largo de t. Es lo mismo que el ángulo de ~5° entre el borde de la franja y t que ya registraba `resultados_datos_reales.md`, sección 3. Para el emparejamiento significa que σ_dt tiene que absorber una deriva de ±200 nm en lugar del ruido de ~67 nm de la simulación. Un modelo dt = a + b·z por par lo evitaría.
+**Fórmula.** z = −s_M/tan β + (L/2)·tan β por cuadro, con β entre 40° y 50° cada 0.5°.
 
-## 3. z triangulada, barrido de β y atípicos
+**Atípicos:** |z − mediana móvil de 9 cuadros| > k·σ, con σ = 1.4826 MAD de los residuos del video. **k = 3, fijo.** Es un criterio de consistencia temporal: no usa la z de la red.
 
-`tracking_yeast6_1_z_beta.csv`, `_atipicos_ventana.csv` y `fig_tracking_yeast6_1_z.png`.
+| fuente | cuadros | z media (β 40 / 45 / 50) | σ del residuo (β 45) | atípicos k = 3, β 45 | k = 2.5 / 3 / 3.5 en β 40–50° |
+|---|---|---|---|---|---|
+| par clásico | 100 | −1813 / −836 / +115 nm | 30 nm | **18** | 13–22 / 7–18 / 5–14 |
+| pipeline final | 95 | −1888 / −903 / +54 | 54 | **3** | 5–10 / 2–5 / 1–2 |
+| tal cual | 77 | −1802 / −839 / +99 | 79 | **2** | 2–7 / 1–5 / 0–3 |
 
-**Fórmula.** z = −s_M/tan β + (L/2)·tan β, por cuadro, con β entre 40° y 50° cada 0.5°.
+- **La z clásica es la más suave**, así que su umbral relativo es el más estricto: rechaza excursiones de pocos cuadros que la propia serie sigue. El criterio dice qué cuadros se apartan de su entorno, no cuáles están mal. Con D_z ≈ 0.04 µm²/s, el paso browniano en z es de ~90 nm, del orden de esos residuos.
+- **La z absoluta se corre ~190 nm por grado de β.** La línea del espejo la desplaza en δ/tan β; con los 1.52 µm de `resultados_calibracion_pupila.md` serían 1.5 µm. Ninguna de las dos cosas afecta a D, salvo por el cambio de escala con β (sección 5).
 
-**Atípicos.** Se marca un cuadro cuando |z − mediana móvil de 9 cuadros| > k·σ, con σ = 1.4826 MAD de los residuos de todo el video. Es un criterio de consistencia temporal: **no usa la z de la red**.
+## 5. D por MSD
 
-| fuente | cuadros | z media, β 40 / 45 / 50 | std de z (β 45) | σ del residuo | atípicos k = 2.5 / 3 / 4 (β 45) | atípicos k = 3 en 40–50° |
-|---|---|---|---|---|---|---|
-| par clásico | 100 | −1813 / −836 / +115 nm | 260 nm | 30 nm | 22 / 18 / 7 | 7–18 |
-| tal cual | 77 | −1795 / −839 / +92 | 271 | 79 | 4 / 2 / 0 | 1–4 |
-| adaptada | 50 | −1707 / −752 / +179 | 254 | 57 | 2 / 2 / 1 | 2–5 |
-| adaptada, σ_dt × 2 | 99 | −1894 / −904 / +59 | 284 | 49 | 8 / 5 / 2 | 2–8 |
+`tracking_yeast6_1_D.csv`, `_msd.csv`, `fig_tracking_yeast6_1_msd.png` y `fig_tracking_yeast6_1_trayectoria.png`.
 
-- **Pipeline frente a par clásico, en los mismos cuadros:** z_pipeline − z_clásico tiene media −41 a −78 nm y RMS 68–113 nm según la variante y β (β = 45°: 68, 83 y 89 nm). Con 45° solo entra el reflejo, así que es exactamente el −Δs de la mancha (sección 2).
-- **El criterio relativo es frágil.**
-  - La z clásica es la más suave (σ del residuo 30 nm), así que su k·σ es el más estricto: rechaza el 18 % de los cuadros con k = 3, en su mayoría excursiones de pocos cuadros que la propia z clásica sigue (cruces en `fig_tracking_yeast6_1_z`). Con D_z ≈ 0.04 µm²/s el paso browniano en z es de ~90 nm por cuadro, del orden de esos residuos.
-  - Depende mucho de la ventana: el clásico rechaza 22, 18 y 1 cuadros con 5, 9 y 15.
-  - En la variante adaptada (50 cuadros con huecos), la ventana de 5 degenera (σ = 5 nm, 21 atípicos), porque con 3 valores la mediana suele ser el propio punto.
+**Qué entra:**
+- lateral: todos los cuadros de las pistas reales de la partícula (no depende de β);
+- z y 3D: los cuadros con z válida y sin atípicos (k = 3), con las (x, y) del real triangulado.
 
-  Los conteos dicen qué cuadros se apartan de su entorno, no cuáles están mal. El MSD se reporta con y sin rechazo (sección 4).
-- **β mueve la z absoluta ~190 nm por grado.** La línea del espejo la corre en δ/tan β; con el +1.52 µm de `resultados_calibracion_pupila.md`, sección 7, serían +1.5 µm. Ninguna de las dos cosas cambia el D: la línea es un desfase constante, y β cambia la escala (sección 4).
+**D en µm²/s [IC 95 %]:**
 
-## 4. Trayectoria 3D y D por MSD
+| β | par clásico, 3D | par clásico, z | pipeline final, 3D | pipeline final, z |
+|---|---|---|---|---|
+| 40° | 0.075 [0.036, 0.114] | 0.062 [0.018, 0.122] | 0.090 [0.055, 0.132] | 0.073 [0.019, 0.142] |
+| 42.5° | 0.075 [0.037, 0.113] | 0.053 [0.014, 0.112] | 0.090 [0.054, 0.134] | 0.065 [0.020, 0.127] |
+| **45°** | **0.075 [0.036, 0.113]** | **0.040 [0.011, 0.080]** | **0.084 [0.049, 0.125]** | **0.056 [0.017, 0.108]** |
+| 47.5° | 0.072 [0.039, 0.104] | 0.037 [0.009, 0.078] | 0.080 [0.048, 0.121] | 0.049 [0.017, 0.095] |
+| 50° | 0.069 [0.037, 0.101] | 0.030 [0.007, 0.066] | 0.072 [0.042, 0.104] | 0.043 [0.012, 0.083] |
+| **lateral** (todo β) | **0.078 [0.039, 0.113]**; x 0.066, y 0.089 | | **0.114 [0.065, 0.194]**; x 0.127, y 0.102 | |
 
-`tracking_yeast6_1_D.csv`, `_msd.csv`, `fig_tracking_yeast6_1_trayectoria.png` y `fig_tracking_yeast6_1_msd.png`.
+**Sensibilidad al umbral de atípicos** (β = 45°, z / 3D):
 
-**Qué entra en cada MSD:**
-- lateral: todos los cuadros de las pistas reales de la partícula;
-- z y 3D: los cuadros con z válida (sin los atípicos de z cuando se rechazan), con las (x, y) del real usado en la triangulación.
+| | k = 2.5 | k = 3 | k = 3.5 | sin rechazo |
+|---|---|---|---|---|
+| par clásico | 0.041 / 0.073 | 0.040 / 0.075 | 0.045 / 0.074 | 0.047 / 0.068 |
+| pipeline final | 0.051 / 0.081 | 0.056 / 0.084 | 0.056 / 0.082 | 0.057 / 0.083 |
 
-D en µm²/s, con β = 45° e IC 95 %:
+- **D_z del pipeline y del par clásico coinciden dentro de los IC** en todo β. Con 45° comparten casi todo el reflejo, y el pipeline queda ~0.015 por encima por su reflejo más ruidoso (σ del residuo de z 54 frente a 30 nm).
+- **D_z se reduce a la mitad entre 40° y 50°**, porque los pesos de s_real y s_reflejo en z cambian con β. En todo el rango queda por debajo del D lateral clásico (0.078), con IC que lo alcanzan.
+- **Isotropía.** D_z = D_lateral pediría β ≤ 40°, en la línea del ~38° que daba el acople en m (`resultados_datos_reales.md`, sección 4). Pero ni los IC ni el supuesto de isotropía (una partícula en una levadura que toca el espejo) lo sostienen. **No sirve para fijar β.**
+- **Ordenadas.** En el par clásico son negativas (−3.5·10³ nm² en la lateral y en z, β 45°), como corresponde al desenfoque (−2D·t_E/3 por eje). En el pipeline, la ordenada lateral de 6.3·10⁴ nm² son los anillos, y por eso su D lateral (0.114) supera al clásico. La lateral fiable es la clásica.
 
-| fuente | lateral | x / y | z sin atípicos | z con todos | 3D sin atípicos | ordenada de la lateral / z |
-|---|---|---|---|---|---|---|
-| par clásico | **0.078** [0.039, 0.111] | 0.066 / 0.089 | **0.040** [0.011, 0.079] | 0.047 [0.016, 0.092] | **0.075** [0.039, 0.112] | −3.5·10³ / −3.6·10³ nm² |
-| tal cual | 0.033 [−0.078, 0.110] | 0.041 / 0.025 | 0.040 [0.010, 0.087] | 0.039 | 0.094 [0.038, 0.166] | 2.2·10⁵ / 1.5·10³ |
-| adaptada (50 cuadros) | 0.156 [0.064, 0.326] | 0.205 / 0.108 | 0.053 [0.004, 0.127] | 0.056 | 0.100 [0.038, 0.189] | 4.4·10⁴ / −4.6·10³ |
-| adaptada, σ_dt × 2 (99) | **0.079** [0.031, 0.169] | 0.060 / 0.099 | **0.055** [0.016, 0.108] | 0.058 [0.021, 0.107] | 0.052 [0.023, 0.102] | 2.4·10⁵ / −3.6·10³ |
-
-- **Ordenadas.**
-  - **Par clásico:** las ordenadas negativas son las que se esperan del desenfoque de movimiento con exposición = período (100 ms): −2D·t_E/3 por eje, unos −2.7·10³ nm² en z con D = 0.04. El ajuste con ordenada lo absorbe sin sesgar la pendiente. Lo que queda es compatible con un error de localización de ~40 nm lateral y ≲ 30 nm en z.
-  - **Pipeline en lateral:** la ordenada de 0.4–2.4·10⁵ nm² (~150–250 nm por eje) son los saltos a los anillos. Hacen la pendiente lateral inestable: 0.033 tal cual, 0.156 adaptada. Con 99 cuadros (σ_dt × 2), la lateral vuelve a coincidir con la clásica (0.079 frente a 0.078), aunque con un IC el doble de ancho.
-- **En z, el pipeline y el par clásico coinciden dentro de los IC** (0.040–0.055). Es lo que se espera, porque a 45° comparten casi todo el reflejo.
-- **D_z en función de β** (`fig_tracking_yeast6_1_msd`, derecha; sin atípicos):
-
-  | β | 40° | 42° | 44° | 45° | 46° | 48° | 50° |
-  |---|---|---|---|---|---|---|---|
-  | par clásico | 0.062 [0.019, 0.122] | 0.055 | 0.048 | 0.040 [0.011, 0.079] | 0.043 | 0.036 | 0.030 [0.007, 0.065] |
-  | adaptada, σ_dt × 2 | 0.069 [0.025, 0.127] | 0.064 | 0.059 | 0.055 [0.016, 0.108] | 0.053 | 0.047 | 0.043 [0.010, 0.087] |
-
-  D_z baja ~2× entre 40° y 50° porque los coeficientes de s_real y s_reflejo en z cambian con β. Con difusión isótropa, D_z = D_lateral (~0.078) pediría β ≤ 40°, en la dirección del β ≈ 38° que el acople en m sugería para este canal (`resultados_datos_reales.md`, sección 4). Pero los IC de D_z alcanzan 0.078 en todo el rango, y una partícula confinada en una levadura que toca el espejo no tiene por qué difundir igual en z que en el plano. **No se puede usar para fijar β.**
-- **El 3D** del par clásico (0.075) es la media ponderada esperable de lateral y z. El del pipeline (0.052) usa las (x, y) de los cuadros triangulados, con los saltos a anillos (ordenada 1.9·10⁵ nm²), y no es comparable.
-
-## Figuras (PNG 300 dpi, en `figuras/tracking_yeast6_1/`)
+## Figuras (PNG 300 dpi, `figuras/tracking_yeast6_1/`)
 
 - `fig_tracking_yeast6_1_deteccion.png`:
-  - izquierda: la ventana con las detecciones de la red (todas las de umbral 0.2 y las que quedan tras suprimir anillos), las manchas candidatas, el par clásico y los cuadros triangulados;
-  - centro: s del real de la pista de la partícula menos s clásico (los saltos son anillos);
-  - derecha: dt frente a la z triangulada, la violación de t' = t.
-- `fig_tracking_yeast6_1_z.png`:
-  - izquierda: z(t) triangulada con β = 45° (pipeline adaptado, adaptado × 2 y par clásico; banda del clásico para β de 40–50°), la mediana móvil y los atípicos marcados;
-  - derecha: % de cuadros rechazados en función de β.
-- `fig_tracking_yeast6_1_trayectoria.png`: trayectoria 3D (pipeline adaptado × 2 y par clásico), proyección lateral y z(t) sin atípicos, coloreadas por cuadro.
-- `fig_tracking_yeast6_1_msd.png`: MSD por eje (lateral, z y 3D, normalizado por el número de ejes) con los ajustes de las variantes adaptada y adaptada × 2 y del par clásico, y D_z(β) con sus IC frente a D lateral.
+  - la ventana con las detecciones de la red, las candidatas del pipeline final, las manchas, el par clásico y los cuadros triangulados;
+  - s del real de la pista menos s clásico (tal cual y final);
+  - dt frente a L, con los ajustes del par clásico y del pipeline y el giro que pediría el borde de la franja;
+  - dt frente a la z triangulada.
+- `fig_tracking_yeast6_1_ruido.png`: sesgo red − clásico por cuadro y por bloque de 10 cuadros en x e y; σ de localización por los dos estimadores, con IC.
+- `fig_tracking_yeast6_1_z.png`: z(t) con β = 45° (pipeline final y par clásico; banda del clásico para β de 40–50°), mediana móvil y atípicos con k = 3; % rechazado frente a β para k = 2.5, 3 y 3.5.
+- `fig_tracking_yeast6_1_trayectoria.png`: trayectoria 3D del pipeline final y del par clásico, proyección lateral y z(t) sin atípicos.
+- `fig_tracking_yeast6_1_msd.png`: MSD por eje (lateral, z y 3D, normalizado por el número de ejes) del pipeline final y del par clásico, y D_z(β) frente a D lateral.
 
-## Decisiones y límites
+## Elecciones hechas después de ver los datos
 
-- **Adaptaciones que no estaban en el pipeline simulado:**
-  - supresión de anillos (16 px);
-  - descarte de las detecciones que parecen el reflejo;
-  - exclusión de manchas en 16 px;
-  - enlace en 2D.
+Cada fila cambia **una** elección del pipeline final y deja las demás igual (`tracking_yeast6_1_variantes.csv`; D con β = 45° y k = 3, 500 remuestreos).
 
-  Las tres primeras suponen partículas aisladas: con dos partículas a menos de ~1.6 µm, la supresión las fundiría. En la simulación no hicieron falta (`resultados_tracking_3d.md`).
-- **σ_dt × 2 es una elección a posteriori**, hecha para mostrar cuánto se gana si σ_dt absorbe la deriva de dt. La versión que se puede defender es modelar dt = a + b·z en el emparejamiento.
-- **Una partícula y 100 cuadros.** Los IC de D son de un factor 3–10 y no hay dispersión entre partículas. Los IC de bloques de 10 cuadros, con solo 10 bloques, son aproximados.
-- **β y la línea no están calibrados** (`resultados_calibracion_espejo.md`). La z absoluta es indicativa y D_z depende de β en un factor 2 en [40, 50]°.
+| elección (lo que motivó verla) | alternativa | cuadros triangulados | reflejo / real correcto | D lateral | D_z | D 3D |
+|---|---|---|---|---|---|---|
+| **pipeline final** | — | **95** | 93 / 79 | 0.114 | 0.056 | 0.084 |
+| **supresión de anillos en 16 px**: la red pone 1.5–4.4 detecciones por cuadro sobre los anillos de la PSF real | sin suprimir | 26 | 26 / 9 | 0.016 | 0.006 | 0.013 |
+| **descarte de las detecciones que parecen el reflejo**: sin él, la mancha del reflejo se empareja con la detección del reflejo (L ≈ 0) | sin descartar | 40 | 40 / 33 | 0.095 | 0.041 | 0.090 |
+| **exclusión de manchas a ≤ 16 px** de una detección (las manchas de los anillos) | sin excluir | 95 | 93 / 79 | 0.114 | 0.056 | 0.084 |
+| **umbral 0.2** (la red detecta el real en 99 cuadros frente a 88) | umbral 0.4 | 45 | 44 / 44 | 0.074 | 0.035 | 0.057 |
+| **enlace 2D**: la z de la red salta entre modos en datos reales (`resultados_celula_v2.md`, sección 4) | 3D con la z de la red (σ_z = 99.6 nm, el de la simulación) | 67 | 66 / 61 | 0.083 | 0.033 | 0.053 |
+| **autocalibración de D**: el D lateral del primer pase (0.060) entra en el segundo | D fijo 0.02 | 97 | 95 / 82 | 0.084 | 0.053 | 0.074 |
+| | D fijo 0.2 | 87 | 87 / 76 | 0.180 | 0.053 | 0.067 |
+| | D fijo 1.5 | 0 (su primer pase da δ = −18.5° y σ_dt = 108 nm, y no queda ningún par) | — | — | — | — |
+| **modelo del desfase** (pedido; sus parámetros se ajustan con los datos) | sin modelo (σ_dt = MAD de dt) | 50 (faltan 0–47) | 50 / 40 | 0.156 | 0.053 | 0.100 |
+| | solo la constante (mediana de dt) | 95 | 93 / 79 | 0.114 | 0.056 | 0.084 |
+| | dt lineal en s_reflejo (diagnóstico) | 76 | 75 / 69 | 0.086 | 0.027 | 0.059 |
+
+Lectura:
+- **Imprescindibles:** la supresión de anillos y el descarte de las detecciones del reflejo. Sin la supresión, el pipeline sigue anillos y el D se desploma (0.006–0.016). Sin el descarte se pierde la mitad de los cuadros.
+- **Sin efecto, una vez que están las anteriores:** la exclusión de manchas en 16 px. Se puede quitar.
+- **Umbral 0.2:** duplica los cuadros triangulados frente al 0.4.
+- **Enlace 2D:** con el enlace 3D, la z de la red rompe las pistas y se pierden 28 cuadros. D_z baja a 0.033, dentro de los IC.
+- **Autocalibración de D:**
+  - Lo que mueve el resultado es que el primer pase y el ajuste del desfase dependen de D. Con D = 1.5, el ajuste de su primer pase da un giro absurdo (−18.5°) y el segundo pase no encuentra pares.
+  - Con D = 0.02 se triangulan 2 cuadros más que con el D autocalibrado.
+  - En los tres casos con pares, D_z queda entre 0.053 y 0.056. D_z no depende de esta elección; la cobertura sí.
+- **Modelo del desfase:** su efecto útil es la constante. Con solo la mediana de dt el resultado es idéntico.
+- **Elecciones heredadas**, no revisadas aquí:
+  - la ventana de 9 cuadros de la mediana móvil (con 5, 9 y 15 cuadros el par clásico rechaza 22, 18 y 1 con k = 3);
+  - el radio de 16 px (de la distribución de distancias de las detecciones de anillo, 4–20 px);
+  - la línea en el borde de la franja y la ventana de 96 px (de `celula_v2.py`).
+
+## Límites
+
+- **Partículas aisladas.** La supresión de anillos y el descarte de reflejos lo suponen: dos partículas a < 1.6 µm se fundirían.
+- **Una partícula y 100 cuadros.** Los IC de D son de un factor 3–10, los IC de bloques son aproximados (10 bloques) y no hay dispersión entre partículas. Por lo mismo, el giro de m no se puede determinar: L casi no varía.
+- **β y la línea no están calibrados** (`resultados_calibracion_espejo.md`). La z absoluta es indicativa y D_z cambia un factor 2 en [40, 50]°.
+- **El desfase dependiente de z** del par clásico (sección 1) queda sin explicar. Si es un sesgo de centroides con el desenfoque, también afecta la s de cada imagen y, con ella, la z triangulada.
