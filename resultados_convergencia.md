@@ -7,7 +7,7 @@ PY=~/miniforge3/envs/tesis/bin/python
 $PY figuras/convergencia.py [--ultimas 20]     # segundos -> fig_convergencia.png (300 dpi), convergencia_*.csv
 ```
 
-![](figuras/fig_convergencia.png)
+![](figuras/convergencia/fig_convergencia.png)
 
 ## Resumen
 
@@ -37,7 +37,7 @@ $PY figuras/convergencia.py [--ultimas 20]     # segundos -> fig_convergencia.pn
 | **val_mse**, cerca | −15.6 % | −0.15 % | −1.16 % | −0.87 % | −0.02 % |
 | val_mse, lejos | −15.7 % | −0.45 % | −2.66 % | −2.39 % | −0.82 % |
 
-(`figuras/convergencia_ventanas.csv`)
+(`figuras/convergencia/convergencia_ventanas.csv`)
 
 - Cerca se desacelera de forma monótona.
 - Lejos tuvo una segunda fase de mejora (épocas 40–79, −2.4 a −2.6 % por 10 épocas) que coincide con sus dos primeras caídas de lr (53 y 73). En la curva se ven escalones en 73 y 90.
@@ -45,7 +45,7 @@ $PY figuras/convergencia.py [--ultimas 20]     # segundos -> fig_convergencia.pn
 
 ## 2. ¿Siguen bajando al final?
 
-Ajuste lineal de cada serie contra la época en las épocas 80–99. El error estándar es el mayor entre el de OLS y el de Newey-West con lag 3, porque los residuos de épocas consecutivas están correlacionados. Datos en `figuras/convergencia_tendencia.csv`.
+Ajuste lineal de cada serie contra la época en las épocas 80–99. El error estándar es el mayor entre el de OLS y el de Newey-West con lag 3, porque los residuos de épocas consecutivas están correlacionados. Datos en `figuras/convergencia/convergencia_tendencia.csv`.
 
 | épocas 80–99 | pendiente por época | IC 95 % | cambio en 10 épocas | relativo | DE del residuo |
 |---|---|---|---|---|---|
@@ -70,7 +70,7 @@ Ajuste lineal de cada serie contra la época en las épocas 80–99. El error es
 - En estas corridas, la columna `lr` de `log.csv` se escribía **después** de `plan.step`, así que es la lr de la época siguiente. La usada en cada época es la de `log_iter.csv`; se verificó que es constante dentro de cada época. *Corregido el 2026-11-12: las corridas nuevas guardan la lr usada en la época (ver la sección 4).*
 - `ReduceLROnPlateau` en modo `rel` con el `threshold` por defecto (10⁻⁴) solo cuenta como mejora una bajada de más del 0.01 %. `mejor.pt`, en cambio, se guarda con cualquier bajada (`<`). Por eso la lr puede caer en épocas en que `mejor.pt` sí se actualiza. La lr cae en la cuarta época seguida sin mejora suficiente (`patience = 3`).
 
-lr usada en cada época (`figuras/convergencia_lr.csv`):
+lr usada en cada época (`figuras/convergencia/convergencia_lr.csv`):
 
 | | 1·10⁻³ | 5·10⁻⁴ | 2.5·10⁻⁴ | 1.25·10⁻⁴ | 6.25·10⁻⁵ | 3.13·10⁻⁵ | 1.56·10⁻⁵ |
 |---|---|---|---|---|---|---|---|

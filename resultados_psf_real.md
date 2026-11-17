@@ -3,10 +3,10 @@
 Mismos datos que `resultados_datos_reales.md` (Yeast6_1, 100 cuadros, 1696 × 900 px, corte en x = 840, 98.48 nm/px) y continuación de `resultados_celula.md` (sección 4), que encontró un núcleo de dos lóbulos en el real del canal derecho. Aquí se miden la forma de la PSF del real y del reflejo en **los dos** canales, en un marco común, y los fotones y el fondo en e⁻. No interviene la red. Todas las cifras salen de
 
 ```bash
-$PY figuras/psf_real.py [--tif RUTA] [--cuadros 30] [--r-nucleo 4] [--n-boot 2000] [--salida figuras]   # ~15 min (14 de bootstrap)
+$PY figuras/psf_real.py [--tif RUTA] [--cuadros 30] [--r-nucleo 4] [--n-boot 2000] [--salida figuras/psf_real]   # ~15 min (14 de bootstrap)
 ```
 
-que importa la detección de `figuras/analisis_datos_reales.py` y, solo para la energía encerrada, `simulador_nuevo/simulador.py`, y escribe `figuras/fig_psf_real_imagenes.png` y `figuras/fig_psf_real_medidas.png` (300 dpi). Ángulos en el **marco del canal derecho** (x = columna − 840, y = fila), de +x hacia +y, ejes módulo 180°. En ese marco m (reflejo → real) = −169.9° y t = −79.9°, y los ejes de la cámara del canal izquierdo caen a −85.2° y +4.8°. Los IC son al 95 %, por bootstrap de los cuadros 0–29 (2000 remuestreos, los mismos índices en los dos canales porque los cuadros son simultáneos).
+que importa la detección de `figuras/analisis_datos_reales.py` y, solo para la energía encerrada, `simulador_nuevo/simulador.py`, y escribe `figuras/psf_real/fig_psf_real_imagenes.png` y `figuras/psf_real/fig_psf_real_medidas.png` (300 dpi). Ángulos en el **marco del canal derecho** (x = columna − 840, y = fila), de +x hacia +y, ejes módulo 180°. En ese marco m (reflejo → real) = −169.9° y t = −79.9°, y los ejes de la cámara del canal izquierdo caen a −85.2° y +4.8°. Los IC son al 95 %, por bootstrap de los cuadros 0–29 (2000 remuestreos, los mismos índices en los dos canales porque los cuadros son simultáneos).
 
 ## Resumen
 
@@ -45,7 +45,7 @@ Validación con las posiciones del real y del reflejo:
 
 ## 2. Imágenes medias, lóbulos y anillo
 
-![](figuras/fig_psf_real_imagenes.png)
+![](figuras/psf_real/fig_psf_real_imagenes.png)
 
 **Método.**
 - Recortes de 61 × 61 px de los cuadros 0–29, centrados en el centroide de cada cuadro con un desplazamiento de Fourier y refinados por correlación cruzada con la media (sobremuestreo ×20, 2 iteraciones). El refinamiento mueve los recortes 0.3–0.4 px en mediana, salvo el real izquierdo (0.85 px): su centroide está sesgado por un anillo asimétrico y débil.
@@ -75,7 +75,7 @@ Validación con las posiciones del real y del reflejo:
 
 ## 3. ¿Camino común o polarización?
 
-![](figuras/fig_psf_real_medidas.png)
+![](figuras/psf_real/fig_psf_real_medidas.png)
 
 Diferencia de ejes izq − der en el marco común. Bajo una aberración del camino común sería 0 y bajo un efecto de polarización ~90°:
 

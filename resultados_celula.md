@@ -42,11 +42,11 @@ La parte 1 usa las evaluaciones de Hypatia (`evaluacion_test_celula_b45_<variant
 
 ## 1. Diagnóstico de las corridas
 
-![](figuras/fig_diag_celula.png)
+![](figuras/diagnostico_celula/fig_diag_celula.png)
 
 ### Por z
 
-Recall y RMSE z por rangos de 250 nm (`figuras/diag_celula_rangos.csv`, tabla `z`):
+Recall y RMSE z por rangos de 250 nm (`figuras/diagnostico_celula/diag_celula_rangos.csv`, tabla `z`):
 
 | z [nm] | n | recall cerca | RMSE z cerca | sesgo z cerca | recall lejos | RMSE z lejos | sesgo z lejos |
 |---|---|---|---|---|---|---|---|
@@ -71,9 +71,9 @@ Recall y RMSE z por rangos de 250 nm (`figuras/diag_celula_rangos.csv`, tabla `z
 - Con > 9000 fotones (tabla `z_abs_fotones`), en |z| ≤ 800 nm cerca detecta el 91.7 % y lejos el 99.3 %; en 800–1600 nm, el 99.0 % y el 99.0 %. La diferencia global de recall entre las dos redes (0.757 frente a 0.796) sale casi entera de los dos agujeros de cerca.
 - Si se empareja solo en lateral (≤ 150 nm, sin tolerancia en z), el 2.5 % de los emparejados de cada red tiene |dz| > 300 nm. Cerca **nunca predice z < −1982 nm** (lejos llega a −2382) y no predice z entre ~300 y ~600 nm. A los emisores con z ∈ [375, 500) les asigna una mediana de 621 nm, y la mitad no se detecta ni lateralmente. Lejos nunca predice z > 2181 nm.
 
-**Curva de transferencia** (`figuras/fig_red_celula_transferencia.png`): un emisor aislado por imagen a d = 2 µm de un espejo a 45°, con fondo de 20 fotones/px, 8 repeticiones por z, recorte de pupila y la PSF de la variante de cada red.
+**Curva de transferencia** (`figuras/red_celula/fig_red_celula_transferencia.png`): un emisor aislado por imagen a d = 2 µm de un espejo a 45°, con fondo de 20 fotones/px, 8 repeticiones por z, recorte de pupila y la PSF de la variante de cada red.
 
-![](figuras/fig_red_celula_transferencia.png)
+![](figuras/red_celula/fig_red_celula_transferencia.png)
 
 | | cerca, N = 10⁴ | lejos, N = 10⁴ |
 |---|---|---|
@@ -83,7 +83,7 @@ Recall y RMSE z por rangos de 250 nm (`figuras/diag_celula_rangos.csv`, tabla `z
 | detectado en z = 2400 / 2500 nm | 0.38 / 0 | 0.12 / 0 (predice ≤ 2180) |
 | RMSE z en [−2000, 2000], con / sin reflejo | 39 / 35 nm | 25 / 26 nm |
 
-Los dos defectos de cerca aparecen igual con y sin reflejo (ratio 0.7 o 0), así que no dependen de él. La información de Fisher en z de un emisor solo (N = 10⁴, b = 20) no tiene ningún pico en +400 nm: √(1/I_zz) vale 15–19 nm en [0, 600] nm, y 30–40 nm en z < −2 µm, que es peor pero finito. Además es simétrica entre variantes: `fisher_cerca(z) = fisher_lejos(−z)` con diferencia relativa ≤ 2·10⁻⁵ (`$PY figuras/red_celula.py fisher` → `figuras/red_celula_fisher_z.csv`). Los agujeros los aprendió la red; la física no los impone:
+Los dos defectos de cerca aparecen igual con y sin reflejo (ratio 0.7 o 0), así que no dependen de él. La información de Fisher en z de un emisor solo (N = 10⁴, b = 20) no tiene ningún pico en +400 nm: √(1/I_zz) vale 15–19 nm en [0, 600] nm, y 30–40 nm en z < −2 µm, que es peor pero finito. Además es simétrica entre variantes: `fisher_cerca(z) = fisher_lejos(−z)` con diferencia relativa ≤ 2·10⁻⁵ (`$PY figuras/red_celula.py fisher` → `figuras/red_celula/red_celula_fisher_z.csv`). Los agujeros los aprendió la red; la física no los impone:
 
 - El tope de |z| ≈ 2 µm cae, en las dos redes, del lado compacto (sin anillos) de su PSF: z < 0 en cerca, z > 0 en lejos. Ahí la PSF casi no cambia de forma (pico ~15·10⁻³ de −2.5 a −1.9 µm en cerca) y la célula da muy pocos emisores de entrenamiento: la densidad uniforme en volumen cae como R² − z² hacia los polos. La red aprende a no ir más allá.
 - El agujero de +400 nm solo existe en cerca y no tiene contraparte en lejos (−400 nm). Es una discontinuidad aprendida en la asignación de z: los emisores quedan en el plano de 300 nm o saltan a 620 nm, y la mitad cae bajo el umbral. Para saber si es estable, convendría compararlo con `ultimo.pt` o con otra semilla de entrenamiento. Este análisis no lo hace.
@@ -105,9 +105,9 @@ Los dos defectos de cerca aparecen igual con y sin reflejo (ratio 0.7 o 0), así
 
 ### Falsos positivos
 
-![](figuras/fig_diag_celula_fp.png)
+![](figuras/diagnostico_celula/fig_diag_celula_fp.png)
 
-Clase de cada FP, la primera que cumple, a ≤ 150 nm lateral (`figuras/diag_celula_fp.csv`):
+Clase de cada FP, la primera que cumple, a ≤ 150 nm lateral (`figuras/diagnostico_celula/diag_celula_fp.csv`):
 
 | clase | cerca | lejos |
 |---|---|---|
@@ -128,9 +128,9 @@ Clase de cada FP, la primera que cumple, a ≤ 150 nm lateral (`figuras/diag_cel
 
 ## 2. Control sin reflejo
 
-![](figuras/fig_diag_celula_control.png)
+![](figuras/diagnostico_celula/fig_diag_celula_control.png)
 
-`test_celula_b45_cerca_sin_reflejo` es el mismo test regenerado con `datos.ratio_reflejo_rango=[0, 0]`. Respecto del test de Hypatia, las posiciones, fotones, fondo, geometría, célula, `en_fov` y `snr` coinciden bit a bit (|Δ| ≤ 10⁻¹¹), y `photons_reflejo = 0`. Lo único que cambia es la luz del reflejo y, por eso, la realización del Poisson. Las dos evaluaciones son locales con la misma red. Diferencias pareadas con − sin, con IC por bootstrap pareado de imágenes (`figuras/diag_celula_control.csv`):
+`test_celula_b45_cerca_sin_reflejo` es el mismo test regenerado con `datos.ratio_reflejo_rango=[0, 0]`. Respecto del test de Hypatia, las posiciones, fotones, fondo, geometría, célula, `en_fov` y `snr` coinciden bit a bit (|Δ| ≤ 10⁻¹¹), y `photons_reflejo = 0`. Lo único que cambia es la luz del reflejo y, por eso, la realización del Poisson. Las dos evaluaciones son locales con la misma red. Diferencias pareadas con − sin, con IC por bootstrap pareado de imágenes (`figuras/diagnostico_celula/diag_celula_control.csv`):
 
 | | con reflejo | ratio 0 | con − sin [IC 95 %] |
 |---|---|---|---|
@@ -154,7 +154,7 @@ Por rango, la diferencia de RMSE z sobre los detectados en los dos es:
 
 ## 3. CRLB con célula y recortes en el test
 
-![](figuras/fig_crlb_celula_b45_cerca.png)
+![](figuras/crlb_espejo/fig_crlb_celula_b45_cerca.png)
 
 `figuras/crlb_espejo.py --celula` calcula la CRLB de cada emisor evaluable del test, no en una rejilla canónica:
 
@@ -164,7 +164,7 @@ Por rango, la diferencia de RMSE z sobre los detectados en los dos es:
 - con parámetros (x, y, z, N, b), donde b es un desplazamiento sobre el fondo conocido;
 - en tres versiones: el real solo, real + reflejo con r conocido, y con r desconocido (parámetro de molestia; da casi lo mismo: +0.1 nm global, +3 nm a d < 0.5 µm).
 
-No incluye a los otros emisores ni el prior de la célula. Por eso, además del RMSE de la red, se da el de los emisores **aislados** (sin otro real ni otro reflejo a < 1 µm lateral; 30 % de los evaluables). Las tablas por rango están en `figuras/crlb_celula_rangos_b45_<variante>.csv`.
+No incluye a los otros emisores ni el prior de la célula. Por eso, además del RMSE de la red, se da el de los emisores **aislados** (sin otro real ni otro reflejo a < 1 µm lateral; 30 % de los evaluables). Las tablas por rango están en `figuras/crlb_espejo/crlb_celula_rangos_b45_<variante>.csv`.
 
 | RMS de √CRLB_z / RMSE z | cerca | lejos |
 |---|---|---|
@@ -205,9 +205,9 @@ No incluye a los otros emisores ni el prior de la célula. Por eso, además del 
 
 ### La red sobre la ventana de 96 px
 
-![](figuras/fig_red_celula_reales.png)
+![](figuras/red_celula/fig_red_celula_reales.png)
 
-La ventana está centrada en el punto medio del par (x0 = 303, y0 = 399 en coordenadas locales), dentro de la apertura de campo. El canal de distancia sale de la línea estimada, y la red corre cuadro a cuadro. La z de la red es la de la detección a ≤ 3 px del real (`figuras/red_celula_reales_resumen.csv`, por cuadro en `red_celula_reales.csv`):
+La ventana está centrada en el punto medio del par (x0 = 303, y0 = 399 en coordenadas locales), dentro de la apertura de campo. El canal de distancia sale de la línea estimada, y la red corre cuadro a cuadro. La z de la red es la de la detección a ≤ 3 px del real (`figuras/red_celula/red_celula_reales_resumen.csv`, por cuadro en `red_celula_reales.csv`):
 
 | | red cerca | red lejos |
 |---|---|---|
@@ -232,9 +232,9 @@ Los IC son por bootstrap de bloques de 10 cuadros.
 
 ### Forma de la PSF: el lado de los anillos
 
-![](figuras/fig_red_celula_reales_psf.png)
+![](figuras/red_celula/fig_red_celula_reales_psf.png)
 
-Sin la red, se compara el perfil radial medio (cuadros 0–29, alineados en subpíxel) del real y del reflejo con el de `PSFRecortada` de cada variante, con la geometría de los datos (`figuras/red_celula_reales_perfiles.csv`). El reflejo está siempre más lejos del objetivo que el real, entre L tan 40° = 3.9 µm y L tan 50° = 5.5 µm.
+Sin la red, se compara el perfil radial medio (cuadros 0–29, alineados en subpíxel) del real y del reflejo con el de `PSFRecortada` de cada variante, con la geometría de los datos (`figuras/red_celula/red_celula_reales_perfiles.csv`). El reflejo está siempre más lejos del objetivo que el real, entre L tan 40° = 3.9 µm y L tan 50° = 5.5 µm.
 
 - **Fracción de la señal en el anillo de 6–18 px**, después de restar el fondo (mediana a 20–25 px), por cuadro:
   - real: 0.64 [p5–p95: 0.61–0.72];

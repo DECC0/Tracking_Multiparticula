@@ -19,8 +19,8 @@ amplitud, radio y sigma.
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
-    $PY figuras/autofluorescencia_celula.py [--tif RUTA] [--salida figuras]   # ~30 s
-Escribe fig_autofluorescencia_celula.png (300 dpi) y autofluorescencia_celula.csv.
+    $PY figuras/autofluorescencia_celula.py [--tif RUTA] [--salida figuras/autofluorescencia_celula]   # ~30 s
+Escribe en figuras/autofluorescencia_celula/: fig_autofluorescencia_celula.png (300 dpi) y autofluorescencia_celula.csv.
 """
 import argparse
 import os
@@ -106,8 +106,9 @@ def perfil_modelo(r, amp, R, sigma, c):
 def main():
     ap_ = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap_.add_argument("--tif", default=adr.TIF_DEF)
-    ap_.add_argument("--salida", default=AQUI)
+    ap_.add_argument("--salida", default=os.path.join(AQUI, "autofluorescencia_celula"))
     a = ap_.parse_args()
+    os.makedirs(a.salida, exist_ok=True)
     v, _ = adr.cargar(a.tif)
     T = v.shape[0]
     c = adr.buscar_corte(v.mean(0))

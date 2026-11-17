@@ -13,7 +13,7 @@ $PY figuras/calibracion_pupila.py --cache datos.npz --solo-esferica    # seccion
 
 La sección 1 sale de la primera orden (barrido y arranques), la sección 3 de la segunda, las secciones 2, 4 y 5 de la tercera, que reutiliza las tablas de la primera, y la sección 7 de la cuarta. El script importa la detección de `figuras/analisis_datos_reales.py` y la óptica de `simulador_nuevo/simulador.py` (`Config`, `PSFRecortada` para la verificación) y `geometria_espejo.py`. Escribe:
 
-- las tablas `figuras/calibracion_pupila_*.csv` y `figuras/calibracion_pupila.json`;
+- las tablas `figuras/calibracion_pupila/calibracion_pupila_*.csv` y `figuras/calibracion_pupila/calibracion_pupila.json`;
 - cinco figuras PNG a 300 dpi:
   - `fig_calibracion_pupila_imagenes.png`: datos, modelos y residuos del real y del reflejo;
   - `fig_calibracion_pupila_signo.png`: la elección del signo;
@@ -68,7 +68,7 @@ con la normalización de `fase_esferica`: valor máximo 1 en el disco, así que 
 
 ## 1. Arranques y mínimos
 
-![](figuras/fig_calibracion_pupila_signo.png)
+![](figuras/calibracion_pupila/fig_calibracion_pupila_signo.png)
 
 **Barrido** (panel b; `calibracion_pupila_barrido.csv`). Con la pupila actual (±1.5π) y β = 45°, la línea se pone para que la z media del real sea z0 ∈ [−4, +8] µm, y se ajustan solo los parámetros por cuadro.
 
@@ -94,7 +94,7 @@ El paisaje es multimodal en z (z, a40 y β se compensan). Desde β0 = 41 y z0 = 
 
 ## 2. Imágenes
 
-![](figuras/fig_calibracion_pupila_imagenes.png)
+![](figuras/calibracion_pupila/fig_calibracion_pupila_imagenes.png)
 
 La figura suma los 50 cuadros impares, con los compartidos de cada ajuste y los parámetros por cuadro reajustados. Los recortes van alineados en el píxel entero del real y del reflejo de la cerca calibrada.
 
@@ -137,7 +137,7 @@ La −log L sin restricciones prefiere lejos por ~31 500, pero ese mínimo es f�
 
 ## 4. Parámetros calibrados e incertidumbre
 
-![](figuras/fig_calibracion_pupila_medidas_cerca.png)
+![](figuras/calibracion_pupila/fig_calibracion_pupila_medidas_cerca.png)
 
 **Cerca** (`calibracion_pupila_parametros_cerca.csv`; bootstrap de 30 remuestreos de bloques de 5 cuadros pares consecutivos):
 
@@ -259,7 +259,7 @@ El ajuste usa la fase de `simulador_nuevo` sin términos extra, a40·Z4⁰ con a
 - `calibracion_pupila_esferica_cinco.csv`: la prueba con los cinco Zernike.
 - `calibracion_pupila_esferica_bootstrap_{cerca,lejos}.csv` y `calibracion_pupila_esferica.json`.
 
-![](figuras/fig_calibracion_pupila_esferica.png)
+![](figuras/calibracion_pupila/fig_calibracion_pupila_esferica.png)
 
 ### Mínimos
 

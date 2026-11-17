@@ -37,7 +37,7 @@ Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     $PY figuras/cuantizacion.py fases
     LD_PRELOAD=$HOME/miniforge3/envs/tesis/lib/libstdc++.so.6 $PY figuras/cuantizacion.py subplano
-Escribe en --salida (por defecto figuras/): cuantizacion_fases.csv, cuantizacion_sesgo_fase.csv,
+Escribe en --salida (por defecto figuras/cuantizacion/): cuantizacion_fases.csv, cuantizacion_sesgo_fase.csv,
 fig_cuantizacion_fases.png, cuantizacion_subplano.csv, cuantizacion_subplano_sesgo.csv,
 cuantizacion_cm_plano.csv y fig_cuantizacion_subplano.png (300 dpi).
 """
@@ -521,12 +521,13 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("modo", choices=("fases", "subplano"))
     p.add_argument("--variantes", nargs="+", default=["cerca", "lejos"], choices=list(CORRIDA))
-    p.add_argument("--transferencia", default=str(Path(__file__).resolve().parent / "red_celula_transferencia_imagenes.csv"))
-    p.add_argument("--agujero", default=str(Path(__file__).resolve().parent / "red_celula_agujero_imagenes.csv"))
+    p.add_argument("--transferencia", default=str(Path(__file__).resolve().parent / "red_celula" / "red_celula_transferencia_imagenes.csv"))
+    p.add_argument("--agujero", default=str(Path(__file__).resolve().parent / "red_celula" / "red_celula_agujero_imagenes.csv"))
     p.add_argument("--dispositivo", default="auto", choices=("auto", "cpu", "cuda"))
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "cuantizacion"))
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     if a.modo == "fases":
         fases(a, salida)
     else:

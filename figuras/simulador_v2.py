@@ -16,7 +16,7 @@ Partes:
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
-    $PY figuras/simulador_v2.py [datos] [linea_base] [--corrida C] [--salida figuras]
+    $PY figuras/simulador_v2.py [datos] [linea_base] [--corrida C] [--salida figuras/simulador_v2]
 """
 import argparse
 import sys
@@ -260,9 +260,10 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("partes", nargs="*", default=["datos", "linea_base"])
     p.add_argument("--corrida", default=str(CORRIDA))
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "simulador_v2"))
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     if "datos" in a.partes:
         parte_datos(salida)
     if "linea_base" in a.partes:

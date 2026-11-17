@@ -2,10 +2,10 @@
 
 Generado con `figuras/temporal_espejo.py` (`~/miniforge3/envs/tesis/bin/python figuras/temporal_espejo.py`, ~75 s). No entrena ni corre la red.
 
-- Figura: `figuras/fig_temporal_espejo.png` (y `.pdf`).
+- Figura: `figuras/temporal_espejo/fig_temporal_espejo.png` (y `.pdf`).
 - Datos:
-  - `figuras/temporal_espejo_rmse.csv`: RMSE z y lateral con IC 95% por rango, estimador, escenario y signo.
-  - `figuras/temporal_espejo_D.csv`: D verdadera y estimada por trayectoria.
+  - `figuras/temporal_espejo/temporal_espejo_rmse.csv`: RMSE z y lateral con IC 95% por rango, estimador, escenario y signo.
+  - `figuras/temporal_espejo/temporal_espejo_D.csv`: D verdadera y estimada por trayectoria.
 
 ## Montaje del estudio
 
@@ -140,7 +140,7 @@ Todo esto se puede hacer sin reentrenar la red.
 
 ## Con célula: difusión confinada (convención nueva, β = 45°)
 
-Generado con `figuras/temporal_espejo.py --celula` (~100 s). Archivos: `figuras/fig_temporal_espejo_celula.png` (y `.pdf`), `figuras/temporal_espejo_celula_rmse.csv` y `figuras/temporal_espejo_celula_D.csv`.
+Generado con `figuras/temporal_espejo.py --celula` (~100 s). Archivos: `figuras/temporal_espejo/fig_temporal_espejo_celula.png` (y `.pdf`), `figuras/temporal_espejo/temporal_espejo_celula_rmse.csv` y `figuras/temporal_espejo/temporal_espejo_celula_D.csv`.
 
 **Geometría:** la de `configs/celula.yaml`: 96 px, célula de 5 µm con el centro en el foco y el contacto célula–espejo en el centro del FOV, a 45°. Son 3381 trayectorias de 50 frames por variante de la PSF, en el escenario `crlb` (todavía no hay redes entrenadas con célula). Cada caso se compara con una línea de base **libre**: las mismas posiciones iniciales y las mismas D, con browniano sin frontera.
 

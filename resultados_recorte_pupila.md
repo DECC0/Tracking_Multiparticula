@@ -9,7 +9,7 @@ $PY figuras/recorte_pupila.py --red <corrida>/evaluacion_<test> <corrida>/evalua
 # aqui: --red con _recorte (solo el reflejo) y con _recorte_ambos (los dos), para piloto_dz100 y piloto_dz50
 ```
 
-que escribe `figuras/fig_recorte_pupila.png/.pdf` (resumen), `figuras/fig_recorte_pupila_psf.png/.pdf` (PSF completa y recortada) y `figuras/recorte_pupila_*.csv`. «lejos» y «cerca» son las dos variantes de la PSF esférica (`anillos_hacia_objetivo` False / True).
+que escribe `figuras/recorte_pupila/fig_recorte_pupila.png/.pdf` (resumen), `figuras/recorte_pupila/fig_recorte_pupila_psf.png/.pdf` (PSF completa y recortada) y `figuras/recorte_pupila/recorte_pupila_*.csv`. «lejos» y «cerca» son las dos variantes de la PSF esférica (`anillos_hacia_objetivo` False / True).
 
 ## Resumen
 

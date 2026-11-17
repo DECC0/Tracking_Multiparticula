@@ -33,7 +33,7 @@ resultados_psf_real.md; sin la red)
 
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
-    $PY figuras/suma_canales.py [--tif RUTA] [--cuadros 30] [--salida figuras]
+    $PY figuras/suma_canales.py [--tif RUTA] [--cuadros 30] [--salida figuras/suma_canales]
 Escribe en --salida: suma_canales_registro.csv, suma_canales_lobulos.csv,
 suma_canales_ajustes.csv, suma_canales_fotones.csv, suma_canales_cociente.csv, fig_suma_canales_imagenes.png,
 fig_suma_canales_residuos.png y fig_suma_canales_medidas.png (300 dpi).
@@ -327,10 +327,11 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--tif", default=adr.TIF_DEF)
     ap.add_argument("--cuadros", type=int, default=30)
-    ap.add_argument("--salida", default=str(AQUI))
+    ap.add_argument("--salida", default=str(AQUI / "suma_canales"))
     a = ap.parse_args()
     N = a.cuadros
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
 
     video, _ = adr.cargar(a.tif)
     T = len(video)

@@ -44,7 +44,7 @@ Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     LD_PRELOAD=$HOME/miniforge3/envs/tesis/lib/libstdc++.so.6 $PY figuras/red_celula.py transferencia [--n-rep 8]
     LD_PRELOAD=... $PY figuras/red_celula.py reales [--tif RUTA] [--beta-deg 45]
-Escribe en --salida (por defecto figuras/): red_celula_fisher_z.csv; red_celula_transferencia.csv,
+Escribe en --salida (por defecto figuras/red_celula/): red_celula_fisher_z.csv; red_celula_transferencia.csv,
 fig_red_celula_transferencia.png/.pdf; red_celula_reales.csv (por cuadro),
 red_celula_reales_resumen.csv, red_celula_reales_perfiles.csv, fig_red_celula_reales.png/.pdf y
 fig_red_celula_reales_psf.png/.pdf. reales usa figuras/analisis_datos_reales.py.
@@ -696,10 +696,11 @@ def main():
     p.add_argument("--beta-deg", type=float, default=45.0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--dispositivo", default="auto", choices=("auto", "cpu", "cuda"))
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "red_celula"))
     a = p.parse_args()
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     dispositivo = elegir_dispositivo(a.dispositivo)
     if a.modo == "agujero":
         agujero(a, dispositivo, rng, salida)

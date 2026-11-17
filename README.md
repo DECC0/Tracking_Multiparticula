@@ -170,7 +170,7 @@ variante la fija el lanzador). Evidencia (`resultados_recorte_pupila.md`,
 seccion 6, y `resultados_datos_reales.md`): en el frame real el reflejo, a
 z' ~ z - 4.5 um, es compacto, y la fotometria da un cociente reflejo/real de
 ~0.43 > 0. Con "lejos" un reflejo a esa z' es un sistema de anillos de ~8 um
-sin nucleo (`figuras/fig_recorte_pupila_psf.png`): la misma fotometria sobre
+sin nucleo (`figuras/recorte_pupila/fig_recorte_pupila_psf.png`): la misma fotometria sobre
 imagenes simuladas da un cociente negativo o casi nulo para casi cualquier z
 del real, y el ajuste del cociente contra el radio deja residuos 3 a 4 veces
 mayores que con "cerca". Con "cerca" el reflejo es compacto y el cociente

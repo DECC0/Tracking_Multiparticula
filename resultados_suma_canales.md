@@ -4,16 +4,16 @@ Continuación de `resultados_psf_real.md` y de `resultados_celula.md` (sección 
 
 ```bash
 PY=~/miniforge3/envs/tesis/bin/python
-$PY figuras/suma_canales.py [--tif RUTA] [--cuadros 30] [--salida figuras]    # ~40 s
+$PY figuras/suma_canales.py [--tif RUTA] [--cuadros 30] [--salida figuras/suma_canales]    # ~40 s
 ```
 
 El script importa la detección de `figuras/analisis_datos_reales.py` y las medidas de `figuras/psf_real.py` (recortes alineados, `medir`, `disco`). Genera tres figuras PNG a 300 dpi:
 
-- `figuras/fig_suma_canales_imagenes.png`
-- `figuras/fig_suma_canales_residuos.png`
-- `figuras/fig_suma_canales_medidas.png`
+- `figuras/suma_canales/fig_suma_canales_imagenes.png`
+- `figuras/suma_canales/fig_suma_canales_residuos.png`
+- `figuras/suma_canales/fig_suma_canales_medidas.png`
 
-y las tablas `figuras/suma_canales_*.csv`. Los ángulos están en el marco del canal derecho, de +x hacia +y; m = −169.9° (reflejo → real) y t = −79.9°.
+y las tablas `figuras/suma_canales/suma_canales_*.csv`. Los ángulos están en el marco del canal derecho, de +x hacia +y; m = −169.9° (reflejo → real) y t = −79.9°.
 
 Se comparan cuatro imágenes:
 
@@ -45,7 +45,7 @@ La transformación es la ya estimada: similitud impropia con s = 1.0491 y Q = Ro
 - **Cómo se registra:** cada cuadro del canal izquierdo se pasa a e⁻ (ADU menos el nivel oscuro de su canal y cuadro: 97.78 / 97.73 ADU, por 0.46) y se lleva a una región de 181 × 181 px del derecho alrededor del par, con `ndimage.affine_transform`.
 - **Interpolación:** spline cúbica con prefiltro, multiplicada por 1/|det M| para conservar el flujo.
 
-`figuras/suma_canales_registro.csv`, con el centroide iterativo cuadro a cuadro:
+`figuras/suma_canales/suma_canales_registro.csv`, con el centroide iterativo cuadro a cuadro:
 
 | | izq registrado − der: mediana / rms | sesgo (x, y) | izq registrado − T(centroide nativo): mediana / rms |
 |---|---|---|---|
@@ -70,9 +70,9 @@ Lectura:
 
 ## 2. Lóbulos
 
-![](figuras/fig_suma_canales_imagenes.png)
+![](figuras/suma_canales/fig_suma_canales_imagenes.png)
 
-Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el disco de 7 px con separación de 1–6 px, momentos con r = 4 px y armónicos del perfil angular (`figuras/suma_canales_lobulos.csv`):
+Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el disco de 7 px con separación de 1–6 px, momentos con r = 4 px y armónicos del perfil angular (`figuras/suma_canales/suma_canales_lobulos.csv`):
 
 | | eje (vs m) | separación | flujo 2/1 | momentos: eje, cociente | núcleo: a4, a2 | anillo: a1 (hacia), a2 (eje) |
 |---|---|---|---|---|---|---|
@@ -95,7 +95,7 @@ Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el dis
 
 ## 3. Ajuste contra la PSF escalar
 
-![](figuras/fig_suma_canales_residuos.png)
+![](figuras/suma_canales/fig_suma_canales_residuos.png)
 
 **Modelo:** `PSFRecortada` de cerca y de lejos con la geometría de los datos (espejo a 45°, φ = m) y el recorte de pupila del real y del reflejo. La PSF es exacta en z, sin banco interpolado.
 
@@ -108,7 +108,7 @@ Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el dis
 
 **Residuo relativo:** |datos − modelo| / |datos − fondo|. «Sin ruido» resta del numerador la varianza esperada (Σ var); como el ruido es pequeño frente a la falta de modelo, cambia ≤ 0.02.
 
-Datos en `figuras/suma_canales_ajustes.csv`:
+Datos en `figuras/suma_canales/suma_canales_ajustes.csv`:
 
 | | der | izq_reg | suma | suma_eq |
 |---|---|---|---|---|
@@ -152,7 +152,7 @@ En resumen, lo que el modelo escalar no tiene y la suma no quita es:
 
 ## 4. Fotones
 
-Fotometría en discos de 1.5 y 2.5 µm con el fondo local (`disco` de `psf_real.py`: mediana del anillo [r + 3, r + 9] px sin la región del otro punto), cuadros 0–29, en e⁻ (`figuras/suma_canales_fotones.csv`, `suma_canales_cociente.csv`):
+Fotometría en discos de 1.5 y 2.5 µm con el fondo local (`disco` de `psf_real.py`: mediana del anillo [r + 3, r + 9] px sin la región del otro punto), cuadros 0–29, en e⁻ (`figuras/suma_canales/suma_canales_fotones.csv`, `suma_canales_cociente.csv`):
 
 | | real, 1.5 µm | real, 2.5 µm | reflejo, 1.5 µm | reflejo, 2.5 µm | reflejo/real por cuadro, 1.5 µm | ídem, 2.5 µm |
 |---|---|---|---|---|---|---|

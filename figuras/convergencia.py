@@ -16,7 +16,7 @@ Convergencia del entrenamiento de las corridas con celula, solo desde sus logs
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     $PY figuras/convergencia.py [--ultimas 20] [--corridas CARPETA ...]
-Escribe en --salida (por defecto figuras/): convergencia_tendencia.csv,
+Escribe en --salida (por defecto figuras/convergencia/): convergencia_tendencia.csv,
 convergencia_ventanas.csv (pendiente en ventanas consecutivas de N epocas),
 convergencia_lr.csv y fig_convergencia.png (300 dpi).
 """
@@ -166,9 +166,10 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("--corridas", nargs="+", default=[str(CORRIDAS / c) for c in POR_DEFECTO])
     p.add_argument("--ultimas", type=int, default=20)
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "convergencia"))
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     datos = [analizar(c, a.ultimas) for c in a.corridas]
     t = pd.concat([d[4] for d in datos], ignore_index=True)
     t_lr = pd.concat([d[5] for d in datos], ignore_index=True)

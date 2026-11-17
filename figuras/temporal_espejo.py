@@ -48,9 +48,9 @@ de la PSF lejos / cerca (anillos_hacia_objetivo False / True). Sin la corrida
 y el test de una variante (hypatia_espejo_b45_<variante>, test_espejo_b45_<variante>)
 solo se corre el escenario crlb. Los resultados de resultados_temporal_espejo.md
 son de la convencion vieja (alpha = 34 desde el plano focal, signo_z).
-Escribe figuras/fig_temporal_espejo_b45.png/.pdf, figuras/temporal_espejo_b45_rmse.csv
+Escribe figuras/temporal_espejo/fig_temporal_espejo_b45.png/.pdf, figuras/temporal_espejo/temporal_espejo_b45_rmse.csv
 (RMSE e IC por rango, estimador, escenario y variante) y
-figuras/temporal_espejo_b45_D.csv (D estimada por trayectoria).
+figuras/temporal_espejo/temporal_espejo_b45_D.csv (D estimada por trayectoria).
 """
 import argparse
 import sys
@@ -509,10 +509,11 @@ def main():
     p.add_argument("--variantes", nargs="+", default=list(VARIANTES), choices=list(VARIANTES))
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=300)
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "temporal_espejo"))
     p.add_argument("--celula", action="store_true", help="emisores en una celula (confinados vs libres)")
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     if a.celula:
         return main_celula(a, salida)
     t0 = time.time()

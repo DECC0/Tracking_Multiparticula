@@ -42,7 +42,7 @@ La evaluación local de s0 sobre el test v2 da exactamente la de Hypatia (8826 T
 
 ## 1. Convergencia
 
-![](figuras/fig_celula_v2_convergencia.png)
+![](figuras/celula_v2/fig_celula_v2_convergencia.png)
 
 `log.csv` ya tiene la lr usada en cada época (coincide con `log_iter.csv`) y las métricas de validación por época (`metricas_val: true`). Validación son 1000 muestras fijas (`seed_val` 2), las mismas para las dos semillas.
 
@@ -79,7 +79,7 @@ Medias de validación por ventana de 10 épocas:
 
 ## 2. Tests
 
-![](figuras/fig_celula_v2_evaluacion.png)
+![](figuras/celula_v2/fig_celula_v2_evaluacion.png)
 
 Los tres tests tienen 2000 imágenes y semilla 3:
 - **v2** (`test_celula_v2_b45_cerca`): la distribución de entrenamiento de las redes v2.
@@ -164,9 +164,9 @@ Diferencias pareadas con la red actual (s0; las de s1 son iguales a ±0.003 de r
 
 ### Por z: agujeros y cobertura
 
-![](figuras/fig_celula_v2_z.png)
+![](figuras/celula_v2/fig_celula_v2_z.png)
 
-Recall por z real en bins de 250 nm. Los rangos más relevantes (todos en `figuras/celula_v2_rangos.csv`):
+Recall por z real en bins de 250 nm. Los rangos más relevantes (todos en `figuras/celula_v2/celula_v2_rangos.csv`):
 
 | z [nm] | [−3000, −2750) | [−2750, −2500) | [−2250, −2000) | [−1500, −1250) | [0, 250) | **[250, 500)** | [1000, 1250) | [2250, 2500) | [2500, 2750) | [2750, 3000) |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -210,7 +210,7 @@ Emisor a emisor:
 
 ## 4. Yeast6_1 (canal derecho)
 
-![](figuras/fig_celula_v2_reales.png)
+![](figuras/celula_v2/fig_celula_v2_reales.png)
 
 El procedimiento es el de `red_celula.py reales` (`resultados_celula.md`, sección 4): la detección, las pistas, el par y el borde de la franja vienen de `analisis_datos_reales.py`.
 - **Ventana:** 96 × 96 px centrada en el punto medio del par.

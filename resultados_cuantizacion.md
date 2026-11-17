@@ -21,11 +21,11 @@ $PY figuras/red_celula.py transferencia --variantes cerca --checkpoint cerca loc
 
 Las figuras son PNG a 300 dpi:
 
-- `figuras/fig_cuantizacion_fases.png` (partes 1 y 2);
-- `figuras/fig_cuantizacion_subplano.png` (parte 3);
-- `figuras/fig_red_celula_agujero.png` (parte 4).
+- `figuras/cuantizacion/fig_cuantizacion_fases.png` (partes 1 y 2);
+- `figuras/cuantizacion/fig_cuantizacion_subplano.png` (parte 3);
+- `figuras/red_celula/fig_red_celula_agujero.png` (parte 4).
 
-Las tablas están en `figuras/cuantizacion_*.csv` y `figuras/red_celula_agujero*.csv`.
+Las tablas están en `figuras/cuantizacion/cuantizacion_*.csv` y `figuras/red_celula/red_celula_agujero*.csv`.
 
 ## Resumen
 
@@ -47,9 +47,9 @@ No se modificó desde el 2026-11-10 18:31, antes de las corridas de `resultados_
 
 ## 1. Posición de las predicciones respecto de la rejilla
 
-![](figuras/fig_cuantizacion_fases.png)
+![](figuras/cuantizacion/fig_cuantizacion_fases.png)
 
-`figuras/cuantizacion_fases.csv`. Las columnas «< 5 nm» dan la fracción de predicciones a menos de 5 nm del plano o nodo más cercano; si las fases fueran uniformes, sería 0.10 en z y 0.41 por eje lateral. La «atracción» es el RMS de p(s) − s, con p la función cuantil de las fases predichas: lo que la acumulación cerca de los nodos suma al error, en cuadratura, si la fase real es uniforme. Lo es, porque la célula es suave a escala de 100 nm (en el GT es 0.4 nm).
+`figuras/cuantizacion/cuantizacion_fases.csv`. Las columnas «< 5 nm» dan la fracción de predicciones a menos de 5 nm del plano o nodo más cercano; si las fases fueran uniformes, sería 0.10 en z y 0.41 por eje lateral. La «atracción» es el RMS de p(s) − s, con p la función cuantil de las fases predichas: lo que la acumulación cerca de los nodos suma al error, en cuadratura, si la fase real es uniforme. Lo es, porque la célula es suave a escala de 100 nm (en el GT es 0.4 nm).
 
 | fuente | n | z a < 5 nm | z exacto (< 0.01 nm) | x / y a < 5 nm | atracción z | atracción x / y |
 |---|---|---|---|---|---|---|
@@ -67,7 +67,7 @@ No se modificó desde el 2026-11-10 18:31, antes de las corridas de `resultados_
 
 ## 2. ¿Depende el error de la posición dentro de la celda?
 
-Con cuantización, el error medio contra la posición real dentro de la celda sería la rampa −(z − plano), y el RMSE crecería de 0 sobre el plano a 50 nm a mitad de celda. Nada de eso aparece (`figuras/cuantizacion_sesgo_fase.csv`, `cuantizacion_rmse_altos.csv`, `cuantizacion_transferencia_fase.csv`):
+Con cuantización, el error medio contra la posición real dentro de la celda sería la rampa −(z − plano), y el RMSE crecería de 0 sobre el plano a 50 nm a mitad de celda. Nada de eso aparece (`figuras/cuantizacion/cuantizacion_sesgo_fase.csv`, `cuantizacion_rmse_altos.csv`, `cuantizacion_transferencia_fase.csv`):
 
 | | cerca | lejos |
 |---|---|---|
@@ -80,12 +80,12 @@ Con cuantización, el error medio contra la posición real dentro de la celda se
 
 - **El piso de z no es cuantización.** Lejos llega a 20.8 nm, por debajo de dz/√12, con la misma rejilla y el mismo post-procesado. El RMSE de cerca (32.5 nm) es igual sobre el plano que entre planos.
 - **Lo lateral tampoco.** El «piso de ~8.5 nm» de `resultados_celula.md` era el RMSE lateral 2D de todos los emisores, que incluye la superposición. En los aislados es 3.8–4.2 nm por eje, frente a 7.1 nm de la cota de redondeo.
-- **Cuándo el centro de masa devuelve exactamente un plano** (`figuras/cuantizacion_cm_plano.csv`). La posición es k + Σw·dk / Σw, así que vale exactamente k si Σw·dk = 0. En teoría pasa con pesos simétricos, con una meseta saturada simétrica o con un pico que tiene a 0 todos los demás planos de la ventana. En la práctica solo se da el último caso: el 0.07 % de las detecciones de cerca (todas con los 4 vecinos en z de la columna del máximo en 0) y nunca en lejos. Que el máximo valga 100 (saturado) pasa en el 17 % de las detecciones de cerca y el 9 % de las de lejos, pero ninguna de ellas cae en un plano. Los planos donde ocurre son 300.0 nm (el borde inferior del agujero; en el barrido fino, 98 detecciones de emisores con z real de 350–450 nm) y 2400.0 nm (el tope de cerca). Ahí la red no reparte la masa entre planos, sino que la pone toda en un único plano frontera.
+- **Cuándo el centro de masa devuelve exactamente un plano** (`figuras/cuantizacion/cuantizacion_cm_plano.csv`). La posición es k + Σw·dk / Σw, así que vale exactamente k si Σw·dk = 0. En teoría pasa con pesos simétricos, con una meseta saturada simétrica o con un pico que tiene a 0 todos los demás planos de la ventana. En la práctica solo se da el último caso: el 0.07 % de las detecciones de cerca (todas con los 4 vecinos en z de la columna del máximo en 0) y nunca en lejos. Que el máximo valga 100 (saturado) pasa en el 17 % de las detecciones de cerca y el 9 % de las de lejos, pero ninguna de ellas cae en un plano. Los planos donde ocurre son 300.0 nm (el borde inferior del agujero; en el barrido fino, 98 detecciones de emisores con z real de 350–450 nm) y 2400.0 nm (el tope de cerca). Ahí la red no reparte la masa entre planos, sino que la pone toda en un único plano frontera.
 - **Sesgo propio del centro de masa sobre el target exacto** (gaussiana σ = 1 vóxel, ventana ±2): máximo 4.5 nm, RMS 2.4 nm en z. Con ±1 sería 13.3 nm de RMS, así que la ventana de ±2 que eligió `check_postproc.py` está bien.
 
 ## 3. Estimadores subplano alternativos
 
-![](figuras/fig_cuantizacion_subplano.png)
+![](figuras/cuantizacion/fig_cuantizacion_subplano.png)
 
 Sobre la misma salida de la red y los mismos máximos, con las mismas detecciones y confianzas que el post-procesado actual, se cambió solo cómo se calcula la posición:
 
@@ -96,7 +96,7 @@ Sobre la misma salida de la red y los mismos máximos, con las mismas deteccione
 | `parabola` | parábola por 3 puntos en cada eje a través del máximo |
 | `gauss` | parábola en log (gaussiana de 3 puntos), exacta para el target |
 
-`cm` reproduce `evaluate.py`: TP 9799 frente a 9800 de Hypatia en cerca y 10304 frente a 10304 en lejos, con el mismo RMSE. Los datos están en `figuras/cuantizacion_subplano.csv`.
+`cm` reproduce `evaluate.py`: TP 9799 frente a 9800 de Hypatia en cerca y 10304 frente a 10304 en lejos, con el mismo RMSE. Los datos están en `figuras/cuantizacion/cuantizacion_subplano.csv`.
 
 | RMSE z [nm], aislados | cm | cm1 | parabola | gauss |
 |---|---|---|---|---|
@@ -126,13 +126,13 @@ Sobre la misma salida de la red y los mismos máximos, con las mismas deteccione
 
 ## 4. Agujero de +400 nm de cerca
 
-![](figuras/fig_red_celula_agujero.png)
+![](figuras/red_celula/fig_red_celula_agujero.png)
 
 **Checkpoints.** En `hypatia_celula_b45_cerca`, `mejor.pt` y `ultimo.pt` tienen los mismos pesos (máxima diferencia 0.0). La época 99 fue a la vez la última y la de menor pérdida de validación (0.3466). En lejos, `mejor.pt` es de la época 98 y `ultimo.pt` de la 99. No se guardan checkpoints intermedios en ninguna corrida: hay 30 archivos `.pt` en `localizacion/corridas/`, todos `mejor.pt` o `ultimo.pt`. La curva de transferencia de cerca con `ultimo.pt` da las mismas detecciones y las mismas z, bit a bit.
 
 **Por eso la pregunta «¿lo aprendió esta corrida o lo aprende cualquiera?» no se puede contestar sin reentrenar.** Haría falta otra semilla o guardar checkpoints por época, por ejemplo cada 10. Lo que sí se puede medir sin entrenar es si depende de la entrada.
 
-**Barrido fino.** z de 0 a 800 nm cada 10 nm, 6 imágenes por punto, un emisor aislado con el recorte de pupila. La base es d = 2 µm, fondo 20, N = 10⁴, ratio 0.7 y β = 45°, y se varía una cosa a la vez (`figuras/red_celula_agujero_bordes.csv`):
+**Barrido fino.** z de 0 a 800 nm cada 10 nm, 6 imágenes por punto, un emisor aislado con el recorte de pupila. La base es d = 2 µm, fondo 20, N = 10⁴, ratio 0.7 y β = 45°, y se varía una cosa a la vez (`figuras/red_celula/red_celula_agujero_bordes.csv`):
 
 | condición | detección < 0.9 en z real | mínimo de detección | z predicha (mediana) antes → después | z predichas que no aparecen |
 |---|---|---|---|---|

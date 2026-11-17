@@ -558,9 +558,10 @@ def main():
     p.add_argument("--tif", default="/home/decar/Datos Alex/Yeast6_1_MMStack_Pos0.ome.tif")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--dispositivo", default="auto", choices=("auto", "cpu", "cuda"))
-    p.add_argument("--salida", default=str(FIG))
+    p.add_argument("--salida", default=str(FIG / "celula_v2"))
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(a.seed)
     if "convergencia" in a.partes:
         convergencia(salida)

@@ -1,7 +1,7 @@
 """
 Figuras para el documento a partir de simulador_psf.
 
-Genera (PNG 300 dpi + PDF vectorial) en figuras/:
+Genera (PNG 300 dpi + PDF vectorial) en figuras/documento_simulador/:
   - fig_banco_psf_montaje : banco de PSF en z, sin mascara vs esferica (Z4^0)
   - fig_banco_psf_diapo   : version reducida del montaje para diapositiva
   - fig_banco_psf_axial   : cortes XZ de ambos bancos + pico y energia encerrada vs z
@@ -28,7 +28,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from simulador_psf import (Config, BancoPSF, generar_video, energia_encerrada,
                            generar_trayectorias, generar_fondo, muestrear_fotones)
 
-OUT = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "documento_simulador")
 # figuras a generar: todas por defecto, o las pasadas por argumento
 # (montaje, diapo, axial, cuadros, cuadros_simple), p. ej. `python figuras_documento.py cuadros`
 FIGURAS = set(sys.argv[1:]) or {"montaje", "diapo", "axial", "cuadros", "cuadros_simple"}
@@ -52,6 +52,7 @@ CMAP_IMG = "inferno"
 
 
 def guardar(fig, nombre):
+    os.makedirs(OUT, exist_ok=True)
     for ext in ("png", "pdf"):
         fig.savefig(os.path.join(OUT, f"{nombre}.{ext}"), dpi=300)
     plt.close(fig)

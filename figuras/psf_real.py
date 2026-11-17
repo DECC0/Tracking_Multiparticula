@@ -38,7 +38,7 @@ resultados_psf_real.md. Importa analisis_datos_reales.py (deteccion) y, solo
 para la energia encerrada, simulador_nuevo/simulador.py.
 
 Uso:
-    $PY figuras/psf_real.py [--tif RUTA] [--cuadros 30] [--r-nucleo 4] [--n-boot 2000] [--salida figuras]
+    $PY figuras/psf_real.py [--tif RUTA] [--cuadros 30] [--r-nucleo 4] [--n-boot 2000] [--salida figuras/psf_real]
 """
 
 import argparse
@@ -389,8 +389,9 @@ def main():
     ap.add_argument("--cuadros", type=int, default=30, help="cuadros promediados (0..N-1)")
     ap.add_argument("--r-nucleo", type=float, default=4.0, help="radio del nucleo para los momentos [px]")
     ap.add_argument("--n-boot", type=int, default=2000)
-    ap.add_argument("--salida", default=AQUI)
+    ap.add_argument("--salida", default=os.path.join(AQUI, "psf_real"))
     args = ap.parse_args()
+    os.makedirs(args.salida, exist_ok=True)
     N, r_n = args.cuadros, args.r_nucleo
     rng = np.random.default_rng(0)
 

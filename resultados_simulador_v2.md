@@ -55,9 +55,9 @@ No cambian: la geometría del espejo (β en [40, 50]°, φ aleatorio), la célul
 
 ## 2. Autofluorescencia de la célula en Yeast6_1
 
-`figuras/autofluorescencia_celula.py` → `figuras/fig_autofluorescencia_celula.png`, `figuras/autofluorescencia_celula.csv`.
+`figuras/autofluorescencia_celula.py` → `figuras/autofluorescencia_celula/fig_autofluorescencia_celula.png`, `figuras/autofluorescencia_celula/autofluorescencia_celula.csv`.
 
-![](figuras/fig_autofluorescencia_celula.png)
+![](figuras/autofluorescencia_celula/fig_autofluorescencia_celula.png)
 
 **Método.** La célula no se ve aislada: alrededor del real está el halo de su PSF, que cae con el fotoblanqueo (núcleo de 5 970 a 2 570 e⁻ en el derecho). Por cuadro y por anillo de 4 px alrededor del real se mide el exceso sobre el fondo lejano:
 - centro en la posición del real en ese cuadro;
@@ -93,7 +93,7 @@ Densidad relativa al primer bin. Los emisores con |z| > 2 µm pasan del 6.3 % al
 
 ## 4. PSF aleatorizada
 
-![](figuras/fig_simulador_v2.png)
+![](figuras/simulador_v2/fig_simulador_v2.png)
 
 **Pupila de la muestra.** La fase es
 
@@ -129,7 +129,7 @@ El banco solo da K (256 con cerca). La SNR del GT también usa la PSF de la mues
 
 ## 6. Línea base: la red cerca actual sobre el test v2
 
-![](figuras/fig_simulador_v2_linea_base.png)
+![](figuras/simulador_v2/fig_simulador_v2_linea_base.png)
 
 **Tests** (regenerados con la config actual: coma en [0, 1.2] rad y contraste de la autofluorescencia en [0, 4.0]):
 - `test_celula_v2_b45_cerca`: 2000 imágenes, semilla 3, 13 067 emisores en el FOV, 0 reintentos, 156 s.
@@ -137,7 +137,7 @@ El banco solo da K (256 con cerca). La SNR del GT también usa la PSF de la mues
 
 Los dos rangos nuevos no cambian las posiciones, los fotones ni el fondo base: la coma sale del flujo propio de la pupila y la amplitud de la célula es el último sorteo del fondo. Los emisores son los mismos que en la primera versión (13 067).
 
-Tolerancia 150 / 300 nm. La red se entrenó con z en ±2500 nm y no puede predecir más allá de ±2700 (los planos del margen). Tablas en `figuras/simulador_v2_linea_base.csv`.
+Tolerancia 150 / 300 nm. La red se entrenó con z en ±2500 nm y no puede predecir más allá de ±2700 (los planos del margen). Tablas en `figuras/simulador_v2/simulador_v2_linea_base.csv`.
 
 | test | recall | precisión | FP por imagen | RMSE lat | RMSE z | sesgo z | recall \|z\| ≤ 2.5 µm |
 |---|---|---|---|---|---|---|---|

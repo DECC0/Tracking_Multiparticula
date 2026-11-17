@@ -29,7 +29,7 @@ reflejo de la variante cerca. Solo lee lo que escribe evaluate.py
 Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     $PY figuras/diagnostico_celula.py [--variantes cerca lejos] [--eval VARIANTE CARPETA ...]
-        [--control CON SIN] [--n-boot 2000] [--salida figuras]
+        [--control CON SIN] [--n-boot 2000] [--salida figuras/diagnostico_celula]
 Escribe en --salida: diag_celula_rangos.csv (todas las tablas por rango, columnas variante y
 tabla), diag_celula_fp.csv (los FP con su clase), fig_diag_celula.png/.pdf,
 fig_diag_celula_fp.png/.pdf y, con --control, diag_celula_control.csv y
@@ -474,10 +474,11 @@ def main():
                    help="evaluaciones de la red cerca (misma maquina) sobre test_celula_b45_cerca y su _sin_reflejo")
     p.add_argument("--n-boot", type=int, default=2000)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "diagnostico_celula"))
     a = p.parse_args()
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     evals = dict(a.eval or [])
 
     tabs, fps, gts, bs = {}, {}, {}, None

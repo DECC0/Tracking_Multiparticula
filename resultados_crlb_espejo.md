@@ -5,10 +5,10 @@
 Generado con `figuras/crlb_espejo.py` (`~/miniforge3/envs/tesis/bin/python figuras/crlb_espejo.py`, ~35 s).
 
 Figuras:
-- `figuras/fig_crlb_espejo_sz+1.png` (y `.pdf`)
-- `figuras/fig_crlb_espejo_sz-1.png` (y `.pdf`)
+- `figuras/crlb_espejo/fig_crlb_espejo_sz+1.png` (y `.pdf`)
+- `figuras/crlb_espejo/fig_crlb_espejo_sz-1.png` (y `.pdf`)
 
-Datos (versionados salvo las rejillas completas `figuras/crlb_espejo_sz±1.csv`, 8.3 MB en total). Para regenerar todo con el código anterior al cambio de convención de z (α desde el plano focal, `signo_z`), desde la raíz del repo:
+Datos (versionados salvo las rejillas completas `figuras/crlb_espejo/crlb_espejo_sz±1.csv`, 8.3 MB en total). Para regenerar todo con el código anterior al cambio de convención de z (α desde el plano focal, `signo_z`), desde la raíz del repo:
 
 ```bash
 git checkout a695f65 -- figuras/crlb_espejo.py simulador_nuevo geometria_espejo.py   # o un checkout completo de a695f65
@@ -19,8 +19,8 @@ git checkout HEAD -- figuras/crlb_espejo.py simulador_nuevo geometria_espejo.py
 Necesita `localizacion/datos/test_espejo_sz±1` y las evaluaciones de las corridas en `localizacion/corridas/` (no versionados).
 
 Datos:
-- `figuras/crlb_espejo_rangos_sz±1.csv`: por rango (d, fotones), con CRLB, triangulación, RMSE de las redes, IC y diferencias.
-- `figuras/crlb_espejo_sz±1.csv`: rejilla completa de la CRLB, 44 d × 9 z × 13 N × 5 fondos.
+- `figuras/crlb_espejo/crlb_espejo_rangos_sz±1.csv`: por rango (d, fotones), con CRLB, triangulación, RMSE de las redes, IC y diferencias.
+- `figuras/crlb_espejo/crlb_espejo_sz±1.csv`: rejilla completa de la CRLB, 44 d × 9 z × 13 N × 5 fondos.
 
 Redes comparadas, cada una sobre el test con espejo de su signo (`localizacion/datos/test_espejo_sz±1`, el mismo GT emisor por emisor):
 - `hypatia_espejo_sz+1_20261109-234610` y `hypatia_espejo_sz-1_20261109-234650`: entrenadas con espejo (precisión 0.980, RMSE z global 65 y 63 nm).

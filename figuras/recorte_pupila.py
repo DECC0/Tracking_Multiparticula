@@ -42,7 +42,7 @@ Uso:
     $PY figuras/recorte_pupila.py                                  # ~5 min
     $PY figuras/recorte_pupila.py --partes perdida forma
     $PY figuras/recorte_pupila.py --partes --red <corrida>/evaluacion_<sin> <corrida>/evaluacion_<con> [--red ...]
-Escribe en figuras/: fig_recorte_pupila.png/.pdf, fig_recorte_pupila_psf.png/.pdf y
+Escribe en figuras/recorte_pupila/: fig_recorte_pupila.png/.pdf, fig_recorte_pupila_psf.png/.pdf y
 recorte_pupila_<parte>.csv.
 """
 import argparse
@@ -60,7 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import simulador as sim  # noqa: E402
 import crlb_espejo as ce  # noqa: E402
 
-SALIDA = Path(__file__).resolve().parent
+SALIDA = Path(__file__).resolve().parent / "recorte_pupila"
 VARIANTES = {"lejos": False, "cerca": True}
 BETAS_PERDIDA = np.arange(0.0, 60.01, 1.0)
 ZP = np.arange(-5500.0, 1500.1, 250.0)            # z' del reflejo [nm]
@@ -588,6 +588,7 @@ def main(argv=None):
                    help="dos carpetas de evaluate.py (sin y con recorte); se puede repetir")
     p.add_argument("--sufijo", default="")
     args = p.parse_args(argv)
+    SALIDA.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     res = {}
     if "perdida" in args.partes:

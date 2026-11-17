@@ -51,7 +51,7 @@ Uso:
     $PY figuras/crlb_espejo.py --red espejo localizacion/corridas/<corrida>/evaluacion_test_espejo_b45_lejos [--red ...]
     $PY figuras/crlb_espejo.py --variantes cerca --sufijo _x
     $PY figuras/crlb_espejo.py --celula [--variantes cerca lejos] [--procesos 14]   # ~2 min por variante
-Escribe en figuras/: fig_crlb_espejo_b45_<variante>.png/.pdf, crlb_espejo_b45_<variante>.csv
+Escribe en figuras/crlb_espejo/: fig_crlb_espejo_b45_<variante>.png/.pdf, crlb_espejo_b45_<variante>.csv
 (rejilla completa de la CRLB) y crlb_espejo_rangos_b45_<variante>.csv (por rango, con las redes);
 con --celula: fig_crlb_celula_b45_<variante>.png/.pdf, crlb_celula_b45_<variante>.csv (por emisor) y
 crlb_celula_rangos_b45_<variante>.csv (por rango de z, fotones y distancia al espejo, columna tabla).
@@ -843,7 +843,7 @@ def main():
                    help="carpeta evaluacion_test_espejo_b45_<variante> de evaluate.py; sin --red se buscan en corridas/")
     p.add_argument("--datos", default=str(RAIZ / "localizacion" / "datos"),
                    help="carpeta con test_espejo_b45_lejos y test_espejo_b45_cerca (generar_espejo.py)")
-    p.add_argument("--salida", default=str(Path(__file__).resolve().parent))
+    p.add_argument("--salida", default=str(Path(__file__).resolve().parent / "crlb_espejo"))
     p.add_argument("--sufijo", default="")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n-boot", type=int, default=2000, help="remuestreos de imagenes para los IC de las redes")
@@ -854,6 +854,7 @@ def main():
 
     rng = np.random.default_rng(a.seed)
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     if a.celula:
         modo_celula(a, rng, salida)
         return

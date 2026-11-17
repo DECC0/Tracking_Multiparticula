@@ -30,7 +30,7 @@ El fotoblanqueo (~2.6x en 100 cuadros) no se modela (trabajo futuro): los
 ratios son cocientes por cuadro, asi que no lo arrastran.
 
 Uso:
-    $PY figuras/analisis_datos_reales.py [--tif RUTA] [--beta-deg 56] [--radio-um 1.5] [--salida figuras]
+    $PY figuras/analisis_datos_reales.py [--tif RUTA] [--beta-deg 56] [--radio-um 1.5] [--salida figuras/datos_reales]
 """
 
 import argparse
@@ -404,8 +404,9 @@ def main():
     ap.add_argument("--tif", default=TIF_DEF)
     ap.add_argument("--beta-deg", type=float, default=56.0, help="angulo del espejo desde el eje optico")
     ap.add_argument("--radio-um", type=float, default=1.5, help="radio de la fotometria principal")
-    ap.add_argument("--salida", default=os.path.dirname(os.path.abspath(__file__)))
+    ap.add_argument("--salida", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "datos_reales"))
     args = ap.parse_args()
+    os.makedirs(args.salida, exist_ok=True)
     beta = np.radians(args.beta_deg)
     r_px = args.radio_um * 1000 / PIXEL_NM
 

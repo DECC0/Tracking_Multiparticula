@@ -62,7 +62,7 @@ Uso:
     PY=~/miniforge3/envs/tesis/bin/python
     LD_PRELOAD=$HOME/miniforge3/envs/tesis/lib/libstdc++.so.6 $PY figuras/calibracion_pupila.py \
         [--tif RUTA] [--cache NPZ] [--betas 41 45 49] [--z-barrido -4000 8000 1000] [--n-minimos 2]
-        [--n-boot 30] [--n-sint 2] [--desde-arranques] [--salida figuras]
+        [--n-boot 30] [--n-sint 2] [--desde-arranques] [--salida figuras/calibracion_pupila]
     LD_PRELOAD=... $PY figuras/calibracion_pupila.py --perfil-ratio 0.1 0.2 0.45 0.7 0.9   # despues de la corrida
     LD_PRELOAD=... $PY figuras/calibracion_pupila.py --solo-esferica [--a40-arranques ...] [--perfil-a40 -8 -3.5 0.25]
 Escribe en --salida: calibracion_pupila_barrido.csv, calibracion_pupila_arranques.csv,
@@ -900,9 +900,10 @@ def main():
                    help="idem con a40 > 0 (los minimos locales del barrido)")
     p.add_argument("--perfil-a40", type=float, nargs=3, default=[-8.0, -3.5, 0.25], metavar=("INI", "FIN", "PASO"))
     p.add_argument("--ramas-perfil", type=int, default=3, help="minimos de cerca (distintos en z o a40) con perfil")
-    p.add_argument("--salida", default=str(AQUI))
+    p.add_argument("--salida", default=str(AQUI / "calibracion_pupila"))
     a = p.parse_args()
     salida = Path(a.salida)
+    salida.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(a.semilla)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     t_ini = time.time()

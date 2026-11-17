@@ -2,7 +2,7 @@
 Figuras de la red de localizacion a partir de corridas y evaluaciones ya hechas
 (log.csv, gt_eval.csv y predicciones.csv de evaluate.py); no corre la red.
 
-Genera (PNG 300 dpi + PDF vectorial) en figuras/, cada una con 2 o mas corridas
+Genera (PNG 300 dpi + PDF vectorial) en figuras/redes_sin_espejo/, cada una con 2 o mas corridas
 (color y marcador por corrida, en el orden en que se pasan):
   - fig_curvas_entrenamiento<sufijo>  : perdida de val (y train, tenue) por epoca, mejor epoca marcada
   - fig_recall_comparacion<sufijo>    : recall vs fotones y vs SNR sobre test_snr y test_snr_mezcla
@@ -40,7 +40,7 @@ from comun_localizacion import (ESTILO, COLORES, MARCADORES, COLOR_TENUE, TENUE,
                                 tabla_recall_vs_vecino, graficar_recall_vs_vecino, imagen_electrones,
                                 norma_comun, extension_um, dibujar_frame, marcar_emisor, barra_escala, barra_z)
 
-OUT = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redes_sin_espejo")
 FIGURAS = ("curvas", "recall", "vecino", "ejemplos")
 
 ap = argparse.ArgumentParser(description="Figuras de la red de localizacion (sin correr la red)")
@@ -57,6 +57,7 @@ plt.rcParams.update(ESTILO)
 
 
 def guardar(fig, nombre):
+    os.makedirs(OUT, exist_ok=True)
     for ext in ("png", "pdf"):
         fig.savefig(os.path.join(OUT, f"{nombre}{args.sufijo}.{ext}"), dpi=300)
     plt.close(fig)
