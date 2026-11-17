@@ -13,8 +13,18 @@ Nat. Methods 2008), sin fusiones ni divisiones.
    aumentada, con costo d^2 / g (g = cuadros entre el final y el comienzo:
    difusion) y umbral radio^2 (es decir d < radio sqrt(g)).
 
-Coordenadas: X, Y, Z en nm, con Z ya multiplicada por escala_z (z reescalada
-por su error, escala_z = sigma_lateral / sigma_z), asi el radio es isotropo.
+Costos (el parametro costo de enlazar; los dos con el mismo esquema):
+    CostoEuclideo(radio)  linea base (tracking_base.py): d^2 / g con umbral
+        radio^2. Coordenadas X, Y, Z en nm con Z ya multiplicada por escala_z
+        (z reescalada por su error, escala_z = sigma_lateral / sigma_z), asi el
+        radio es isotropo.
+    CostoNormalizado(sigma, D, dt, r_chi, c_loc)  distancia normalizada por eje
+        d^2 = sum_e (a_e - b_e)^2 / (c_loc sigma_e^2 + 2 D g dt), con umbral
+        r_chi^2: es el chi^2 del desplazamiento si el paso browniano y el error
+        de localizacion son gaussianos e independientes por eje. c_loc = 2
+        cuando los errores de dos cuadros son independientes (la diferencia
+        tiene 2 sigma^2); 1 es la formula sigma^2 + 2 D dt. Coordenadas en nm
+        sin reescalar.
 """
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -47,19 +57,49 @@ def asignacion_lap(costo, b):
     return pares[valido[pares[:, 0], pares[:, 1]]] if len(pares) else pares
 
 
-def enlazar(frames, pos, radio, max_hueco=2):
+class CostoEuclideo:
+    """d^2 / g (g = cuadros entre las dos detecciones) con umbral b = radio^2."""
+
+    def __init__(self, radio):
+        self.b = float(radio) ** 2
+
+    def __call__(self, a, c, g):
+        return ((a[:, None, :] - c[None, :, :]) ** 2).sum(-1) / g
+
+
+class CostoNormalizado:
+    """sum_e (a_e - c_e)^2 / (c_loc sigma_e^2 + 2 D g dt) con umbral b = r_chi^2.
+
+    sigma : (d,) error de localizacion por eje [nm]; D [nm^2/s]; dt [s]."""
+
+    def __init__(self, sigma, D, dt, r_chi, c_loc=2.0):
+        self.s2 = c_loc * np.asarray(sigma, float) ** 2
+        self.q = 2.0 * D * dt
+        self.b = float(r_chi) ** 2
+
+    def __call__(self, a, c, g):
+        g = np.asarray(g, float)
+        var = self.s2 + self.q * g[..., None]                    # (..., d)
+        return ((a[:, None, :] - c[None, :, :]) ** 2 / var).sum(-1)
+
+
+def enlazar(frames, pos, radio=None, max_hueco=2, costo=None):
     """Pistas de detecciones.
 
     frames : (n,) int, cuadro de cada deteccion
-    pos    : (n, 3) coordenadas (ver coordenadas)
-    radio  : desplazamiento maximo entre cuadros consecutivos (mismas unidades)
+    pos    : (n, d) coordenadas (ver coordenadas y los costos)
+    radio  : desplazamiento maximo entre cuadros consecutivos (mismas unidades);
+             equivale a costo=CostoEuclideo(radio)
+    costo  : objeto con b (costo de no enlazar) y __call__(a, c, g) -> (n_a, n_c)
     Devuelve (n,) int: id de pista de cada deteccion (0, 1, ...)."""
+    if costo is None:
+        costo = CostoEuclideo(radio)
     frames = np.asarray(frames)
     n = len(frames)
     pista = -np.ones(n, int)
     if n == 0:
         return pista
-    b = radio ** 2
+    b = costo.b
     orden = {t: np.flatnonzero(frames == t) for t in np.unique(frames)}
     ts = sorted(orden)
     sig = 0
@@ -67,7 +107,7 @@ def enlazar(frames, pos, radio, max_hueco=2):
         act = orden[t]
         prev = orden.get(t - 1, np.zeros(0, int))
         if len(prev) and len(act):
-            d2 = ((pos[prev][:, None, :] - pos[act][None, :, :]) ** 2).sum(-1)
+            d2 = costo(pos[prev], pos[act], 1.0)
             d2[d2 >= b] = np.inf
             for i, j in asignacion_lap(d2, b):
                 pista[act[j]] = pista[prev[i]]
@@ -86,7 +126,7 @@ def enlazar(frames, pos, radio, max_hueco=2):
     candidato = (g >= 2) & (g <= max_hueco + 1)
     if not candidato.any():
         return _renumerar(pista)
-    d2 = ((fin_p[:, None, :] - ini_p[None, :, :]) ** 2).sum(-1) / np.maximum(g, 1)
+    d2 = costo(fin_p, ini_p, np.maximum(g, 1))
     d2 = np.where(candidato & (d2 < b), d2, np.inf)
     padre = {int(k): int(k) for k in ids}
     for i, j in asignacion_lap(d2, b):
@@ -98,6 +138,12 @@ def enlazar(frames, pos, radio, max_hueco=2):
             r = padre[r]
         raiz[k] = r
     return _renumerar(np.array([raiz[int(k)] for k in pista]))
+
+
+def filtrar_cortas(pista, largo_min):
+    """Mascara (n,) de las detecciones cuyas pistas tienen >= largo_min detecciones."""
+    _, inv, cuenta = np.unique(pista, return_inverse=True, return_counts=True)
+    return cuenta[inv] >= largo_min
 
 
 def _renumerar(p):

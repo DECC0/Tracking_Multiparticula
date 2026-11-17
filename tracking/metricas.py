@@ -59,16 +59,21 @@ def distancias_pistas(X, Y, eps):
     return np.where(ambos, np.minimum(d, eps), 0).sum(-1) + eps * uno.sum(-1)
 
 
-def isbi(X, Y, eps):
+def isbi(X, Y, eps, por_pista=False):
     """Sumas de un video para alpha, beta y JSC (se agregan sumando entre videos).
 
-    X : (n_x, T, 3) pistas reales; Y : (n_y, T, 3) pistas estimadas."""
+    X : (n_x, T, 3) pistas reales; Y : (n_y, T, 3) pistas estimadas.
+    Con por_pista=True devuelve ademas un dict de arreglos (n_x,) por pista real:
+    pareja (indice en Y, -1 = vacia), d (su termino de d(X, Y*)), d0 (eps |theta|),
+    tp (puntos TP) y fp (puntos de su pareja que no son TP), para agregar alpha y
+    un JSC por grupos de pistas reales (las espurias no tienen pista real)."""
     n_x, n_y = len(X), len(Y)
     len_x = np.isfinite(X[..., 0]).sum(1) if n_x else np.zeros(0)
     len_y = np.isfinite(Y[..., 0]).sum(1) if n_y else np.zeros(0)
     d_vacio = float(eps * len_x.sum())
     pareja = -np.ones(n_x, int)
     d_xy = d_vacio
+    d_i = eps * len_x.astype(float)
     if n_x and n_y:
         D = distancias_pistas(X, Y, eps)
         C = np.full((n_x, n_y + n_x), np.inf)
@@ -76,19 +81,25 @@ def isbi(X, Y, eps):
         C[np.arange(n_x), n_y + np.arange(n_x)] = eps * len_x
         f, c = linear_sum_assignment(np.where(np.isfinite(C), C, 1e30))
         d_xy = float(C[f, c].sum())
+        d_i[f] = C[f, c]
         real = c < n_y
         pareja[f[real]] = c[real]
     espurias = np.setdiff1d(np.arange(n_y), pareja[pareja >= 0])
     d_espurias = float(eps * len_y[espurias].sum()) if n_y else 0.0
-    tp = 0
+    tp_i = np.zeros(n_x, int)
     for i in np.flatnonzero(pareja >= 0):
         a, b = X[i], Y[pareja[i]]
         ok = np.isfinite(a[:, 0]) & np.isfinite(b[:, 0])
-        tp += int((np.sqrt(((a[ok] - b[ok]) ** 2).sum(-1)) < eps).sum())
-    return dict(d_xy=d_xy, d_x0=d_vacio, d_ybar0=d_espurias,
-                tp_det=tp, fn_det=int(len_x.sum()) - tp, fp_det=int(len_y.sum()) - tp,
-                tp_pistas=int((pareja >= 0).sum()), fn_pistas=int((pareja < 0).sum()), fp_pistas=len(espurias),
-                n_pistas_gt=n_x, n_pistas_est=n_y)
+        tp_i[i] = int((np.sqrt(((a[ok] - b[ok]) ** 2).sum(-1)) < eps).sum())
+    tp = int(tp_i.sum())
+    s = dict(d_xy=d_xy, d_x0=d_vacio, d_ybar0=d_espurias,
+             tp_det=tp, fn_det=int(len_x.sum()) - tp, fp_det=int(len_y.sum()) - tp,
+             tp_pistas=int((pareja >= 0).sum()), fn_pistas=int((pareja < 0).sum()), fp_pistas=len(espurias),
+             n_pistas_gt=n_x, n_pistas_est=n_y)
+    if not por_pista:
+        return s
+    fp_i = np.where(pareja >= 0, len_y[np.maximum(pareja, 0)] if n_y else 0, 0) - tp_i
+    return s, dict(pareja=pareja, d=d_i, d0=eps * len_x.astype(float), tp=tp_i, fp=fp_i, largo=len_x.astype(int))
 
 
 def de_sumas(s):
