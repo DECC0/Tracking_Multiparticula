@@ -23,6 +23,7 @@ Los scripts y notebooks de análisis están en esta carpeta. Lo que generan (PNG
 | `tracking_base/` | tracking base: red v2 s1 + enlace LAP en 200 videos simulados (ISBI, identidades, D por MSD) | `tracking_base.py` | `resultados/resultados_tracking_base.md` |
 | `tracking_3d/` | enlace mejorado (costo normalizado, huecos, umbral, largo mínimo), reflejos, emparejamiento real ↔ reflejo y z triangulada (por D, densidad y distancia al espejo) | `tracking_3d.py` | `resultados/resultados_tracking_3d.md` |
 | `tracking_yeast6_1/` | el pipeline de tracking 3D sobre Yeast6_1 (canal derecho): modelo del desfase real–reflejo (lineal en L), ruido de localización y sesgo red–clásico, emparejamiento, z triangulada con β 40–50°, atípicos temporales (k = 3), D por MSD y efecto de cada elección hecha a posteriori | `tracking_yeast6_1.py` | `resultados/resultados_tracking_yeast6_1.md` |
+| `linea_base_clasica/` | detector clásico (DoG + ajuste gaussiano de `tracking/reflejos.py`, k y r ajustados en la mitad de selección) frente a la red s1: detección emisor a emisor por fotones, fondo, vecino, autofluorescencia y z, reflejos como partículas, régimen fotones × vecino y tracking con el LAP mejorado | `linea_base_clasica.py` | `resultados/resultados_linea_base_clasica.md` |
 
 Otros:
 - `analisis_corridas.ipynb` exporta a `notebook/`.
