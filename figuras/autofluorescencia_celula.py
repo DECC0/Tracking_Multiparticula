@@ -40,7 +40,7 @@ ANILLOS = np.arange(8, 64, 4)              # bordes internos de los anillos de 4
 SECTOR_DEG = 60.0
 LEJOS = (60, 120)                          # [px] fondo lejano
 PLATEAU = (8, 20)                          # [px] anillos promediados para el contraste
-# posiciones medias (coordenadas locales de cada mitad; psf_real.py / resultados_psf_real.md)
+# posiciones medias (coordenadas locales de cada mitad; psf_real.py / resultados/resultados_psf_real.md)
 PUNTOS = {"der": ((327.4, 442.6), (373.7, 450.8)), "izq": ((435.9, 524.6), (431.9, 480.0))}
 COLOR = {"der": "#eb6834", "izq": "#2a78d6"}
 

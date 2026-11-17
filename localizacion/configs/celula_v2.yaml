@@ -1,13 +1,13 @@
-# Simulador v2 (resultados_simulador_v2.md): celula.yaml con los parametros medidos en Yeast6_1 y la
+# Simulador v2 (resultados/resultados_simulador_v2.md): celula.yaml con los parametros medidos en Yeast6_1 y la
 # PSF aleatorizada por muestra, solo para la variante cerca (anillos_hacia_objetivo true, signo fijo).
 #   - camara: gain 0.45 e-/ADU (transferencia de fotones), offset 97.75 ADU (nivel oscuro) y ruido de
-#     lectura uniforme en [2.18, 2.90] ADU (mediana y rms) por muestra (resultados_psf_real.md, seccion 4)
+#     lectura uniforme en [2.18, 2.90] ADU (mediana y rms) por muestra (resultados/resultados_psf_real.md, seccion 4)
 #   - fondo log-uniforme en [1, 40] e-/px (el real: 1.3-2.3 lejos de la celula) + autofluorescencia de la
 #     celula, contraste en [0, 4.0] x el fondo base (medido: 0.46 izq, 1.83 der; autofluorescencia_celula.py)
 #   - fotones hasta 50000 (el real del canal derecho: 35000-68000 en total)
 #   - z de la red +-3000 nm, con peso en los polos de la celula (celula_peso_polos 0.5)
 #   - PSF por muestra: esferica uniforme en [4.0, 6.5] rad (calibracion: 4.11 a 6.40, seccion 7 de
-#     resultados_calibracion_pupila.md), astigmatismo y coma con magnitud uniforme en [0, 1.3] y [0, 1.2] rad
+#     resultados/resultados_calibracion_pupila.md), astigmatismo y coma con magnitud uniforme en [0, 1.3] y [0, 1.2] rad
 #     y orientacion uniforme; el real y su reflejo comparten la pupila de la muestra
 # El resto (geometria, celula, ratio, red, entrenamiento) es el de celula.yaml.
 #
@@ -57,7 +57,7 @@ datos:
   escala_distancia_px: null               # null -> max(H, W) = 64 px
   max_reintentos_espejo: 20
   ratio_reflejo_rango: [0.45, 1.0]        # calibracion por fotometria de los datos reales con los recortes
-                                          # (resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
+                                          # (resultados/resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
   celula_diametro_rango_um: [4.0, 6.0]
   celula_altura_rango_nm: null           # null -> altura_celula_nm
   celula_contacto_centrado: true          # contacto celula-espejo en el centro del FOV ...

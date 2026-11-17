@@ -33,7 +33,7 @@ Uso:
 Escribe en --salida: diag_celula_rangos.csv (todas las tablas por rango, columnas variante y
 tabla), diag_celula_fp.csv (los FP con su clase), fig_diag_celula.png/.pdf,
 fig_diag_celula_fp.png/.pdf y, con --control, diag_celula_control.csv y
-fig_diag_celula_control.png/.pdf. Imprime todas las cifras de resultados_celula.md.
+fig_diag_celula_control.png/.pdf. Imprime todas las cifras de resultados/resultados_celula.md.
 """
 import argparse
 import json

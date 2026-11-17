@@ -20,7 +20,7 @@ Partes (--partes, por defecto todas):
                de PSF completa, como haria un localizador que no lo modela. El
                sesgo lateral a lo largo de m entra en la z triangulada como
                dz = -dm / sin(2 beta) (exacto: m y z' del reflejo dependen solo
-               de d; ver resultados_calibracion_espejo.md); beta 40 / 45 / 50.
+               de d; ver resultados/resultados_calibracion_espejo.md); beta 40 / 45 / 50.
   crlb         CRLB conjunta de z (real + reflejo, figuras/crlb_espejo.py) con el
                reflejo completo y recortado y con real y reflejo recortados
                (modelo correcto), frente al emisor solo, a beta = 45, por
@@ -71,10 +71,10 @@ ROIS_SESGO = (15, 30)                             # medio lado de la ROI [px]: 3
 D_CRLB = np.arange(0.0, 4000.1, 250.0)
 Z_CRLB = (-800.0, 0.0, 800.0)
 N_CRLB, B_CRLB = (2000.0, 5000.0, 20000.0), 20.0
-SEPARACION_UM = 4.5                               # real - reflejo medida (resultados_datos_reales.md)
+SEPARACION_UM = 4.5                               # real - reflejo medida (resultados/resultados_datos_reales.md)
 Z_REAL_CAL = np.arange(-2500.0, 2500.1, 100.0)
 R_FOT_UM = 1.5
-# cociente reflejo/real medido por radio (resultados_datos_reales.md, seccion 3, fondo anillo): cociente por
+# cociente reflejo/real medido por radio (resultados/resultados_datos_reales.md, seccion 3, fondo anillo): cociente por
 # cuadro y regresion a lo largo del fotoblanqueo. El canal derecho es el robusto (0.42-0.46 a 1.5 um)
 RADIOS_CAL_UM = (0.5, 1.0, 1.25, 1.5, 1.75, 2.0, 2.2)
 Q_MEDIDOS = {"der, cociente": (0.70, 0.63, 0.52, 0.43, 0.41, 0.43, 0.45),

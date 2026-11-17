@@ -46,7 +46,7 @@ Uso:
 Convencion: +z hacia el objetivo, espejo a 45 grados del eje optico; variantes
 de la PSF lejos / cerca (anillos_hacia_objetivo False / True). Sin la corrida
 y el test de una variante (hypatia_espejo_b45_<variante>, test_espejo_b45_<variante>)
-solo se corre el escenario crlb. Los resultados de resultados_temporal_espejo.md
+solo se corre el escenario crlb. Los resultados de resultados/resultados_temporal_espejo.md
 son de la convencion vieja (alpha = 34 desde el plano focal, signo_z).
 Escribe figuras/temporal_espejo/fig_temporal_espejo_b45.png/.pdf, figuras/temporal_espejo/temporal_espejo_b45_rmse.csv
 (RMSE e IC por rango, estimador, escenario y variante) y

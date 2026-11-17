@@ -100,7 +100,7 @@ Se enlazan tres entradas con los mismos parámetros, para separar el error de lo
 
 ## 4. Métricas
 
-![](figuras/tracking_base/fig_tracking_base_metricas.png)
+![](../figuras/tracking_base/fig_tracking_base_metricas.png)
 
 `tracking/metricas.py`:
 - **ISBI (Chenouard et al., Nat. Methods 2014).**
@@ -170,7 +170,7 @@ Reescalar z por su error es correcto cuando el ruido domina el paso (D bajo). Cu
 
 ## 5. D por MSD
 
-![](figuras/tracking_base/fig_tracking_base_msd.png)
+![](../figuras/tracking_base/fig_tracking_base_msd.png)
 
 Para cada pista estimada con ≥ 10 puntos se calcula el MSD(τ) con los pares disponibles (admite huecos) en τ = 1–4 cuadros. Se ajusta **MSD(τ) = 2·n·D·τ + 2·n·σ²**, con la ordenada libre para que el error de localización no sesgue la pendiente (n = 3 en 3D y n = 1 en z; test `test_d_msd`).
 
@@ -208,7 +208,7 @@ Las pistas GT sin enlace frente al D nominal (el efecto del confinamiento y del 
 
 ## 6. Ejemplo
 
-![](figuras/tracking_base/fig_tracking_base_ejemplo.png)
+![](../figuras/tracking_base/fig_tracking_base_ejemplo.png)
 
 Muestra base 8 (9 emisores) con D = 0.2 y 1.5: las mismas condiciones iniciales. A D = 0.2 la red con LAP da 15 pistas para 9 partículas, casi todas largas y con las interrupciones donde el emisor se pierde unos cuadros. A D = 1.5 da 13 pistas que saltan entre partículas en z.
 

@@ -6,7 +6,7 @@ real (la mas brillante, con anillos) y su reflejo en el espejo.
 
 No usa ni modifica el simulador ni localizacion: solo mide en los datos para
 validar el modelo del espejo (geometria_espejo.py) y decidir como llevar los
-dos canales al simulador y a la red. Resultados en resultados_datos_reales.md.
+dos canales al simulador y a la red. Resultados en resultados/resultados_datos_reales.md.
 
 Convencion del repo: +z hacia el objetivo, beta = angulo del espejo desde el
 eje optico, pixel (fila i, columna j) centrado en (x = j, y = i), phi = azimut

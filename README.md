@@ -31,11 +31,29 @@ signo de `z_nm` (`tests/test_convencion_z.py` lo verifica contra `02d8be8`).
 (`localizacion/datos/`, `config.json` de `simulador_nuevo`) anteriores usan la
 convencion vieja y no se convierten: `cargar_config` y `cargar_checkpoint` los
 rechazan (no tienen el campo `convencion_z`). Sus evaluaciones (CSV, figuras,
-`resultados_*.md`) siguen siendo legibles, con z en la convencion vieja.
+`resultados/resultados_*.md`) siguen siendo legibles, con z en la convencion vieja.
 Para entrenar con el montaje nuevo: `hypatia/README.md`, seccion espejo.
 
-`sim_imagenes.py`, `sim_videos.py` (y `DOCUMENTACION_VIDEOS.md`) no cambian:
-conservan la z vieja (+z lejos del objetivo).
+`legado/sim_imagenes.py`, `legado/sim_videos.py` (y
+`legado/DOCUMENTACION_VIDEOS.md`) no cambian: conservan la z vieja (+z lejos
+del objetivo).
+
+## Organizacion del repo
+
+| carpeta / archivo | que hay |
+|---|---|
+| `simulador_psf/`, `generar_dataset.py` | simulador principal (este README) |
+| `sim_imagenesPSF.py` | capa de compatibilidad que reexporta `simulador_psf` |
+| `geometria_espejo.py`, `geometria_celula.py` | geometria compartida por los dos simuladores |
+| `simulador_nuevo/` | simulador reescrito con tests (su `README.md`), el que usa la red |
+| `localizacion/` | red de localizacion 3D (DeepSTORM3D); `corridas/` y `datos/` no se versionan |
+| `tracking/` | enlace LAP y metricas de tracking |
+| `figuras/` | scripts de analisis; cada uno escribe en su subcarpeta (`figuras/README.md`) |
+| `resultados/` | los `resultados_*.md` con los hallazgos de cada analisis |
+| `checks/`, `tests/` | checks con figuras y regresion bit a bit de `simulador_psf` |
+| `hypatia/` | entrenamiento en el cluster (`hypatia/README.md`) |
+| `legado/` | simuladores anteriores (`sim_imagenes.py`, `sim_videos.py`), z vieja |
+| `_archivo/` | lo que ya no se usa; `_archivo/salidas_raiz/` (salidas viejas de la raiz) no se versiona |
 
 ## Simulador (`simulador_psf/`)
 
@@ -166,8 +184,8 @@ Hasta entonces el valor por defecto del simulador (`False`) no se cambia.
 **Decision para entrenar (2026-11-10): la corrida principal es "cerca"
 (`anillos_hacia_objetivo = True`)**, con "lejos" solo como respaldo
 (`bash hypatia/lanzar_espejo.sh cerca|lejos`; las configs dejan `false` y la
-variante la fija el lanzador). Evidencia (`resultados_recorte_pupila.md`,
-seccion 6, y `resultados_datos_reales.md`): en el frame real el reflejo, a
+variante la fija el lanzador). Evidencia (`resultados/resultados_recorte_pupila.md`,
+seccion 6, y `resultados/resultados_datos_reales.md`): en el frame real el reflejo, a
 z' ~ z - 4.5 um, es compacto, y la fotometria da un cociente reflejo/real de
 ~0.43 > 0. Con "lejos" un reflejo a esa z' es un sistema de anillos de ~8 um
 sin nucleo (`figuras/recorte_pupila/fig_recorte_pupila_psf.png`): la misma fotometria sobre
@@ -175,7 +193,7 @@ imagenes simuladas da un cociente negativo o casi nulo para casi cualquier z
 del real, y el ajuste del cociente contra el radio deja residuos 3 a 4 veces
 mayores que con "cerca". Con "cerca" el reflejo es compacto y el cociente
 cae en el rango medido. **Falta confirmarlo con el z-stack de beads**
-(`resultados_calibracion_espejo.md`): es una sola particula del montaje
+(`resultados/resultados_calibracion_espejo.md`): es una sola particula del montaje
 anterior y su mascara de fase puede no ser la del simulador.
 
 Supuestos (no modelados): espejo plano ideal sin aberraciones ni

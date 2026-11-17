@@ -400,7 +400,7 @@ extender el simulador:
 ## 9. Como correrlo
 
 ```bash
-python3 sim_videos.py
+~/miniforge3/envs/tesis/bin/python legado/sim_videos.py
 ```
 
 Esto imprime en consola un resumen de la optica (heredado de

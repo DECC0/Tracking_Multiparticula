@@ -1,7 +1,7 @@
 """
 PSF real de Yeast6_1 en los dos canales de polarizacion, sin la red.
 
-Pregunta: los dos lobulos del nucleo de la PSF real (resultados_celula.md,
+Pregunta: los dos lobulos del nucleo de la PSF real (resultados/resultados_celula.md,
 seccion 4) son una aberracion del camino comun (mismo eje en los dos canales
 una vez llevados al mismo marco) o un efecto de polarizacion (eje rotado ~90
 grados entre canales)? Ademas, fotones y fondo en e- frente a los rangos de
@@ -34,7 +34,7 @@ Pasos:
 Angulos en el marco del canal derecho (coordenadas locales: x = columna - corte,
 y = fila), de +x hacia +y; ejes modulo 180. Figuras PNG 300 dpi en --salida:
 fig_psf_real_imagenes.png y fig_psf_real_medidas.png. Resultados en
-resultados_psf_real.md. Importa analisis_datos_reales.py (deteccion) y, solo
+resultados/resultados_psf_real.md. Importa analisis_datos_reales.py (deteccion) y, solo
 para la energia encerrada, simulador_nuevo/simulador.py.
 
 Uso:
@@ -62,14 +62,14 @@ import analisis_datos_reales as adr  # noqa: E402
 PX = adr.PIXEL_NM
 G = adr.GANANCIA_E_ADU
 R_REC = 30                     # medio lado de los recortes [px]
-ANILLO = (6.0, 18.0)           # anillo de la PSF [px] (resultados_celula.md, seccion 4)
+ANILLO = (6.0, 18.0)           # anillo de la PSF [px] (resultados/resultados_celula.md, seccion 4)
 CRUZ = (1.5, 7.0)              # corona del nucleo para el armonico 4 [px]
 FONDO_REC = (22.0, 29.0)       # anillo del fondo dentro del recorte [px]
 R_AJUSTE = 7.0                 # radio de la region del ajuste de dos gaussianas [px]
 SEP = (1.0, 6.0)               # separacion admisible entre los dos lobulos [px]
 R_CG = 25                      # radio maximo de la curva de crecimiento [px]
 N_BINS = 36                    # perfiles angulares: bins de 10 grados
-# z del ajuste del perfil radial de resultados_celula.md (seccion 4): (anillos_hacia_objetivo, z real, z reflejo)
+# z del ajuste del perfil radial de resultados/resultados_celula.md (seccion 4): (anillos_hacia_objetivo, z real, z reflejo)
 Z_SECCION4 = {"cerca": (True, -1200.0, -5800.0), "lejos": (False, 5800.0, 1300.0)}
 COLOR = {"izq": "#2a78d6", "der": "#eb6834", "gris": "#52514e", "rejilla": "#e6e5e0"}
 PUNTOS = ("real", "reflejo")

@@ -6,7 +6,8 @@ Por defecto reproduce el video de la seed 89 de fig_cuadros_gt a 256x256
 altera el numero de llamadas al rng, asi que las trayectorias y el brillo
 relativo de cada particula se mantienen; solo cambian el ruido y el contraste.
 
-Escribe en el directorio actual:
+Escribe en --salida (por defecto figuras/gif_video/; los .gif se versionan, el
+.tif y el .csv no):
   video_fig_cuadros_gt_b_<W><sufijo>.gif / .tif
   ground_truth_fig_cuadros_gt_b_<W><sufijo>.csv
 
@@ -41,6 +42,7 @@ ap.add_argument("--percentiles", type=float, nargs=2, default=(1.0, 99.9),
                 metavar=("NEGRO", "BLANCO"), help="escala de grises del GIF")
 ap.add_argument("--ms", type=int, default=100, help="duracion de cada cuadro [ms]")
 ap.add_argument("--sufijo", default="")
+ap.add_argument("--salida", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "gif_video"))
 args = ap.parse_args()
 
 # n_emisores_rango = (4, 12) como en fig_cuadros_gt de figuras_documento.py
@@ -55,15 +57,17 @@ rng = np.random.default_rng(cfg.seed)
 video, filas = generar_video(cfg, banco, rng, video_id=cfg.seed)
 
 nombre = f"fig_cuadros_gt_b_{cfg.W}{args.sufijo}"
-tifffile.imwrite(f"video_{nombre}.tif", video, imagej=True,
+os.makedirs(args.salida, exist_ok=True)
+sal = lambda f: os.path.join(args.salida, f)
+tifffile.imwrite(sal(f"video_{nombre}.tif"), video, imagej=True,
                  metadata={"axes": "TYX", "finterval": cfg.dt_s})
-pd.DataFrame(filas).to_csv(f"ground_truth_{nombre}.csv", index=False)
+pd.DataFrame(filas).to_csv(sal(f"ground_truth_{nombre}.csv"), index=False)
 
 # escala de grises fija en todo el video (percentiles sobre todos los cuadros)
 lo, hi = np.percentile(video, args.percentiles)
 cuadros = [Image.fromarray((np.clip((f - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8))
            for f in video]
-cuadros[0].save(f"video_{nombre}.gif", save_all=True, append_images=cuadros[1:],
+cuadros[0].save(sal(f"video_{nombre}.gif"), save_all=True, append_images=cuadros[1:],
                 duration=args.ms, loop=0)
-print(f"video_{nombre}.gif : {len(cuadros)} cuadros, negro = {lo:.0f} ADU, "
+print(f"{sal(f'video_{nombre}.gif')} : {len(cuadros)} cuadros, negro = {lo:.0f} ADU, "
       f"blanco = {hi:.0f} ADU")

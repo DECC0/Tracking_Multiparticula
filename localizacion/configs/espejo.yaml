@@ -69,7 +69,7 @@ datos:
   escala_distancia_px: null               # null -> max(H, W) = 64 px
   max_reintentos_espejo: 20
   ratio_reflejo_rango: [0.45, 1.0]        # calibracion por fotometria de los datos reales con los recortes
-                                          # (resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
+                                          # (resultados/resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
 
 target:
   upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y

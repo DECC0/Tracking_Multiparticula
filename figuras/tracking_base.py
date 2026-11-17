@@ -1,6 +1,6 @@
 """
 Primera version del tracking: red de localizacion v2 (s1) + enlace LAP
-clasico, validado en simulacion. Ver resultados_tracking_base.md.
+clasico, validado en simulacion. Ver resultados/resultados_tracking_base.md.
 
 Partes:
     datos      200 videos de 50 cuadros a 10 Hz con la config de la corrida s1

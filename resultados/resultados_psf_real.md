@@ -45,7 +45,7 @@ Validación con las posiciones del real y del reflejo:
 
 ## 2. Imágenes medias, lóbulos y anillo
 
-![](figuras/psf_real/fig_psf_real_imagenes.png)
+![](../figuras/psf_real/fig_psf_real_imagenes.png)
 
 **Método.**
 - Recortes de 61 × 61 px de los cuadros 0–29, centrados en el centroide de cada cuadro con un desplazamiento de Fourier y refinados por correlación cruzada con la media (sobremuestreo ×20, 2 iteraciones). El refinamiento mueve los recortes 0.3–0.4 px en mediana, salvo el real izquierdo (0.85 px): su centroide está sesgado por un anillo asimétrico y débil.
@@ -75,7 +75,7 @@ Validación con las posiciones del real y del reflejo:
 
 ## 3. ¿Camino común o polarización?
 
-![](figuras/psf_real/fig_psf_real_medidas.png)
+![](../figuras/psf_real/fig_psf_real_medidas.png)
 
 Diferencia de ejes izq − der en el marco común. Bajo una aberración del camino común sería 0 y bajo un efecto de polarización ~90°:
 

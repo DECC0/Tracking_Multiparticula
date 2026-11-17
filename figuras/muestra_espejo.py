@@ -3,7 +3,7 @@ Carpeta de muestra para revisar a ojo el espejo de simulador_psf: un video con
 el espejo activado, semilla fija y todos los demas parametros por defecto de
 Config (el video 0 de generar_dataset con esa semilla).
 
-Escribe en --salida (por defecto muestra_espejo/ en el directorio actual):
+Escribe en --salida (por defecto figuras/muestra_espejo/, no versionada):
     frame_000_camara.png        frame 0 tal como lo ve la camara (con ruido), sin marcas
     frame_000_marcadores.png    el mismo frame con reales (circulos cian, con su particle_id) y reflejos
                                 (cuadrados naranja) unidos por una linea fina, la
@@ -20,7 +20,7 @@ Los PNG y GIF se agrandan --zoom veces (vecino mas cercano: cada pixel de la
 camara queda como un bloque).
 
 Uso:
-    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py [--seed 0] [--salida muestra_espejo]
+    ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py [--seed 0] [--salida figuras/muestra_espejo]
     # celula de levadura pegada al espejo:
     ~/miniforge3/envs/tesis/bin/python figuras/muestra_espejo.py --dist-max-um 4 [--z-ref-espejo-nm 0] [--z-rango-nm MIN MAX]
     # pares separados visibles (emisores brillantes, fondo bajo):
@@ -41,7 +41,7 @@ from simulador_psf import Config, BancoPSF, Espejo, generar_video, guardar_video
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--seed", type=int, default=Config.seed)
-ap.add_argument("--salida", default="muestra_espejo")
+ap.add_argument("--salida", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "muestra_espejo"))
 ap.add_argument("--zoom", type=int, default=8)
 ap.add_argument("--percentiles", type=float, nargs=2, default=(1.0, 99.9), metavar=("NEGRO", "BLANCO"))
 ap.add_argument("--ms", type=int, default=100, help="duracion de cada cuadro del GIF [ms]")

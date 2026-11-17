@@ -70,7 +70,7 @@ Lectura:
 
 ## 2. Lóbulos
 
-![](figuras/suma_canales/fig_suma_canales_imagenes.png)
+![](../figuras/suma_canales/fig_suma_canales_imagenes.png)
 
 Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el disco de 7 px con separación de 1–6 px, momentos con r = 4 px y armónicos del perfil angular (`figuras/suma_canales/suma_canales_lobulos.csv`):
 
@@ -95,7 +95,7 @@ Se usa el mismo método que en `psf_real.py` (`medir`): dos gaussianas en el dis
 
 ## 3. Ajuste contra la PSF escalar
 
-![](figuras/suma_canales/fig_suma_canales_residuos.png)
+![](../figuras/suma_canales/fig_suma_canales_residuos.png)
 
 **Modelo:** `PSFRecortada` de cerca y de lejos con la geometría de los datos (espejo a 45°, φ = m) y el recorte de pupila del real y del reflejo. La PSF es exacta en z, sin banco interpolado.
 

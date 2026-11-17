@@ -1,7 +1,7 @@
 """
 Suma de los dos canales de polarizacion de Yeast6_1: se parece mas a la PSF
 escalar del simulador que cada canal por separado? (continuacion de
-resultados_psf_real.md; sin la red)
+resultados/resultados_psf_real.md; sin la red)
 
 1. Registro del canal izquierdo sobre la rejilla del derecho, cuadro a cuadro,
    con la similitud impropia ya estimada (x_der = s Q x_izq + t, s = 1.049, Q =
@@ -37,7 +37,7 @@ Uso:
 Escribe en --salida: suma_canales_registro.csv, suma_canales_lobulos.csv,
 suma_canales_ajustes.csv, suma_canales_fotones.csv, suma_canales_cociente.csv, fig_suma_canales_imagenes.png,
 fig_suma_canales_residuos.png y fig_suma_canales_medidas.png (300 dpi).
-Resultados en resultados_suma_canales.md.
+Resultados en resultados/resultados_suma_canales.md.
 """
 import argparse
 import os

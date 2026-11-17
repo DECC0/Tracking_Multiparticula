@@ -74,7 +74,7 @@ con --perfil-ratio, calibracion_pupila_ratio.csv; con --solo-esferica,
 calibracion_pupila_esferica_{arranques,minimos,perfil,cinco}.csv,
 calibracion_pupila_esferica_bootstrap_{cerca,lejos}.csv, calibracion_pupila_esferica.json y
 fig_calibracion_pupila_esferica.png.
-Resultados en resultados_calibracion_pupila.md.
+Resultados en resultados/resultados_calibracion_pupila.md.
 """
 import argparse
 import json
@@ -96,7 +96,7 @@ import simulador as sim  # noqa: E402
 from geometria_espejo import GeometriaEspejo  # noqa: E402
 
 PX = adr.PIXEL_NM
-GANANCIA = 0.45                 # e-/ADU (transferencia de fotones, resultados_psf_real.md)
+GANANCIA = 0.45                 # e-/ADU (transferencia de fotones, resultados/resultados_psf_real.md)
 R_DISCO = 22.0                  # radio de cada disco del ajuste [px]
 B = 112                         # lado de la ventana por cuadro [px] (contiene los dos discos)
 ZERNIKE = ("a40", "a22", "a2m2", "a31", "a3m1")

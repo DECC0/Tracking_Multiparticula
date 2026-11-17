@@ -6,7 +6,7 @@
 #     EPOCAS=100 TIEMPO=0-09:00:00 bash hypatia/lanzar_espejo.sh lejos    # corrida completa
 # Convencion: +z hacia el objetivo, espejo a 45 grados del eje optico (configs/espejo.yaml).
 # Con celula: CONFIG=localizacion/configs/celula.yaml PREFIJO=celula bash hypatia/lanzar_espejo.sh lejos
-# Simulador v2 (resultados_simulador_v2.md), dos semillas (el test se comparte: copiar antes
+# Simulador v2 (resultados/resultados_simulador_v2.md), dos semillas (el test se comparte: copiar antes
 # localizacion/datos/test_celula_v2_b45_cerca, o lanzar la segunda cuando la primera ya lo genero):
 #     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=0 bash hypatia/lanzar_espejo.sh cerca
 #     CONFIG=localizacion/configs/celula_v2.yaml PREFIJO=celula_v2 EPOCAS=150 TIEMPO=1-06:00:00 CPUS=8 SEMILLA=1 bash hypatia/lanzar_espejo.sh cerca

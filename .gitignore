@@ -1,12 +1,22 @@
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
 *.tif
 *.tiff
+*.npy
+*.npz
+*.pt
 ground_truth*.csv
 videos/
 .vscode/
 CLAUDE.md
 hypatia/logs/
+
+# salidas regenerables que no se versionan (localizacion/corridas y datos, y
+# simulador_nuevo/salida, en sus propios .gitignore)
+figuras/muestra_espejo/
+figuras/notebook/
+_archivo/salidas_raiz/
 
 # referencia de la regresion de simulador_psf (pequena, se versiona)
 !tests/referencia/**

@@ -7,7 +7,7 @@ PY=~/miniforge3/envs/tesis/bin/python
 $PY figuras/convergencia.py [--ultimas 20]     # segundos -> fig_convergencia.png (300 dpi), convergencia_*.csv
 ```
 
-![](figuras/convergencia/fig_convergencia.png)
+![](../figuras/convergencia/fig_convergencia.png)
 
 ## Resumen
 

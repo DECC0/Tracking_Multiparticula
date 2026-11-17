@@ -2,7 +2,7 @@
 Evaluacion de las corridas v2 (configs/celula_v2.yaml, variante cerca, dos
 semillas de entrenamiento: hypatia_celula_v2_b45_cerca_s0 y _s1) frente a la
 red cerca actual (hypatia_celula_b45_cerca_20261110-234627). Ver
-resultados_celula_v2.md.
+resultados/resultados_celula_v2.md.
 
 Partes:
     convergencia  log.csv de las dos semillas: perdidas y metricas de val por
@@ -12,7 +12,7 @@ Partes:
                   -> celula_v2_convergencia.csv, fig_celula_v2_convergencia.png
     evaluacion    solo lee las salidas de evaluate.py (evaluacion_local_<test>
                   de cada semilla; las de la red actual son las de
-                  resultados_simulador_v2.md) sobre el test v2, el control con
+                  resultados/resultados_simulador_v2.md) sobre el test v2, el control con
                   la PSF fija y el test v1: metricas globales con IC 95% por
                   bootstrap de imagenes, diferencia pareada s0 - s1 (mismos
                   emisores), desglose por amp_esferica, astigmatismo, coma,
@@ -60,7 +60,7 @@ REDES = {"s0": "hypatia_celula_v2_b45_cerca_s0_20261114-090158",
          "actual": "hypatia_celula_b45_cerca_20261110-234627"}
 TESTS = {"v2": "test_celula_v2_b45_cerca", "control": "test_celula_v2_psf_fija_b45_cerca", "v1": "test_celula_b45_cerca"}
 # carpeta de evaluate.py de cada (red, test): las semillas, evaluadas localmente; la red actual, las de
-# resultados_simulador_v2.md (v1 de Hypatia, v2 y control locales)
+# resultados/resultados_simulador_v2.md (v1 de Hypatia, v2 y control locales)
 EVAL = {(r, t): f"evaluacion_local_{TESTS[t]}" for r in ("s0", "s1") for t in TESTS}
 EVAL.update({("actual", t): f"evaluacion_{TESTS[t]}" for t in TESTS})
 COLOR = {"s0": "#2a78d6", "s1": "#1baf7a", "actual": "#eb6834"}

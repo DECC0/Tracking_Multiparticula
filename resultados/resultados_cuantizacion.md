@@ -47,7 +47,7 @@ No se modificó desde el 2026-11-10 18:31, antes de las corridas de `resultados_
 
 ## 1. Posición de las predicciones respecto de la rejilla
 
-![](figuras/cuantizacion/fig_cuantizacion_fases.png)
+![](../figuras/cuantizacion/fig_cuantizacion_fases.png)
 
 `figuras/cuantizacion/cuantizacion_fases.csv`. Las columnas «< 5 nm» dan la fracción de predicciones a menos de 5 nm del plano o nodo más cercano; si las fases fueran uniformes, sería 0.10 en z y 0.41 por eje lateral. La «atracción» es el RMS de p(s) − s, con p la función cuantil de las fases predichas: lo que la acumulación cerca de los nodos suma al error, en cuadratura, si la fase real es uniforme. Lo es, porque la célula es suave a escala de 100 nm (en el GT es 0.4 nm).
 
@@ -85,7 +85,7 @@ Con cuantización, el error medio contra la posición real dentro de la celda se
 
 ## 3. Estimadores subplano alternativos
 
-![](figuras/cuantizacion/fig_cuantizacion_subplano.png)
+![](../figuras/cuantizacion/fig_cuantizacion_subplano.png)
 
 Sobre la misma salida de la red y los mismos máximos, con las mismas detecciones y confianzas que el post-procesado actual, se cambió solo cómo se calcula la posición:
 
@@ -126,7 +126,7 @@ Sobre la misma salida de la red y los mismos máximos, con las mismas deteccione
 
 ## 4. Agujero de +400 nm de cerca
 
-![](figuras/red_celula/fig_red_celula_agujero.png)
+![](../figuras/red_celula/fig_red_celula_agujero.png)
 
 **Checkpoints.** En `hypatia_celula_b45_cerca`, `mejor.pt` y `ultimo.pt` tienen los mismos pesos (máxima diferencia 0.0). La época 99 fue a la vez la última y la de menor pérdida de validación (0.3466). En lejos, `mejor.pt` es de la época 98 y `ultimo.pt` de la 99. No se guardan checkpoints intermedios en ninguna corrida: hay 30 archivos `.pt` en `localizacion/corridas/`, todos `mejor.pt` o `ultimo.pt`. La curva de transferencia de cerca con `ultimo.pt` da las mismas detecciones y las mismas z, bit a bit.
 

@@ -42,7 +42,7 @@ La parte 1 usa las evaluaciones de Hypatia (`evaluacion_test_celula_b45_<variant
 
 ## 1. Diagnóstico de las corridas
 
-![](figuras/diagnostico_celula/fig_diag_celula.png)
+![](../figuras/diagnostico_celula/fig_diag_celula.png)
 
 ### Por z
 
@@ -73,7 +73,7 @@ Recall y RMSE z por rangos de 250 nm (`figuras/diagnostico_celula/diag_celula_ra
 
 **Curva de transferencia** (`figuras/red_celula/fig_red_celula_transferencia.png`): un emisor aislado por imagen a d = 2 µm de un espejo a 45°, con fondo de 20 fotones/px, 8 repeticiones por z, recorte de pupila y la PSF de la variante de cada red.
 
-![](figuras/red_celula/fig_red_celula_transferencia.png)
+![](../figuras/red_celula/fig_red_celula_transferencia.png)
 
 | | cerca, N = 10⁴ | lejos, N = 10⁴ |
 |---|---|---|
@@ -105,7 +105,7 @@ Los dos defectos de cerca aparecen igual con y sin reflejo (ratio 0.7 o 0), así
 
 ### Falsos positivos
 
-![](figuras/diagnostico_celula/fig_diag_celula_fp.png)
+![](../figuras/diagnostico_celula/fig_diag_celula_fp.png)
 
 Clase de cada FP, la primera que cumple, a ≤ 150 nm lateral (`figuras/diagnostico_celula/diag_celula_fp.csv`):
 
@@ -128,7 +128,7 @@ Clase de cada FP, la primera que cumple, a ≤ 150 nm lateral (`figuras/diagnost
 
 ## 2. Control sin reflejo
 
-![](figuras/diagnostico_celula/fig_diag_celula_control.png)
+![](../figuras/diagnostico_celula/fig_diag_celula_control.png)
 
 `test_celula_b45_cerca_sin_reflejo` es el mismo test regenerado con `datos.ratio_reflejo_rango=[0, 0]`. Respecto del test de Hypatia, las posiciones, fotones, fondo, geometría, célula, `en_fov` y `snr` coinciden bit a bit (|Δ| ≤ 10⁻¹¹), y `photons_reflejo = 0`. Lo único que cambia es la luz del reflejo y, por eso, la realización del Poisson. Las dos evaluaciones son locales con la misma red. Diferencias pareadas con − sin, con IC por bootstrap pareado de imágenes (`figuras/diagnostico_celula/diag_celula_control.csv`):
 
@@ -154,7 +154,7 @@ Por rango, la diferencia de RMSE z sobre los detectados en los dos es:
 
 ## 3. CRLB con célula y recortes en el test
 
-![](figuras/crlb_espejo/fig_crlb_celula_b45_cerca.png)
+![](../figuras/crlb_espejo/fig_crlb_celula_b45_cerca.png)
 
 `figuras/crlb_espejo.py --celula` calcula la CRLB de cada emisor evaluable del test, no en una rejilla canónica:
 
@@ -205,7 +205,7 @@ No incluye a los otros emisores ni el prior de la célula. Por eso, además del 
 
 ### La red sobre la ventana de 96 px
 
-![](figuras/red_celula/fig_red_celula_reales.png)
+![](../figuras/red_celula/fig_red_celula_reales.png)
 
 La ventana está centrada en el punto medio del par (x0 = 303, y0 = 399 en coordenadas locales), dentro de la apertura de campo. El canal de distancia sale de la línea estimada, y la red corre cuadro a cuadro. La z de la red es la de la detección a ≤ 3 px del real (`figuras/red_celula/red_celula_reales_resumen.csv`, por cuadro en `red_celula_reales.csv`):
 
@@ -232,7 +232,7 @@ Los IC son por bootstrap de bloques de 10 cuadros.
 
 ### Forma de la PSF: el lado de los anillos
 
-![](figuras/red_celula/fig_red_celula_reales_psf.png)
+![](../figuras/red_celula/fig_red_celula_reales_psf.png)
 
 Sin la red, se compara el perfil radial medio (cuadros 0–29, alineados en subpíxel) del real y del reflejo con el de `PSFRecortada` de cada variante, con la geometría de los datos (`figuras/red_celula/red_celula_reales_perfiles.csv`). El reflejo está siempre más lejos del objetivo que el real, entre L tan 40° = 3.9 µm y L tan 50° = 5.5 µm.
 
