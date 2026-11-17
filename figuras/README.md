@@ -22,6 +22,7 @@ Los scripts y notebooks de análisis están en esta carpeta. Lo que generan (PNG
 | `celula_v2/` | corridas v2 (dos semillas): convergencia, tests, z y Yeast6_1 | `celula_v2.py` | `resultados/resultados_celula_v2.md` |
 | `tracking_base/` | tracking base: red v2 s1 + enlace LAP en 200 videos simulados (ISBI, identidades, D por MSD) | `tracking_base.py` | `resultados/resultados_tracking_base.md` |
 | `tracking_3d/` | enlace mejorado (costo normalizado, huecos, umbral, largo mínimo), reflejos, emparejamiento real ↔ reflejo y z triangulada (por D, densidad y distancia al espejo) | `tracking_3d.py` | `resultados/resultados_tracking_3d.md` |
+| `tracking_yeast6_1/` | el pipeline de tracking 3D sobre Yeast6_1 (canal derecho): red frente a la detección clásica, emparejamiento, z triangulada con β 40–50°, atípicos temporales, D por MSD | `tracking_yeast6_1.py` | `resultados/resultados_tracking_yeast6_1.md` |
 
 Otros:
 - `analisis_corridas.ipynb` exporta a `notebook/`.
