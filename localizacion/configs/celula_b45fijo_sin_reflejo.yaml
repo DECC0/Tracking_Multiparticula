@@ -1,0 +1,122 @@
+# Control A45_sin: celula_b45fijo.yaml con ratio_reflejo_rango [0, 0] (el reflejo se
+# simula y queda en el GT, pero sin luz). Referencia A45: celula.yaml con beta = 45 grados FIJO (el montaje real), sin
+# nada mas cambiado. Unicas diferencias con celula.yaml:
+#   - datos.espejo_angulo_eje_rango_deg: null (beta = angulo_espejo_eje_deg = 45 en
+#     todas las muestras; el flujo de la geometria sigue sorteando sus 4 uniformes,
+#     asi phi y el resto de los sorteos son los mismos que con beta variable)
+#   - datos.simulador.z_banco_nm fijo al banco de la referencia A
+#     (hypatia_celula_b45_cerca_20261110-234627: z_banco_celula con beta en [40, 50]).
+#     Con beta fijo el banco calculado seria mas corto (-7243 nm); asi el banco de PSF
+#     (rango, planos cada z_paso_nm = 20 nm y K_psf) es exactamente el de A
+#   - entrenamiento.nombre
+# celula_b45fijo_sin_reflejo.yaml es esta misma config con ratio_reflejo_rango [0, 0]
+# (control de entrenamiento A45_sin). Lanzamiento y tests: resultados/resultados_a45_espejo.md.
+#
+# Igual a espejo.yaml (45 grados del eje optico, PSF lejos/cerca), con los
+# emisores dentro de una celula esferica (levadura) que toca el espejo
+# (simulador_nuevo, usar_celula). Diametro sorteado en [4, 6] um por muestra y
+# centro de la celula en el foco (altura 0: pendiente de confirmar). El
+# contacto celula-espejo va en el centro del FOV (+-10 px), asi la celula y la
+# celula virtual (los reflejos) caben en 96 px: ~100% de pares real-reflejo
+# completos (con 64 px, ~79%). Los emisores llegan a z = +-3 um: el rango
+# axial de la red pasa a +-2500 nm; los de fuera (en_rango_z = False) no son
+# objetivo ni cuentan como FN. dz_nm = 100: en el piloto a +-800 nm (espejo.yaml,
+# 10 epocas x 10000 muestras) 100 nm no empeoro el RMSE z frente a 50 nm (pareado
+# sobre los emisores que detectan las dos: -1.5 a -4% por rango de fotones).
+#
+datos:
+  simulador:                  # campos de simulador.Config (menos n_frames, n_videos y seed)
+    mascara: esferica
+    H: 96
+    W: 96
+    n_emisores_rango: [1, 12]
+    z_rango_nm: [-2500.0, 2500.0]   # rango axial de la red (la celula llega a +-3 um)
+    z_banco_nm: [-7596.266658713868, 3000.0]   # = banco de la referencia A (beta en [40, 50])
+    fotones_rango: [1000.0, 30000.0]
+    fondo_rango: [5.0, 40.0]
+    usar_espejo: true
+    angulo_espejo_eje_deg: 45.0   # beta desde el eje optico; centro del rango sorteado (espejo_angulo_eje_rango_deg)
+    ratio_reflejo: 0.8          # sin uso: datos.ratio_reflejo_rango lo sortea por muestra
+    recorte_pupila_reflejo: true   # el reflejo pierde los rayos que no cruzan el espejo (4.7% a 45 grados);
+                                   # ratio_reflejo = reflectividad
+    recorte_pupila_real: true      # el real pierde los rayos que chocan con el espejo (la misma mascara): el
+                                   # portaobjetos espejado mide mm, infinito a escala de um
+    usar_celula: true
+    diametro_celula_um: 5.0
+    altura_celula_nm: 0.0     # centro de la celula en el foco (pendiente de confirmar)
+    anillos_hacia_objetivo: false   # lado del foco con anillos de la PSF esferica (pendiente; las corridas
+                                    # espejo_b45_lejos / espejo_b45_cerca difieren solo aqui)
+  canales: 1
+  fotones_dispersion: 5.0     # cada imagen usa un subrango de fotones con razon max/min 5
+  prob_rango_completo: 0.5    # ... salvo la mitad, que usa todo fotones_rango
+  prob_fondo_uniforme: 0.2
+  read_noise_rango: null      # null -> 3.26 ADU (Orca Flash 4.0, el del simulador)
+  normalizacion: robusta
+  n_train: 20000
+  n_val: 1000
+  seed_train: 1
+  seed_val: 2
+  renovar_por_epoca: true     # epoca e: muestras e n_train ... (e + 1) n_train - 1 de seed_train
+  espejo_angulo_eje_rango_deg: null      # beta FIJO = datos.simulador.angulo_espejo_eje_deg = 45
+  espejo_orientacion_aleatoria: true      # phi uniforme en [0, 360)
+  espejo_punto_aleatorio: false           # la linea del espejo la fija el contacto con la celula
+  canal_distancia_espejo: true            # entrada con 2 canales: imagen + distancia al espejo
+  escala_distancia_px: null               # null -> max(H, W) = 64 px
+  max_reintentos_espejo: 20
+  ratio_reflejo_rango: [0.0, 0.0]         # SIN LUZ DE REFLEJO (control); en A45: [0.45, 1.0], calibracion por
+                                          # fotometria de los datos reales con los recortes
+                                          # (resultados/resultados_recorte_pupila.md): 0.50-1 segun z del real y beta
+  celula_diametro_rango_um: [4.0, 6.0]
+  celula_altura_rango_nm: null           # null -> altura_celula_nm
+  celula_contacto_centrado: true          # contacto celula-espejo en el centro del FOV ...
+  celula_desplazamiento_px: 10.0          # ... +- 10 px por eje
+
+target:
+  upsampling: 4               # 98.48 / 4 = 24.6 nm por voxel en x, y
+  dz_nm: 100.0                # 51 planos en [-2500, 2500] + 2 de margen a cada lado = 55
+  planos_margen: 2
+  sigma_xy_vox: 1.0
+  sigma_z_vox: 1.0
+  escala: 100.0
+
+modelo:
+  canales_base: 64
+  dilataciones: [1, 2, 4, 8, 16, 32]   # campo receptivo 129 px (con 16: 65 px < separacion real-reflejo)
+  modo_upsampling: bilinear
+  capas_salida: 2
+  norm: batch
+  pendiente_leaky: 0.2
+  activacion_salida: hardtanh
+
+perdida:
+  terminos: {mse: 1.0, dice: 1.0}
+  suavizado_dice: 1.0
+
+entrenamiento:
+  nombre: celula_b45fijo_sin_reflejo
+  epocas: 100                 # ~4 min por epoca de 20000 muestras en la RTX 3060
+  batch: 8                    # 1.2 GB con AMP; batch 16 cabe (2.4 GB)
+  acumulacion: 1
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  amp: fp16
+  clip_grad: null
+  factor_lr: 0.5
+  paciencia_lr: 3
+  lr_min: 1.0e-5
+  parada_temprana: null
+  workers: 2                  # la GPU procesa ~85 muestras/s; un proceso simula ~250/s
+  dispositivo: auto
+  semilla: 0
+  log_cada: 50
+  datos_train: null           # carpetas de pregenerar.py; null -> on-the-fly
+  datos_val: null
+  carpeta_corridas: null      # null -> localizacion/corridas/
+
+postproc:                     # no afecta el entrenamiento; infer.py lo cambia con --set postproc.umbral=0.3
+  umbral: 0.4
+  radio_xy_vox: 3             # ventana del maximo local: 7 x 7 voxeles (172 nm) ...
+  radio_z_planos: 3           # ... por 7 planos (350 nm)
+  radio_cm_xy_vox: 2          # ventana del centro de masa: 5 x 5 x 5
+  radio_cm_z_planos: 2
+  confianza: masa

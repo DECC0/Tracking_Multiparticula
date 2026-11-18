@@ -1,0 +1,22 @@
+chequeo,pasa,detalle
+C1 celula.yaml -> celula_b45fijo.yaml,True,"datos.espejo_angulo_eje_rango_deg: (40.0, 50.0) -> None; datos.simulador.z_banco_nm: None -> (-7596.266658713868, 3000.0); entrenamiento.nombre: celula -> celula_b45fijo"
+C2 celula_b45fijo -> celula_b45fijo_sin_reflejo,True,"datos.ratio_reflejo_rango: (0.45, 1.0) -> (0.0, 0.0); entrenamiento.nombre: celula_b45fijo -> celula_b45fijo_sin_reflejo"
+C3 config de la corrida A -> celula_b45fijo (+ anillos cerca),True,"datos.espejo_angulo_eje_rango_deg: (40.0, 50.0) -> None; datos.simulador.z_banco_nm: None -> (-7596.266658713868, 3000.0); entrenamiento.nombre: hypatia_celula_b45_cerca -> celula_b45fijo; entrenamiento.workers: 8 -> 2"
+B1 campos de PSF y rejilla z (con),True,"campos distintos ninguno; z_banco (-7596.266658713868, 3000.0); 531 planos de -7600.0 a 3000.0 nm, paso 20.0 nm (A: 531 planos)"
+B1 campos de PSF y rejilla z (sin),True,"campos distintos ninguno; z_banco (-7596.266658713868, 3000.0); 531 planos de -7600.0 a 3000.0 nm, paso 20.0 nm (A: 531 planos)"
+B2 K_psf usado,True,"{'A': 256, 'con': 256, 'sin': 256}"
+B3 stack del banco bit a bit,True,"K 256 / 256, stack (531, 256, 256), max |diferencia| 0.0"
+B4 el banco sirve a las dos configs,True,
+T1 beta = 45 en todas las muestras (con),True,"min 45.0, max 45.0, n 2000"
+T1 beta = 45 en todas las muestras (sin),True,"min 45.0, max 45.0, n 2000"
+T2 semilla y n (con),True,"seed 4, n 2000"
+T2 semilla y n (sin),True,"seed 4, n 2000"
+T3 GT identico salvo photons_reflejo,True,13108 filas; columnas distintas: ninguna
+"T4 photons_reflejo: con = ratio x photons, sin = 0",True,"ratio en [0.450, 1.000]"
+T5 muestras.csv identico salvo ratio_reflejo,True,columnas distintas: ninguna; reintentos con/sin 0/0
+I1 imagenes del test = regeneradas (bit a bit),True,40 imagenes por test
+I2 fondo y subposiciones (real y reflejo) identicos,True,
+I3 imagen sin ruido: con - sin = ratio x (luz del reflejo con ratio 1),True,error relativo max 8.7e-16; min de la luz del reflejo 6.6e-03; fotones del reflejo en la imagen: mediana 21530
+I4 ruido: realizacion distinta (informativo),True,pixeles con distinto valor ADU: mediana 0.98
+E1 train: escenas con/sin reflejo identicas (20 muestras),True,distintas: 0
+E1 val: escenas con/sin reflejo identicas (20 muestras),True,distintas: 0

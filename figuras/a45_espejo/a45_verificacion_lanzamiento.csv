@@ -1,0 +1,11 @@
+chequeo,pasa,detalle
+"L0 espejo.sbatch arma nombre, test y overrides como se supone aqui",True,patrones presentes; DATOS por defecto localizacion/datos
+L1 con: semilla 0 -> 1,True,entrenamiento.nombre: hypatia_celula45fijo_b45_cerca_s0 -> hypatia_celula45fijo_b45_cerca_s1; entrenamiento.semilla: 0 -> 1
+L1 sin: semilla 0 -> 1,True,entrenamiento.nombre: hypatia_celula45fijo_sinrefl_b45_cerca_s0 -> hypatia_celula45fijo_sinrefl_b45_cerca_s1; entrenamiento.semilla: 0 -> 1
+L2 semilla 0: A45 -> A45_sin,True,"datos.ratio_reflejo_rango: (0.45, 1.0) -> (0.0, 0.0); entrenamiento.nombre: hypatia_celula45fijo_b45_cerca_s0 -> hypatia_celula45fijo_sinrefl_b45_cerca_s0"
+L2 semilla 1: A45 -> A45_sin,True,"datos.ratio_reflejo_rango: (0.45, 1.0) -> (0.0, 0.0); entrenamiento.nombre: hypatia_celula45fijo_b45_cerca_s1 -> hypatia_celula45fijo_sinrefl_b45_cerca_s1"
+L3 corrida A -> A45 s0 (efectiva),True,"datos.espejo_angulo_eje_rango_deg: (40.0, 50.0) -> None; datos.simulador.z_banco_nm: None -> (-7596.266658713868, 3000.0); entrenamiento.nombre: hypatia_celula_b45_cerca -> hypatia_celula45fijo_b45_cerca_s0"
+"L4 semillas (entrenamiento, seed_train, seed_val)",True,"con s0: (0, 1, 2); con s1: (1, 1, 2); sin s0: (0, 1, 2); sin s1: (1, 1, 2)"
+L5 nombres de corrida unicos (el glob ${NOMBRE}_* del job no cruza corridas),True,"['hypatia_celula45fijo_b45_cerca_s0', 'hypatia_celula45fijo_b45_cerca_s1', 'hypatia_celula45fijo_sinrefl_b45_cerca_s0', 'hypatia_celula45fijo_sinrefl_b45_cerca_s1']; cruces ninguno; corridas locales previas con esos nombres ninguna"
+L6 test del job para celula45fijo,True,"localizacion/datos/test_celula45fijo_b45_cerca: imagenes.npy existe, datos.yaml seed 4 y n 2000: si"
+L6 test del job para celula45fijo_sinrefl,True,"localizacion/datos/test_celula45fijo_sinrefl_b45_cerca: imagenes.npy existe, datos.yaml seed 4 y n 2000: si"
